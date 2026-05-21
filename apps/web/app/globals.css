@@ -1,0 +1,131 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  background: #020403;
+  color: #d9ffe7;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at 14% 12%, rgba(57, 255, 136, 0.12), transparent 28%),
+    radial-gradient(circle at 82% 24%, rgba(69, 243, 255, 0.08), transparent 24%),
+    linear-gradient(180deg, #020403 0%, #020403 44%, #000 100%);
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+::selection {
+  background: rgba(57, 255, 136, 0.24);
+  color: #f4fff8;
+}
+
+.digital-rain {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  opacity: 0.28;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.digital-rain::before,
+.digital-rain::after {
+  content: "01001011 10110 0010110 11001 011010 101101 01001 111000 01010 001101 11010 011001 10101 010011 11100 00110";
+  position: absolute;
+  inset: -50% 0 0;
+  color: rgba(57, 255, 136, 0.36);
+  font-family: Consolas, ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.75;
+  letter-spacing: 0.42em;
+  word-break: break-all;
+  text-shadow: 0 0 12px rgba(57, 255, 136, 0.55);
+  animation: rain 18s linear infinite;
+  writing-mode: vertical-rl;
+}
+
+.digital-rain::after {
+  left: 44%;
+  opacity: 0.55;
+  animation-duration: 25s;
+  animation-delay: -8s;
+}
+
+.scan-lines {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(rgba(57, 255, 136, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(57, 255, 136, 0.028) 1px, transparent 1px);
+  background-size: 100% 4px, 48px 48px;
+  mask-image: linear-gradient(to bottom, transparent, black 8%, black 92%, transparent);
+}
+
+.terminal-panel {
+  border: 1px solid rgba(57, 255, 136, 0.18);
+  background:
+    linear-gradient(180deg, rgba(7, 17, 12, 0.92), rgba(2, 8, 5, 0.92)),
+    rgba(7, 17, 12, 0.9);
+  box-shadow: 0 0 0 1px rgba(57, 255, 136, 0.04), 0 18px 70px rgba(0, 0, 0, 0.52), inset 0 0 38px rgba(57, 255, 136, 0.025);
+}
+
+.terminal-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(57, 255, 136, 0.08), transparent 22%);
+  opacity: 0.45;
+}
+
+.matrix-scroll {
+  scrollbar-color: rgba(57, 255, 136, 0.45) rgba(5, 12, 8, 0.8);
+  scrollbar-width: thin;
+}
+
+.matrix-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.matrix-scroll::-webkit-scrollbar-track {
+  background: rgba(5, 12, 8, 0.8);
+}
+
+.matrix-scroll::-webkit-scrollbar-thumb {
+  background: rgba(57, 255, 136, 0.45);
+  border-radius: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
