@@ -25,6 +25,15 @@ function maskPhone(phoneNumber) {
   return `${clean.slice(0, 4)}***${clean.slice(-2)}`;
 }
 
+function configuredValue(value) {
+  if (!value) return false;
+  const normalized = String(value).trim();
+  if (!normalized) return false;
+  if (normalized === "...") return false;
+  if (normalized.startsWith("replace-with-")) return false;
+  return true;
+}
+
 async function readState() {
   try {
     const raw = await readFile(stateFile, "utf8");
@@ -42,16 +51,21 @@ async function saveState(nextState) {
 }
 
 function tdlibConfigured() {
-  return Boolean(
-    process.env.EPICGRAM_TDLIB_ENABLED === "true" &&
-      process.env.TELEGRAM_API_ID &&
-      process.env.TELEGRAM_API_HASH &&
-      process.env.EPICGRAM_TDLIB_DATABASE_KEY,
-  );
+  return missingTdlibConfig().length === 0;
+}
+
+function missingTdlibConfig() {
+  const missing = [];
+  if (process.env.EPICGRAM_TDLIB_ENABLED !== "true") missing.push("EPICGRAM_TDLIB_ENABLED=true");
+  if (!configuredValue(process.env.TELEGRAM_API_ID)) missing.push("TELEGRAM_API_ID");
+  if (!configuredValue(process.env.TELEGRAM_API_HASH)) missing.push("TELEGRAM_API_HASH");
+  if (!configuredValue(process.env.EPICGRAM_TDLIB_DATABASE_KEY)) missing.push("EPICGRAM_TDLIB_DATABASE_KEY");
+  return missing;
 }
 
 function notConfiguredMessage() {
-  return "TDLib backend is reachable, but TELEGRAM_API_ID, TELEGRAM_API_HASH, EPICGRAM_TDLIB_DATABASE_KEY, and EPICGRAM_TDLIB_ENABLED=true are required before real Telegram login.";
+  const missing = missingTdlibConfig();
+  return `TDLib backend is reachable, but real Telegram login is blocked until this local config is set: ${missing.join(", ")}.`;
 }
 
 export async function getStatus() {
@@ -61,6 +75,7 @@ export async function getStatus() {
       ...state,
       runtime: "not_configured",
       tdlibConfigured: false,
+      missingConfig: missingTdlibConfig(),
       message: notConfiguredMessage()
     };
   }
@@ -83,6 +98,7 @@ export async function requestQrAuth() {
         method: "qr",
         runtime: "not_configured",
         tdlibConfigured: false,
+        missingConfig: missingTdlibConfig(),
         message: notConfiguredMessage()
       }
     };
@@ -122,6 +138,7 @@ export async function requestPhoneAuth(payload) {
         method: "phone",
         runtime: "not_configured",
         tdlibConfigured: false,
+        missingConfig: missingTdlibConfig(),
         phoneMasked,
         message: notConfiguredMessage()
       }
@@ -159,6 +176,7 @@ export async function verifyCode(payload) {
         ...state,
         runtime: "not_configured",
         tdlibConfigured: false,
+        missingConfig: missingTdlibConfig(),
         message: notConfiguredMessage()
       }
     };

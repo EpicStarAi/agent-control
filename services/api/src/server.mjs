@@ -1,4 +1,5 @@
 import http from "node:http";
+import { loadLocalEnv } from "./env.mjs";
 import {
   getStatus,
   logout,
@@ -6,6 +7,8 @@ import {
   requestQrAuth,
   verifyCode
 } from "./telegram-runtime.mjs";
+
+await loadLocalEnv();
 
 const host = process.env.EPICGRAM_API_HOST || "127.0.0.1";
 const port = Number(process.env.EPICGRAM_API_PORT || 8788);

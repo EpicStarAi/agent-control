@@ -12,6 +12,8 @@ Default URL: `http://127.0.0.1:8788`.
 
 The Next.js app proxies `/api/telegram/*` to this backend through `EPICGRAM_API_BASE_URL`.
 
+For local development, the backend loads `.env.local` from the repository root before reading configuration.
+
 ## Required TDLib responsibilities
 
 - Initialize TDLib with `api_id`, `api_hash`, encrypted database path, and device metadata.
