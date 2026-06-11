@@ -1,11 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { proxyTelegramRequest } from "../../_proxy";
 
-export async function POST() {
-  return NextResponse.json(
-    {
-      runtime: "not_configured",
-      message: "Code verification requires a TDLib backend and encrypted session storage."
-    },
-    { status: 501 }
-  );
+export async function POST(request: NextRequest) {
+  const payload = await request.json().catch(() => ({}));
+  return proxyTelegramRequest("/telegram/auth/code", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
 }

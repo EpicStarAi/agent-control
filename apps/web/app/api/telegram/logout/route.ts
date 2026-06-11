@@ -1,11 +1,5 @@
-import { NextResponse } from "next/server";
+import { proxyTelegramRequest } from "../_proxy";
 
 export async function POST() {
-  return NextResponse.json(
-    {
-      runtime: "not_configured",
-      message: "Logout/delete session will be available after TDLib backend integration."
-    },
-    { status: 501 }
-  );
+  return proxyTelegramRequest("/telegram/logout", { method: "POST" });
 }

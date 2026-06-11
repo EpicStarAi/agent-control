@@ -1,6 +1,16 @@
 # EPICGRAM API Service
 
-Planned backend service for Telegram authorization and sync.
+Backend service for Telegram authorization and sync.
+
+## Development
+
+```bash
+npm run api:dev
+```
+
+Default URL: `http://127.0.0.1:8788`.
+
+The Next.js app proxies `/api/telegram/*` to this backend through `EPICGRAM_API_BASE_URL`.
 
 ## Required TDLib responsibilities
 
@@ -20,4 +30,15 @@ Planned backend service for Telegram authorization and sync.
 - `POST /api/telegram/auth/code`
 - `POST /api/telegram/logout`
 
-The current Next.js routes implement this contract as safe stubs until the TDLib runtime is connected.
+The current service implements the HTTP contract and persists runtime state under `.epicgram/`. Real Telegram login is blocked until TDLib configuration is present.
+
+## Required environment
+
+```bash
+EPICGRAM_TDLIB_ENABLED=true
+TELEGRAM_API_ID=replace-with-official-api-id
+TELEGRAM_API_HASH=replace-with-official-api-hash
+EPICGRAM_TDLIB_DATABASE_KEY=replace-with-local-encryption-key
+```
+
+The first backend milestone intentionally does not accept Telegram credentials from the browser. QR links, phone codes, 2FA passwords, and TDLib session files must stay in the backend/runtime boundary.

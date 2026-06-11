@@ -9,6 +9,7 @@
     "desktop:dev": "electron apps/desktop/main.cjs",
     "desktop": "electron apps/desktop/main.cjs",
     "operator:hash": "node scripts/create-operator-hash.mjs",
+    "api:dev": "node services/api/src/server.mjs",
     "build": "next build apps/web",
     "start": "next start apps/web",
     "start:host": "next start apps/web --hostname 0.0.0.0 --port 3015",

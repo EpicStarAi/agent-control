@@ -149,6 +149,7 @@ export function EpicGramShell({ section }: Props) {
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>("qr");
   const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
   const [authMessage, setAuthMessage] = useState("TDLib backend пока не подключен.");
 
   useEffect(() => {
@@ -180,6 +181,16 @@ export function EpicGramShell({ section }: Props) {
     });
     const data = (await response.json()) as { message?: string };
     setAuthMessage(data.message ?? "Авторизация по номеру ожидает backend.");
+  }
+
+  async function requestCodeAuth() {
+    const response = await fetch("/api/telegram/auth/code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code })
+    });
+    const data = (await response.json()) as { message?: string };
+    setAuthMessage(data.message ?? "Проверка кода ожидает backend.");
   }
 
   return (
@@ -239,9 +250,12 @@ export function EpicGramShell({ section }: Props) {
           setAuthMode={setAuthMode}
           phone={phone}
           setPhone={setPhone}
+          code={code}
+          setCode={setCode}
           authMessage={authMessage}
           requestQrAuth={requestQrAuth}
           requestPhoneAuth={requestPhoneAuth}
+          requestCodeAuth={requestCodeAuth}
           onClose={() => setAuthOpen(false)}
         />
       )}
@@ -381,17 +395,23 @@ function AuthPanel({
   setAuthMode,
   phone,
   setPhone,
+  code,
+  setCode,
   authMessage,
   requestQrAuth,
-  requestPhoneAuth
+  requestPhoneAuth,
+  requestCodeAuth
 }: {
   authMode: AuthMode;
   setAuthMode: (mode: AuthMode) => void;
   phone: string;
   setPhone: (value: string) => void;
+  code: string;
+  setCode: (value: string) => void;
   authMessage: string;
   requestQrAuth: () => void;
   requestPhoneAuth: () => void;
+  requestCodeAuth: () => void;
 }) {
   return (
     <div className="relative w-full max-w-md rounded-2xl bg-tg-panel p-5 shadow-telegram">
@@ -401,7 +421,18 @@ function AuthPanel({
         <button onClick={() => setAuthMode("qr")} className={`rounded-lg px-3 py-2 text-sm font-semibold ${authMode === "qr" ? "bg-tg-active text-white" : "text-tg-muted"}`}>QR-код</button>
         <button onClick={() => setAuthMode("phone")} className={`rounded-lg px-3 py-2 text-sm font-semibold ${authMode === "phone" ? "bg-tg-active text-white" : "text-tg-muted"}`}>Номер телефона</button>
       </div>
-      {authMode === "qr" ? <QrAuthState requestQrAuth={requestQrAuth} /> : <PhoneAuthState phone={phone} setPhone={setPhone} requestPhoneAuth={requestPhoneAuth} />}
+      {authMode === "qr" ? (
+        <QrAuthState requestQrAuth={requestQrAuth} />
+      ) : (
+        <PhoneAuthState
+          phone={phone}
+          setPhone={setPhone}
+          code={code}
+          setCode={setCode}
+          requestPhoneAuth={requestPhoneAuth}
+          requestCodeAuth={requestCodeAuth}
+        />
+      )}
       <div className="mt-4 rounded-xl bg-tg-bg px-3 py-2 text-sm leading-6 text-tg-muted">{authMessage}</div>
     </div>
   );
@@ -421,13 +452,32 @@ function QrAuthState({ requestQrAuth }: { requestQrAuth: () => void }) {
   );
 }
 
-function PhoneAuthState({ phone, setPhone, requestPhoneAuth }: { phone: string; setPhone: (value: string) => void; requestPhoneAuth: () => void }) {
+function PhoneAuthState({
+  phone,
+  setPhone,
+  code,
+  setCode,
+  requestPhoneAuth,
+  requestCodeAuth
+}: {
+  phone: string;
+  setPhone: (value: string) => void;
+  code: string;
+  setCode: (value: string) => void;
+  requestPhoneAuth: () => void;
+  requestCodeAuth: () => void;
+}) {
   return (
     <div className="mt-5">
       <label className="text-sm font-semibold">Номер телефона</label>
       <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+380..." className="mt-2 h-12 w-full rounded-xl bg-tg-bg px-4 text-base outline-none ring-1 ring-tg-line focus:ring-tg-blue" />
       <p className="mt-3 text-sm leading-6 text-tg-muted">После подключения backend эта форма будет запускать официальный TDLib login-flow.</p>
       <button onClick={requestPhoneAuth} className="mt-5 w-full rounded-xl bg-tg-blue px-4 py-3 font-semibold text-white">Запросить код</button>
+      <div className="mt-5 border-t border-tg-line pt-5">
+        <label className="text-sm font-semibold">Код Telegram</label>
+        <input value={code} onChange={(event) => setCode(event.target.value)} placeholder="12345" inputMode="numeric" className="mt-2 h-12 w-full rounded-xl bg-tg-bg px-4 text-base outline-none ring-1 ring-tg-line focus:ring-tg-blue" />
+        <button onClick={requestCodeAuth} className="mt-3 w-full rounded-xl bg-tg-active px-4 py-3 font-semibold text-white">Проверить код</button>
+      </div>
     </div>
   );
 }
@@ -477,18 +527,24 @@ function AuthModal({
   setAuthMode,
   phone,
   setPhone,
+  code,
+  setCode,
   authMessage,
   requestQrAuth,
   requestPhoneAuth,
+  requestCodeAuth,
   onClose
 }: {
   authMode: AuthMode;
   setAuthMode: (mode: AuthMode) => void;
   phone: string;
   setPhone: (value: string) => void;
+  code: string;
+  setCode: (value: string) => void;
   authMessage: string;
   requestQrAuth: () => void;
   requestPhoneAuth: () => void;
+  requestCodeAuth: () => void;
   onClose: () => void;
 }) {
   return (
@@ -501,9 +557,12 @@ function AuthModal({
             setAuthMode={setAuthMode}
             phone={phone}
             setPhone={setPhone}
+            code={code}
+            setCode={setCode}
             authMessage={authMessage}
             requestQrAuth={requestQrAuth}
             requestPhoneAuth={requestPhoneAuth}
+            requestCodeAuth={requestCodeAuth}
           />
         </div>
       </div>
