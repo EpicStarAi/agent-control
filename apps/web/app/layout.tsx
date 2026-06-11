@@ -6,12 +6,12 @@ const inter = Inter({ subsets: ["latin", "cyrillic"], variable: "--font-inter" }
 const jetbrains = JetBrains_Mono({ subsets: ["latin", "cyrillic"], variable: "--font-jetbrains" });
 
 export const metadata: Metadata = {
-  title: "EPICGRAM",
+  title: "EPIC☠️GRAM",
   description: "Законный Telegram-style клиент с AI-рабочей областью.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    title: "EPICGRAM",
+    title: "EPIC☠️GRAM",
     statusBarStyle: "black-translucent"
   }
 };

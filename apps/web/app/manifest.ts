@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "EPICGRAM",
-    short_name: "EPICGRAM",
+    name: "EPIC☠️GRAM",
+    short_name: "EPIC☠️GRAM",
     description: "Telegram-style клиент с AI-агентами и безопасным подтверждением отправки.",
     start_url: "/",
     scope: "/",

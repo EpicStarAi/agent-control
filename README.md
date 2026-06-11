@@ -2,26 +2,46 @@
 
 Lawful Matrix-mode Telegram-style client shell with an AI-agent workspace.
 
-This repository currently contains the first static MVP frontend prototype. It uses mocked local data only and does not connect to real Telegram credentials.
+This repository currently contains the first MVP frontend prototype. It starts from a clean Telegram state, includes local AI folders, and does not connect to real Telegram credentials until the official TDLib backend is implemented.
 
 ## What is included
 
 - Next.js, React, TypeScript, Tailwind CSS frontend in `apps/web`
+- Electron desktop shell in `apps/desktop`
 - Matrix/cyberpunk Telegram-style app shell
 - Routes: `/`, `/chats`, `/agents`, `/accounts`, `/logs`, `/settings`
-- Mock data for 3 accounts, 6 chats, 4 agents, and 20 log events
-- Multi-account switcher, chat list, chat window, AI-agent side panel, logs console, and memory console
-- Human approval gate for outbound message drafts
-- `.env.example` with placeholders only
+- Default local folders: `Чаты` and `Каналы`
+- AI memory channels and technical AI groups created locally by default
+- Telegram authorization UI for QR and phone-number flows
+- API contracts for future TDLib integration under `/api/telegram/*`
+- PWA manifest and service worker for installable web usage
+- Human approval model for outbound message sending
 
 ## Quick start
 
 ```bash
 npm install
-npm run dev
+npm run dev:host
 ```
 
-Open the local URL printed by Next.js, usually `http://localhost:3000`.
+Open `http://127.0.0.1:3015`.
+
+For phone testing on the same Wi-Fi network, open the host machine LAN address with port `3015`, for example `http://192.168.68.101:3015`.
+
+## Desktop shell
+
+Start the web client first, then launch the desktop window:
+
+```bash
+npm run dev:host
+npm run desktop:dev
+```
+
+The desktop shell opens `http://127.0.0.1:3015` by default. To point it at a deployed site mirror:
+
+```bash
+EPICGRAM_WEB_URL=https://your-domain.example npm run desktop
+```
 
 ## Build
 
@@ -59,16 +79,21 @@ Not allowed:
 ```txt
 apps/
   web/                  # Next.js UI prototype
+  desktop/              # Electron desktop shell
 packages/
   ui/                   # Shared UI placeholder
   agents/               # Agent runtime abstraction placeholder
   telegram/             # Official Telegram adapter placeholder
+services/
+  api/                  # TDLib backend contract notes
 docs/
   architecture.md
   safety.md
+  site-and-domain.md
+  telegram-client-functional-spec.md
   ui-matrix-mode.md
 ```
 
 ## MVP status
 
-This is a frontend-only prototype. Backend services, database storage, TDLib, Bot API, and Telegram WebApp SDK integrations are intentionally not implemented yet.
+This is still a frontend-first prototype. Real Telegram account authorization, encrypted session storage, dialog sync, and message sending require the TDLib backend/runtime described in `services/api/README.md`.
