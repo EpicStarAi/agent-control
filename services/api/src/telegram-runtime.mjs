@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   checkTdlibAuthenticationCode,
+  getTdlibChats,
   getTdlibSessionSnapshot,
   getTdlibAdapterStatus,
   logOutTdlib,
@@ -155,6 +156,50 @@ export async function getConfig() {
       ? "Local TDLib config is present. Native TDLib adapter is the next required layer."
       : notConfiguredMessage()
   };
+}
+
+export async function getChats() {
+  const state = await syncTdlibState(await readState());
+  if (!tdlibConfigured()) {
+    return {
+      status: 503,
+      body: {
+        ...state,
+        tdlibConfigured: false,
+        missingConfig: missingTdlibConfig(),
+        chats: [],
+        message: notConfiguredMessage()
+      }
+    };
+  }
+
+  try {
+    const result = await getTdlibChats({ limit: 40 });
+    return {
+      status: isReadyAuthorizationState(result.authorizationState?._) ? 200 : 401,
+      body: {
+        ...state,
+        runtime: isReadyAuthorizationState(result.authorizationState?._) ? "ready" : "waiting_auth",
+        authorizationState: result.authorizationState?._ ?? state.authorizationState,
+        account: result.account ?? state.accounts[0] ?? null,
+        chats: result.chats,
+        chatsCount: result.chats.length,
+        adapter: getTdlibAdapterStatus(),
+        message: result.message
+      }
+    };
+  } catch (error) {
+    return {
+      status: 500,
+      body: {
+        ...state,
+        chats: [],
+        chatsCount: 0,
+        adapter: getTdlibAdapterStatus(),
+        message: error instanceof Error ? error.message : "TDLib chat loading failed."
+      }
+    };
+  }
 }
 
 export async function requestQrAuth() {

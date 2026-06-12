@@ -135,6 +135,18 @@ function formatAccount(user) {
   };
 }
 
+function formatChat(chat) {
+  if (!chat) return null;
+  return {
+    id: String(chat.id),
+    title: chat.title || "Без названия",
+    type: chat.type?._ ?? "chat",
+    unreadCount: chat.unread_count ?? 0,
+    isMarkedAsUnread: Boolean(chat.is_marked_as_unread),
+    lastReadInboxMessageId: chat.last_read_inbox_message_id ? String(chat.last_read_inbox_message_id) : null
+  };
+}
+
 async function getCurrentAccount(tdClient) {
   try {
     return formatAccount(await tdClient.invoke({ _: "getMe" }));
@@ -142,6 +154,25 @@ async function getCurrentAccount(tdClient) {
     lastError = error instanceof Error ? error.message : String(error);
     return null;
   }
+}
+
+async function getCurrentChats(tdClient, limit = 30) {
+  const chats = await tdClient.invoke({
+    _: "getChats",
+    chat_list: { _: "chatListMain" },
+    limit
+  });
+  const chatIds = chats.chat_ids ?? [];
+  const hydratedChats = await Promise.all(
+    chatIds.slice(0, limit).map(async (chatId) => {
+      try {
+        return formatChat(await tdClient.invoke({ _: "getChat", chat_id: chatId }));
+      } catch {
+        return null;
+      }
+    })
+  );
+  return hydratedChats.filter(Boolean);
 }
 
 export function getTdlibAdapterStatus() {
@@ -163,6 +194,25 @@ export function getTdlibAdapterStatus() {
     message: client
       ? "TDLib native adapter is loaded."
       : "TDLib adapter is installed and will load tdjson lazily on the first auth request."
+  };
+}
+
+export async function getTdlibChats({ limit = 30 } = {}) {
+  const tdClient = await ensureClient();
+  const authorizationState = await getCurrentAuthorizationState(tdClient);
+  if (!READY_STATES.has(authorizationState?._)) {
+    return {
+      authorizationState,
+      chats: [],
+      message: "Telegram account is not authorized yet."
+    };
+  }
+
+  return {
+    authorizationState,
+    account: await getCurrentAccount(tdClient),
+    chats: await getCurrentChats(tdClient, limit),
+    message: "Telegram chats loaded from TDLib."
   };
 }
 

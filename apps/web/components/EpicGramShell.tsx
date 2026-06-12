@@ -33,12 +33,23 @@ type TelegramAccount = {
   username?: string | null;
   phoneMasked?: string | null;
 };
+type TelegramChat = {
+  id: string;
+  title: string;
+  type?: string;
+  unreadCount?: number;
+};
 type TelegramStatus = {
   runtime?: string;
   authorizationState?: string;
   qrLink?: string | null;
   message?: string;
   accounts?: TelegramAccount[];
+};
+type TelegramChatsResponse = {
+  chats?: TelegramChat[];
+  chatsCount?: number;
+  message?: string;
 };
 
 const BRAND_NAME = "EPIC☠️GRAM";
@@ -175,6 +186,8 @@ export function EpicGramShell({ section }: Props) {
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [authMessage, setAuthMessage] = useState("TDLib backend пока не подключен.");
   const [telegramStatus, setTelegramStatus] = useState<TelegramStatus | null>(null);
+  const [telegramChats, setTelegramChats] = useState<TelegramChat[]>([]);
+  const telegramReady = isTelegramReady(telegramStatus);
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {
@@ -244,6 +257,31 @@ export function EpicGramShell({ section }: Props) {
       window.clearInterval(timer);
     };
   }, [authOpen]);
+
+  useEffect(() => {
+    if (!telegramReady) {
+      setTelegramChats([]);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function loadTelegramChats() {
+      const response = await fetch("/api/telegram/chats", { cache: "no-store" });
+      const data = (await response.json()) as TelegramChatsResponse;
+      if (!cancelled && response.ok) setTelegramChats(data.chats ?? []);
+    }
+
+    loadTelegramChats().catch(() => undefined);
+    const timer = window.setInterval(() => {
+      loadTelegramChats().catch(() => undefined);
+    }, 10000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [telegramReady]);
 
   const filteredItems = useMemo(() => localItems.filter((item) => item.folder === activeFolder), [activeFolder]);
   const activeItem = localItems.find((item) => item.id === activeItemId) ?? filteredItems[0] ?? localItems[0];
@@ -344,12 +382,12 @@ export function EpicGramShell({ section }: Props) {
           <ItemHeader item={activeItem} />
           <div className="relative min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_20%_10%,rgba(100,255,154,.08),transparent_24%),linear-gradient(135deg,rgba(14,22,33,.96),rgba(8,13,20,.98))] p-6">
             <div className="pointer-events-none absolute inset-0 opacity-[0.06] [background-image:linear-gradient(rgba(100,255,154,.7)_1px,transparent_1px),linear-gradient(90deg,rgba(100,255,154,.7)_1px,transparent_1px)] [background-size:32px_32px]" />
-          <ItemWorkspace item={activeItem} telegramStatus={telegramStatus} onAuth={() => setAuthOpen(true)} />
+          <ItemWorkspace item={activeItem} telegramStatus={telegramStatus} telegramChats={telegramChats} onAuth={() => setAuthOpen(true)} />
           </div>
         </section>
 
         <aside className="hidden h-full min-h-0 flex-col border-l border-tg-line bg-tg-panel xl:flex">
-          <InfoPanel item={activeItem} telegramStatus={telegramStatus} onAuth={() => setAuthOpen(true)} />
+          <InfoPanel item={activeItem} telegramStatus={telegramStatus} telegramChats={telegramChats} onAuth={() => setAuthOpen(true)} />
         </aside>
       </div>
 
@@ -411,7 +449,17 @@ function ItemHeader({ item }: { item: LocalItem }) {
   );
 }
 
-function ItemWorkspace({ item, telegramStatus, onAuth }: { item: LocalItem; telegramStatus: TelegramStatus | null; onAuth: () => void }) {
+function ItemWorkspace({
+  item,
+  telegramStatus,
+  telegramChats,
+  onAuth
+}: {
+  item: LocalItem;
+  telegramStatus: TelegramStatus | null;
+  telegramChats: TelegramChat[];
+  onAuth: () => void;
+}) {
   const telegramReady = isTelegramReady(telegramStatus);
   const account = primaryTelegramAccount(telegramStatus);
 
@@ -452,9 +500,20 @@ function ItemWorkspace({ item, telegramStatus, onAuth }: { item: LocalItem; tele
         <h3 className="font-semibold">{telegramReady ? "Telegram-аккаунт подключен" : "Telegram-аккаунт пока не подключен"}</h3>
         <p className="mt-2 text-sm leading-6 text-tg-muted">
           {telegramReady
-            ? `${account?.displayName ?? "Аккаунт"} авторизован через официальный TDLib backend. Следующий шаг - загрузить реальные чаты и каналы.`
+            ? `${account?.displayName ?? "Аккаунт"} авторизован через официальный TDLib backend. Загружено чатов: ${telegramChats.length}.`
             : "Эти группы и каналы являются локальной AI-структурой проекта. Реальные Telegram-чаты появятся после авторизации через официальный TDLib backend."}
         </p>
+        {telegramReady && (
+          <div className="mt-4 space-y-2">
+            {telegramChats.slice(0, 6).map((chat) => (
+              <div key={chat.id} className="flex items-center justify-between gap-3 rounded-xl bg-tg-bg px-3 py-2 text-sm">
+                <span className="min-w-0 truncate">{chat.title}</span>
+                {Boolean(chat.unreadCount) && <span className="rounded-full bg-tg-blue px-2 py-0.5 text-xs text-white">{chat.unreadCount}</span>}
+              </div>
+            ))}
+            {telegramChats.length === 0 && <div className="rounded-xl bg-tg-bg px-3 py-2 text-sm text-tg-muted">TDLib авторизован, но список чатов пока пуст или еще загружается.</div>}
+          </div>
+        )}
         <button onClick={onAuth} className="mt-4 rounded-xl bg-tg-blue px-4 py-3 text-sm font-semibold text-white">
           {telegramReady ? "Управлять авторизацией" : "Авторизовать Telegram"}
         </button>
@@ -620,7 +679,17 @@ function PhoneAuthState({
   );
 }
 
-function InfoPanel({ item, telegramStatus, onAuth }: { item: LocalItem; telegramStatus: TelegramStatus | null; onAuth: () => void }) {
+function InfoPanel({
+  item,
+  telegramStatus,
+  telegramChats,
+  onAuth
+}: {
+  item: LocalItem;
+  telegramStatus: TelegramStatus | null;
+  telegramChats: TelegramChat[];
+  onAuth: () => void;
+}) {
   const telegramReady = isTelegramReady(telegramStatus);
   const account = primaryTelegramAccount(telegramStatus);
 
@@ -641,6 +710,7 @@ function InfoPanel({ item, telegramStatus, onAuth }: { item: LocalItem; telegram
           <InfoRow label="Telegram" value={telegramReady ? "авторизован" : "не авторизован"} />
           {telegramReady && <InfoRow label="Аккаунт" value={account?.displayName ?? "подключен"} />}
           {telegramReady && account?.username && <InfoRow label="Username" value={account.username} />}
+          {telegramReady && <InfoRow label="Чаты TDLib" value={`${telegramChats.length}`} />}
         </section>
         <section className="rounded-xl bg-tg-bg p-4">
           <div className="mb-3 flex items-center gap-2 font-semibold"><ShieldCheck className="h-5 w-5 text-tg-accent" />Правила</div>
