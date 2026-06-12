@@ -205,17 +205,19 @@ export function EpicGramShell({ section }: Props) {
     const response = await fetch("/api/telegram/auth/qr", { method: "POST" });
     const data = (await response.json()) as { message?: string; qrLink?: string };
     setQrLink(data.qrLink ?? "");
-    setAuthMessage(data.message ?? "QR авторизация ожидает backend.");
+    setAuthMessage(data.message ?? (response.ok ? "QR авторизация запрошена." : "QR авторизация не запустилась."));
   }
 
   async function requestPhoneAuth() {
+    setQrLink("");
+    setQrDataUrl("");
     const response = await fetch("/api/telegram/auth/phone", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ phoneNumber: phone })
     });
     const data = (await response.json()) as { message?: string };
-    setAuthMessage(data.message ?? "Авторизация по номеру ожидает backend.");
+    setAuthMessage(data.message ?? (response.ok ? "Код запрошен. Проверьте Telegram." : "Код не отправлен. Проверьте номер и backend."));
   }
 
   async function requestCodeAuth() {
@@ -225,7 +227,16 @@ export function EpicGramShell({ section }: Props) {
       body: JSON.stringify({ code })
     });
     const data = (await response.json()) as { message?: string };
-    setAuthMessage(data.message ?? "Проверка кода ожидает backend.");
+    setAuthMessage(data.message ?? (response.ok ? "Код отправлен на проверку." : "Код не принят Telegram."));
+  }
+
+  async function resetAuth() {
+    const response = await fetch("/api/telegram/auth/reset", { method: "POST" });
+    const data = (await response.json()) as { message?: string };
+    setQrLink("");
+    setQrDataUrl("");
+    setCode("");
+    setAuthMessage(data.message ?? (response.ok ? "Авторизация сброшена." : "Не удалось сбросить авторизацию."));
   }
 
   return (
@@ -293,6 +304,7 @@ export function EpicGramShell({ section }: Props) {
           requestQrAuth={requestQrAuth}
           requestPhoneAuth={requestPhoneAuth}
           requestCodeAuth={requestCodeAuth}
+          resetAuth={resetAuth}
           onClose={() => setAuthOpen(false)}
         />
       )}
@@ -439,7 +451,8 @@ function AuthPanel({
   authMessage,
   requestQrAuth,
   requestPhoneAuth,
-  requestCodeAuth
+  requestCodeAuth,
+  resetAuth
 }: {
   authMode: AuthMode;
   setAuthMode: (mode: AuthMode) => void;
@@ -453,6 +466,7 @@ function AuthPanel({
   requestQrAuth: () => void;
   requestPhoneAuth: () => void;
   requestCodeAuth: () => void;
+  resetAuth: () => void;
 }) {
   return (
     <div className="relative w-full max-w-md rounded-2xl bg-tg-panel p-5 shadow-telegram">
@@ -475,6 +489,9 @@ function AuthPanel({
         />
       )}
       <div className="mt-4 rounded-xl bg-tg-bg px-3 py-2 text-sm leading-6 text-tg-muted">{authMessage}</div>
+      <button onClick={resetAuth} className="mt-3 w-full rounded-xl border border-tg-line px-4 py-3 text-sm font-semibold text-tg-muted hover:bg-tg-hover hover:text-white">
+        Сбросить авторизацию
+      </button>
     </div>
   );
 }
@@ -520,7 +537,7 @@ function PhoneAuthState({
     <div className="mt-5">
       <label className="text-sm font-semibold">Номер телефона</label>
       <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+380..." className="mt-2 h-12 w-full rounded-xl bg-tg-bg px-4 text-base outline-none ring-1 ring-tg-line focus:ring-tg-blue" />
-      <p className="mt-3 text-sm leading-6 text-tg-muted">После подключения backend эта форма будет запускать официальный TDLib login-flow.</p>
+      <p className="mt-3 text-sm leading-6 text-tg-muted">Запрос кода идет через официальный TDLib backend. Если был открыт QR, он будет сброшен.</p>
       <button onClick={requestPhoneAuth} className="mt-5 w-full rounded-xl bg-tg-blue px-4 py-3 font-semibold text-white">Запросить код</button>
       <div className="mt-5 border-t border-tg-line pt-5">
         <label className="text-sm font-semibold">Код Telegram</label>
@@ -584,6 +601,7 @@ function AuthModal({
   requestQrAuth,
   requestPhoneAuth,
   requestCodeAuth,
+  resetAuth,
   onClose
 }: {
   authMode: AuthMode;
@@ -598,6 +616,7 @@ function AuthModal({
   requestQrAuth: () => void;
   requestPhoneAuth: () => void;
   requestCodeAuth: () => void;
+  resetAuth: () => void;
   onClose: () => void;
 }) {
   return (
@@ -618,6 +637,7 @@ function AuthModal({
             requestQrAuth={requestQrAuth}
             requestPhoneAuth={requestPhoneAuth}
             requestCodeAuth={requestCodeAuth}
+            resetAuth={resetAuth}
           />
         </div>
       </div>

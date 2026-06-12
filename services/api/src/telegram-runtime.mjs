@@ -5,7 +5,8 @@ import {
   getTdlibAdapterStatus,
   logOutTdlib,
   requestTdlibPhoneAuth,
-  requestTdlibQrAuth
+  requestTdlibQrAuth,
+  resetTdlibAuthSession
 } from "./tdlib-adapter.mjs";
 
 const stateDir = path.resolve(process.cwd(), ".epicgram");
@@ -207,7 +208,7 @@ export async function requestPhoneAuth(payload) {
   }
 
   try {
-    const result = await requestTdlibPhoneAuth(phoneNumber);
+    const result = await requestTdlibPhoneAuth(phoneNumber, { resetCurrentFlow: true });
     const nextState = await saveState({
       ...state,
       runtime: "waiting_auth",
@@ -299,4 +300,30 @@ export async function logout() {
   });
 
   return { status: 200, body: state };
+}
+
+export async function resetAuth() {
+  try {
+    await resetTdlibAuthSession({ deleteDatabase: true });
+  } catch {
+    // Local runtime state still needs to be cleared even if TDLib is already stopped.
+  }
+
+  const state = await saveState({
+    ...initialState,
+    runtime: tdlibConfigured() ? "waiting_auth" : "not_configured",
+    authorizationState: tdlibConfigured() ? "backend_ready" : "not_configured",
+    message: tdlibConfigured()
+      ? "Авторизация сброшена. Можно запросить новый QR или код по номеру."
+      : notConfiguredMessage()
+  });
+
+  return {
+    status: 202,
+    body: {
+      ...state,
+      method: "reset",
+      ...configDiagnostics()
+    }
+  };
 }

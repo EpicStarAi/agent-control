@@ -6,6 +6,7 @@ import {
   logout,
   requestPhoneAuth,
   requestQrAuth,
+  resetAuth,
   verifyCode
 } from "./telegram-runtime.mjs";
 
@@ -57,6 +58,10 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === "POST" && url.pathname === "/telegram/auth/code") {
       const result = await verifyCode(await readJson(request));
+      return send(response, result.status, result.body);
+    }
+    if (request.method === "POST" && url.pathname === "/telegram/auth/reset") {
+      const result = await resetAuth();
       return send(response, result.status, result.body);
     }
     if (request.method === "POST" && url.pathname === "/telegram/logout") {

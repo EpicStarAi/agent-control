@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import * as tdl from "tdl";
 import { getTdjson, getTdlibInfo } from "prebuilt-tdlib";
@@ -9,6 +9,8 @@ export const TD_METHODS = {
   code: "checkAuthenticationCode",
   logout: "logOut"
 };
+
+const AUTH_WAIT_TIMEOUT_MS = 10000;
 
 let configured = false;
 let client = null;
@@ -73,6 +75,50 @@ async function ensureClient() {
   }
 }
 
+async function closeClient() {
+  if (!client) return;
+  const closingClient = client;
+  client = null;
+  try {
+    await closingClient.close();
+  } finally {
+    lastAuthorizationState = { _: "authorizationStateClosed" };
+  }
+}
+
+function waitForAuthorizationState(predicate, timeoutMs = AUTH_WAIT_TIMEOUT_MS) {
+  return new Promise((resolve) => {
+    if (predicate(lastAuthorizationState)) {
+      resolve(lastAuthorizationState);
+      return;
+    }
+
+    let timeout = null;
+    const onUpdate = (update) => {
+      if (update?._ !== "updateAuthorizationState") return;
+      const authorizationState = update.authorization_state;
+      lastAuthorizationState = authorizationState;
+      if (!predicate(authorizationState)) return;
+      clearTimeout(timeout);
+      client?.off("update", onUpdate);
+      resolve(authorizationState);
+    };
+
+    timeout = setTimeout(() => {
+      client?.off("update", onUpdate);
+      resolve(lastAuthorizationState);
+    }, timeoutMs);
+
+    client?.on("update", onUpdate);
+  });
+}
+
+async function getCurrentAuthorizationState(tdClient) {
+  const authorizationState = await tdClient.invoke({ _: "getAuthorizationState" });
+  lastAuthorizationState = authorizationState;
+  return authorizationState;
+}
+
 export function getTdlibAdapterStatus() {
   let tdlibInfo = null;
   try {
@@ -97,8 +143,7 @@ export function getTdlibAdapterStatus() {
 
 export async function requestTdlibQrAuth() {
   const tdClient = await ensureClient();
-  const currentAuthorizationState = await tdClient.invoke({ _: "getAuthorizationState" });
-  lastAuthorizationState = currentAuthorizationState;
+  const currentAuthorizationState = await getCurrentAuthorizationState(tdClient);
 
   if (currentAuthorizationState?._ === "authorizationStateWaitOtherDeviceConfirmation") {
     return {
@@ -111,22 +156,49 @@ export async function requestTdlibQrAuth() {
   }
 
   await tdClient.invoke({ _: TD_METHODS.qr, other_user_ids: [] });
+  const authorizationState = await waitForAuthorizationState(
+    (state) => state?._ === "authorizationStateWaitOtherDeviceConfirmation"
+  );
+
   return {
     ok: true,
     method: TD_METHODS.qr,
-    authorizationState: lastAuthorizationState,
-    qrLink: lastAuthorizationState?._ === "authorizationStateWaitOtherDeviceConfirmation" ? lastAuthorizationState.link : null,
+    authorizationState,
+    qrLink: authorizationState?._ === "authorizationStateWaitOtherDeviceConfirmation" ? authorizationState.link : null,
     message: "TDLib QR authorization requested. Wait for authorizationStateWaitOtherDeviceConfirmation."
   };
 }
 
-export async function requestTdlibPhoneAuth(phoneNumber) {
-  const tdClient = await ensureClient();
-  await tdClient.invoke({ _: TD_METHODS.phone, phone_number: phoneNumber });
+export async function requestTdlibPhoneAuth(phoneNumber, options = {}) {
+  let tdClient = await ensureClient();
+  const currentAuthorizationState = await getCurrentAuthorizationState(tdClient);
+
+  if (options.resetCurrentFlow || currentAuthorizationState?._ === "authorizationStateWaitOtherDeviceConfirmation") {
+    await resetTdlibAuthSession({ deleteDatabase: true });
+    tdClient = await ensureClient();
+    await getCurrentAuthorizationState(tdClient);
+  }
+
+  await tdClient.invoke({
+    _: TD_METHODS.phone,
+    phone_number: phoneNumber,
+    settings: {
+      _: "phoneNumberAuthenticationSettings",
+      allow_flash_call: false,
+      allow_missed_call: false,
+      is_current_phone_number: false,
+      allow_sms_retriever_api: false,
+      authentication_tokens: []
+    }
+  });
+  const authorizationState = await waitForAuthorizationState(
+    (state) => state?._ === "authorizationStateWaitCode" || state?._ === "authorizationStateWaitPassword"
+  );
+
   return {
     ok: true,
     method: TD_METHODS.phone,
-    authorizationState: lastAuthorizationState,
+    authorizationState,
     message: "Telegram phone authorization requested. Check Telegram for the login code."
   };
 }
@@ -157,5 +229,22 @@ export async function logOutTdlib() {
     method: TD_METHODS.logout,
     authorizationState: lastAuthorizationState,
     message: "TDLib logout requested."
+  };
+}
+
+export async function resetTdlibAuthSession({ deleteDatabase = false } = {}) {
+  await closeClient();
+  lastError = null;
+  tdjsonPath = null;
+
+  if (deleteDatabase) {
+    await rm(tdlibRoot(), { recursive: true, force: true });
+  }
+
+  return {
+    ok: true,
+    deletedDatabase: deleteDatabase,
+    authorizationState: lastAuthorizationState,
+    message: deleteDatabase ? "TDLib local auth database was reset." : "TDLib client was closed."
   };
 }
