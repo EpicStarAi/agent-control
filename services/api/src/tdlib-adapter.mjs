@@ -137,10 +137,12 @@ function formatAccount(user) {
 
 function formatChat(chat) {
   if (!chat) return null;
+  const isChannel = Boolean(chat.type?.is_channel);
   return {
     id: String(chat.id),
     title: chat.title || "Без названия",
     type: chat.type?._ ?? "chat",
+    isChannel,
     unreadCount: chat.unread_count ?? 0,
     isMarkedAsUnread: Boolean(chat.is_marked_as_unread),
     lastReadInboxMessageId: chat.last_read_inbox_message_id ? String(chat.last_read_inbox_message_id) : null,

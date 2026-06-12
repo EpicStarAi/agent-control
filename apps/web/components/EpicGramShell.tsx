@@ -37,6 +37,7 @@ type TelegramChat = {
   id: string;
   title: string;
   type?: string;
+  isChannel?: boolean;
   unreadCount?: number;
   lastMessage?: TelegramMessage | null;
 };
@@ -189,13 +190,29 @@ function primaryTelegramAccount(status: TelegramStatus | null) {
 }
 
 function chatMatchesFolder(chat: TelegramChat, folder: FolderId) {
-  const isChannelLike = chat.type === "chatTypeSupergroup";
+  const isChannelLike = Boolean(chat.isChannel);
   return folder === "channels" ? isChannelLike : !isChannelLike;
 }
 
 function formatMessageTime(value?: string | null) {
   if (!value) return "";
   return new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
+
+function initialsFromTitle(title?: string | null) {
+  const clean = (title ?? "").replace(/[^\wа-яА-ЯёЁ\s]/g, " ").trim();
+  if (!clean) return "TG";
+  const parts = clean.split(/\s+/).slice(0, 2);
+  return parts.map((part) => part[0]).join("").toUpperCase();
+}
+
+function TelegramAvatar({ title, type, active }: { title: string; type?: string; active?: boolean }) {
+  const isPrivate = type === "chatTypePrivate";
+  return (
+    <div className={`grid h-12 w-12 shrink-0 place-items-center rounded-full ${active ? "bg-white/15" : "bg-gradient-to-br from-[#2b5278] to-[#17212b]"} text-sm font-bold text-tg-accent ring-1 ring-white/10`}>
+      {isPrivate ? initialsFromTitle(title) : <span>{initialsFromTitle(title)}</span>}
+    </div>
+  );
 }
 
 export function EpicGramShell({ section }: Props) {
@@ -356,6 +373,7 @@ export function EpicGramShell({ section }: Props) {
   const activeTelegramChat = useTelegramChats
     ? telegramChats.find((chat) => chat.id === selectedTelegramChatId) ?? visibleTelegramChats[0] ?? telegramChats[0]
     : null;
+  const showTelegramChat = Boolean(activeTelegramChat && (section === "dashboard" || section === "chats"));
 
   function selectFolder(folder: FolderId) {
     setActiveFolder(folder);
@@ -466,11 +484,15 @@ export function EpicGramShell({ section }: Props) {
         </section>
 
         <section className="flex h-full min-h-0 min-w-0 flex-col bg-tg-chat">
-          {activeTelegramChat ? <TelegramChatHeader chat={activeTelegramChat} /> : <ItemHeader item={activeItem} />}
+          {showTelegramChat ? <TelegramChatHeader chat={activeTelegramChat as TelegramChat} /> : <SectionHeader section={section} item={activeItem} />}
           <div className="relative min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_20%_10%,rgba(100,255,154,.08),transparent_24%),linear-gradient(135deg,rgba(14,22,33,.96),rgba(8,13,20,.98))] p-6">
             <div className="pointer-events-none absolute inset-0 opacity-[0.06] [background-image:linear-gradient(rgba(100,255,154,.7)_1px,transparent_1px),linear-gradient(90deg,rgba(100,255,154,.7)_1px,transparent_1px)] [background-size:32px_32px]" />
-            {activeTelegramChat ? (
-              <TelegramChatWorkspace chat={activeTelegramChat} messages={telegramMessages} />
+            {showTelegramChat ? (
+              <TelegramChatWorkspace chat={activeTelegramChat as TelegramChat} messages={telegramMessages} />
+            ) : section === "settings" ? (
+              <SettingsWorkspace telegramStatus={telegramStatus} telegramChats={telegramChats} onAuth={() => setAuthOpen(true)} />
+            ) : section === "accounts" ? (
+              <AccountsWorkspace telegramStatus={telegramStatus} telegramChats={telegramChats} onAuth={() => setAuthOpen(true)} />
             ) : (
               <ItemWorkspace item={activeItem} telegramStatus={telegramStatus} telegramChats={telegramChats} onAuth={() => setAuthOpen(true)} />
             )}
@@ -532,9 +554,7 @@ function TelegramChatRow({ chat, active, onClick }: { chat: TelegramChat; active
 
   return (
     <button onClick={onClick} className={`flex w-full gap-3 px-3 py-2.5 text-left ${active ? "bg-tg-active" : "hover:bg-tg-hover"}`}>
-      <div className={`grid h-12 w-12 shrink-0 place-items-center rounded-full ${active ? "bg-white/15" : "bg-tg-bg"} text-tg-accent`}>
-        {chat.type === "chatTypePrivate" ? <User className="h-5 w-5" /> : <Users className="h-5 w-5" />}
-      </div>
+      <TelegramAvatar title={chat.title} type={chat.type} active={active} />
       <div className="min-w-0 flex-1 border-b border-tg-line/70 pb-2">
         <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1 truncate font-semibold">{chat.title}</div>
@@ -552,9 +572,7 @@ function TelegramChatRow({ chat, active, onClick }: { chat: TelegramChat; active
 function TelegramChatHeader({ chat }: { chat: TelegramChat }) {
   return (
     <header className="flex h-16 items-center gap-3 border-b border-tg-line bg-tg-header px-4">
-      <div className="grid h-11 w-11 place-items-center rounded-full bg-tg-active text-tg-accent">
-        {chat.type === "chatTypePrivate" ? <User className="h-5 w-5" /> : <Users className="h-5 w-5" />}
-      </div>
+      <TelegramAvatar title={chat.title} type={chat.type} active />
       <div className="min-w-0 flex-1">
         <h1 className="truncate font-semibold">{chat.title}</h1>
         <p className="text-sm text-tg-muted">TDLib · {chat.type ?? "chat"}</p>
@@ -586,6 +604,36 @@ function TelegramChatWorkspace({ chat, messages }: { chat: TelegramChat; message
         </div>
       ))}
     </div>
+  );
+}
+
+function SectionHeader({ section, item }: { section: Section; item: LocalItem }) {
+  if (section === "settings") {
+    return <PlainHeader title="Настройки EPIC☠️GRAM" subtitle="TDLib, сессия, безопасность, интерфейс" icon={Settings} />;
+  }
+  if (section === "accounts") {
+    return <PlainHeader title="Telegram-аккаунты" subtitle="Подключенные сессии и состояние TDLib" icon={User} />;
+  }
+  if (section === "agents") {
+    return <PlainHeader title="AI-агенты" subtitle="Память, роли и подтверждение действий" icon={Cpu} />;
+  }
+  if (section === "logs") {
+    return <PlainHeader title="Журнал аудита" subtitle="Локальные события клиента и backend" icon={FileClock} />;
+  }
+  return <ItemHeader item={item} />;
+}
+
+function PlainHeader({ title, subtitle, icon: Icon }: { title: string; subtitle: string; icon: React.ComponentType<{ className?: string }> }) {
+  return (
+    <header className="flex h-16 items-center gap-3 border-b border-tg-line bg-tg-header px-4">
+      <div className="grid h-11 w-11 place-items-center rounded-full bg-tg-active text-tg-accent">
+        <Icon className="h-5 w-5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <h1 className="truncate font-semibold">{title}</h1>
+        <p className="text-sm text-tg-muted">{subtitle}</p>
+      </div>
+    </header>
   );
 }
 
@@ -674,6 +722,73 @@ function ItemWorkspace({
         )}
         <button onClick={onAuth} className="mt-4 rounded-xl bg-tg-blue px-4 py-3 text-sm font-semibold text-white">
           {telegramReady ? "Управлять авторизацией" : "Авторизовать Telegram"}
+        </button>
+      </section>
+    </div>
+  );
+}
+
+function SettingsWorkspace({ telegramStatus, telegramChats, onAuth }: { telegramStatus: TelegramStatus | null; telegramChats: TelegramChat[]; onAuth: () => void }) {
+  const telegramReady = isTelegramReady(telegramStatus);
+  const account = primaryTelegramAccount(telegramStatus);
+
+  return (
+    <div className="relative mx-auto grid max-w-4xl gap-4 lg:grid-cols-2">
+      <section className="rounded-2xl bg-tg-panel p-4 shadow-telegram">
+        <div className="mb-3 flex items-center gap-2 font-semibold text-tg-accent">
+          <ShieldCheck className="h-5 w-5" />
+          Состояние Telegram
+        </div>
+        <div className="overflow-hidden rounded-xl bg-tg-bg">
+          <InfoRow label="Статус" value={telegramReady ? "авторизован" : "не авторизован"} />
+          <InfoRow label="TDLib" value={telegramStatus?.authorizationState ?? "ожидание"} />
+          <InfoRow label="Аккаунт" value={account?.displayName ?? "нет"} />
+          <InfoRow label="Телефон" value={account?.phoneMasked ?? "нет"} />
+          <InfoRow label="Чаты загружены" value={`${telegramChats.length}`} />
+        </div>
+        <button onClick={onAuth} className="mt-4 w-full rounded-xl bg-tg-blue px-4 py-3 text-sm font-semibold text-white">
+          {telegramReady ? "Управлять авторизацией" : "Авторизовать Telegram"}
+        </button>
+      </section>
+
+      <section className="rounded-2xl bg-tg-panel p-4 shadow-telegram">
+        <div className="mb-3 flex items-center gap-2 font-semibold text-tg-accent">
+          <Settings className="h-5 w-5" />
+          Клиент
+        </div>
+        <div className="overflow-hidden rounded-xl bg-tg-bg">
+          <InfoRow label="Режим" value="локальный TDLib backend" />
+          <InfoRow label="Отправка сообщений" value="только после подтверждения человека" />
+          <InfoRow label="Секреты" value=".env.local, не в браузере" />
+          <InfoRow label="Кэш UI" value="service worker без перехвата API" />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AccountsWorkspace({ telegramStatus, telegramChats, onAuth }: { telegramStatus: TelegramStatus | null; telegramChats: TelegramChat[]; onAuth: () => void }) {
+  const account = primaryTelegramAccount(telegramStatus);
+  const telegramReady = isTelegramReady(telegramStatus);
+
+  return (
+    <div className="relative mx-auto flex max-w-3xl flex-col gap-4">
+      <section className="rounded-2xl bg-tg-panel p-4 shadow-telegram">
+        <div className="flex items-center gap-3">
+          <TelegramAvatar title={account?.displayName ?? "Telegram"} type="chatTypePrivate" />
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-xl font-semibold">{account?.displayName ?? "Telegram не подключен"}</h2>
+            <p className="text-sm text-tg-muted">{telegramReady ? "Активная TDLib-сессия" : "Нет активной сессии"}</p>
+          </div>
+        </div>
+        <div className="mt-4 overflow-hidden rounded-xl bg-tg-bg">
+          <InfoRow label="ID" value={account?.id ?? "нет"} />
+          <InfoRow label="Username" value={account?.username ?? "нет"} />
+          <InfoRow label="Телефон" value={account?.phoneMasked ?? "нет"} />
+          <InfoRow label="Чаты" value={`${telegramChats.length}`} />
+        </div>
+        <button onClick={onAuth} className="mt-4 rounded-xl bg-tg-blue px-4 py-3 text-sm font-semibold text-white">
+          {telegramReady ? "Открыть управление сессией" : "Авторизовать Telegram"}
         </button>
       </section>
     </div>
