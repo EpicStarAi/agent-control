@@ -27,12 +27,18 @@ import type { Section } from "@/data/mock";
 type Props = { section: Section };
 type AuthMode = "qr" | "phone";
 type FolderId = "chats" | "channels";
+type TelegramAccount = {
+  id?: string;
+  displayName?: string;
+  username?: string | null;
+  phoneMasked?: string | null;
+};
 type TelegramStatus = {
   runtime?: string;
   authorizationState?: string;
   qrLink?: string | null;
   message?: string;
-  accounts?: Array<{ displayName?: string }>;
+  accounts?: TelegramAccount[];
 };
 
 const BRAND_NAME = "EPIC☠️GRAM";
@@ -149,6 +155,14 @@ const routeItems = [
   { href: "/settings", label: "Настройки", icon: Settings }
 ];
 
+function isTelegramReady(status: TelegramStatus | null) {
+  return status?.runtime === "ready" || status?.authorizationState === "authorizationStateReady";
+}
+
+function primaryTelegramAccount(status: TelegramStatus | null) {
+  return status?.accounts?.[0] ?? null;
+}
+
 export function EpicGramShell({ section }: Props) {
   const [activeFolder, setActiveFolder] = useState<FolderId>("chats");
   const [activeItemId, setActiveItemId] = useState(localItems[0].id);
@@ -160,6 +174,7 @@ export function EpicGramShell({ section }: Props) {
   const [qrLink, setQrLink] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [authMessage, setAuthMessage] = useState("TDLib backend пока не подключен.");
+  const [telegramStatus, setTelegramStatus] = useState<TelegramStatus | null>(null);
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {
@@ -200,8 +215,6 @@ export function EpicGramShell({ section }: Props) {
   }, [qrLink]);
 
   useEffect(() => {
-    if (!authOpen) return undefined;
-
     let cancelled = false;
 
     async function syncTelegramStatus() {
@@ -209,10 +222,11 @@ export function EpicGramShell({ section }: Props) {
       const status = (await response.json()) as TelegramStatus;
       if (cancelled) return;
 
-      if (status.qrLink) setQrLink(status.qrLink);
+      setTelegramStatus(status);
+      if (authOpen && status.qrLink) setQrLink(status.qrLink);
 
-      if (status.runtime === "ready" || status.authorizationState === "authorizationStateReady") {
-        const accountName = status.accounts?.[0]?.displayName;
+      if (authOpen && isTelegramReady(status)) {
+        const accountName = primaryTelegramAccount(status)?.displayName;
         setQrLink("");
         setQrDataUrl("");
         setAuthOpen(false);
@@ -223,7 +237,7 @@ export function EpicGramShell({ section }: Props) {
     syncTelegramStatus().catch(() => undefined);
     const timer = window.setInterval(() => {
       syncTelegramStatus().catch(() => undefined);
-    }, 2000);
+    }, authOpen ? 2000 : 5000);
 
     return () => {
       cancelled = true;
@@ -270,8 +284,9 @@ export function EpicGramShell({ section }: Props) {
     if (response.ok) {
       const statusResponse = await fetch("/api/telegram/status", { cache: "no-store" });
       const status = (await statusResponse.json()) as TelegramStatus;
-      if (status.runtime === "ready" || status.authorizationState === "authorizationStateReady") {
-        const accountName = status.accounts?.[0]?.displayName;
+      setTelegramStatus(status);
+      if (isTelegramReady(status)) {
+        const accountName = primaryTelegramAccount(status)?.displayName;
         setAuthOpen(false);
         setAuthMessage(accountName ? `Telegram авторизован: ${accountName}` : "Telegram аккаунт авторизован.");
       }
@@ -329,12 +344,12 @@ export function EpicGramShell({ section }: Props) {
           <ItemHeader item={activeItem} />
           <div className="relative min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_20%_10%,rgba(100,255,154,.08),transparent_24%),linear-gradient(135deg,rgba(14,22,33,.96),rgba(8,13,20,.98))] p-6">
             <div className="pointer-events-none absolute inset-0 opacity-[0.06] [background-image:linear-gradient(rgba(100,255,154,.7)_1px,transparent_1px),linear-gradient(90deg,rgba(100,255,154,.7)_1px,transparent_1px)] [background-size:32px_32px]" />
-            <ItemWorkspace item={activeItem} onAuth={() => setAuthOpen(true)} />
+          <ItemWorkspace item={activeItem} telegramStatus={telegramStatus} onAuth={() => setAuthOpen(true)} />
           </div>
         </section>
 
         <aside className="hidden h-full min-h-0 flex-col border-l border-tg-line bg-tg-panel xl:flex">
-          <InfoPanel item={activeItem} onAuth={() => setAuthOpen(true)} />
+          <InfoPanel item={activeItem} telegramStatus={telegramStatus} onAuth={() => setAuthOpen(true)} />
         </aside>
       </div>
 
@@ -396,7 +411,10 @@ function ItemHeader({ item }: { item: LocalItem }) {
   );
 }
 
-function ItemWorkspace({ item, onAuth }: { item: LocalItem; onAuth: () => void }) {
+function ItemWorkspace({ item, telegramStatus, onAuth }: { item: LocalItem; telegramStatus: TelegramStatus | null; onAuth: () => void }) {
+  const telegramReady = isTelegramReady(telegramStatus);
+  const account = primaryTelegramAccount(telegramStatus);
+
   return (
     <div className="relative mx-auto flex max-w-3xl flex-col gap-4">
       <div className="mx-auto rounded-full bg-black/30 px-3 py-1 text-xs text-tg-muted">Создано по умолчанию</div>
@@ -431,9 +449,15 @@ function ItemWorkspace({ item, onAuth }: { item: LocalItem; onAuth: () => void }
         </div>
       </section>
       <section className="rounded-2xl bg-tg-panel p-4 shadow-telegram">
-        <h3 className="font-semibold">Telegram-аккаунт пока не подключен</h3>
-        <p className="mt-2 text-sm leading-6 text-tg-muted">Эти группы и каналы являются локальной AI-структурой проекта. Реальные Telegram-чаты появятся после авторизации через официальный TDLib backend.</p>
-        <button onClick={onAuth} className="mt-4 rounded-xl bg-tg-blue px-4 py-3 text-sm font-semibold text-white">Авторизовать Telegram</button>
+        <h3 className="font-semibold">{telegramReady ? "Telegram-аккаунт подключен" : "Telegram-аккаунт пока не подключен"}</h3>
+        <p className="mt-2 text-sm leading-6 text-tg-muted">
+          {telegramReady
+            ? `${account?.displayName ?? "Аккаунт"} авторизован через официальный TDLib backend. Следующий шаг - загрузить реальные чаты и каналы.`
+            : "Эти группы и каналы являются локальной AI-структурой проекта. Реальные Telegram-чаты появятся после авторизации через официальный TDLib backend."}
+        </p>
+        <button onClick={onAuth} className="mt-4 rounded-xl bg-tg-blue px-4 py-3 text-sm font-semibold text-white">
+          {telegramReady ? "Управлять авторизацией" : "Авторизовать Telegram"}
+        </button>
       </section>
     </div>
   );
@@ -596,7 +620,10 @@ function PhoneAuthState({
   );
 }
 
-function InfoPanel({ item, onAuth }: { item: LocalItem; onAuth: () => void }) {
+function InfoPanel({ item, telegramStatus, onAuth }: { item: LocalItem; telegramStatus: TelegramStatus | null; onAuth: () => void }) {
+  const telegramReady = isTelegramReady(telegramStatus);
+  const account = primaryTelegramAccount(telegramStatus);
+
   return (
     <>
       <header className="flex h-16 items-center justify-between border-b border-tg-line px-4">
@@ -611,7 +638,9 @@ function InfoPanel({ item, onAuth }: { item: LocalItem; onAuth: () => void }) {
           <InfoRow label="Папка" value={item.folder === "chats" ? "Чаты" : "Каналы"} />
           <InfoRow label="Память" value={`${item.memory.length} записи`} />
           <InfoRow label="Задачи" value={`${item.tasks.length} пункта`} />
-          <InfoRow label="Telegram" value="не авторизован" />
+          <InfoRow label="Telegram" value={telegramReady ? "авторизован" : "не авторизован"} />
+          {telegramReady && <InfoRow label="Аккаунт" value={account?.displayName ?? "подключен"} />}
+          {telegramReady && account?.username && <InfoRow label="Username" value={account.username} />}
         </section>
         <section className="rounded-xl bg-tg-bg p-4">
           <div className="mb-3 flex items-center gap-2 font-semibold"><ShieldCheck className="h-5 w-5 text-tg-accent" />Правила</div>
@@ -620,7 +649,9 @@ function InfoPanel({ item, onAuth }: { item: LocalItem; onAuth: () => void }) {
             <li>Реальные Telegram-чаты появятся только после авторизации.</li>
             <li>Сессии должны храниться на backend в зашифрованном виде.</li>
           </ul>
-          <button onClick={onAuth} className="mt-4 w-full rounded-xl bg-tg-blue px-4 py-3 text-sm font-semibold text-white">Авторизовать Telegram</button>
+          <button onClick={onAuth} className="mt-4 w-full rounded-xl bg-tg-blue px-4 py-3 text-sm font-semibold text-white">
+            {telegramReady ? "Управлять авторизацией" : "Авторизовать Telegram"}
+          </button>
         </section>
       </div>
     </>

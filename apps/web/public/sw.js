@@ -1,4 +1,4 @@
-const CACHE_NAME = "epicgram-shell-v2";
+const CACHE_NAME = "epicgram-shell-v3";
 const APP_SHELL = ["/", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -18,6 +18,7 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
-  if (url.pathname.startsWith("/_next/")) return;
-  event.respondWith(fetch(event.request).catch(() => caches.match(event.request).then((cached) => cached || caches.match("/"))));
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/_next/") || url.pathname === "/sw.js") return;
+  if (event.request.mode !== "navigate") return;
+  event.respondWith(fetch(event.request).catch(() => caches.match("/")));
 });
