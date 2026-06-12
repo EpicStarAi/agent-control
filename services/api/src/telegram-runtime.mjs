@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   checkTdlibAuthenticationCode,
   getTdlibAdapterStatus,
+  logOutTdlib,
   requestTdlibPhoneAuth,
   requestTdlibQrAuth
 } from "./tdlib-adapter.mjs";
@@ -131,21 +132,54 @@ export async function requestQrAuth() {
     };
   }
 
-  const nextState = await saveState({
-    ...state,
-    runtime: "waiting_auth",
-    authorizationState: "wait_other_device_confirmation",
-    qrLink: null,
-    message: (await requestTdlibQrAuth()).message
-  });
+  const adapterStatus = getTdlibAdapterStatus();
+  if (
+    state.qrLink &&
+    adapterStatus.nativeBindingLoaded &&
+    adapterStatus.authorizationState === "authorizationStateWaitOtherDeviceConfirmation"
+  ) {
+    return {
+      status: 202,
+      body: {
+        ...state,
+        method: "qr",
+        runtime: "waiting_auth",
+        adapter: adapterStatus,
+        message: "QR авторизация уже ожидает подтверждение в Telegram. Отсканируйте текущий код."
+      }
+    };
+  }
 
-  return {
-    status: 202,
-    body: {
-      ...nextState,
-      method: "qr"
-    }
-  };
+  try {
+    const result = await requestTdlibQrAuth();
+    const nextState = await saveState({
+      ...state,
+      runtime: "waiting_auth",
+      authorizationState: result.authorizationState?._ ?? "wait_other_device_confirmation",
+      qrLink: result.qrLink ?? null,
+      message: result.message
+    });
+
+    return {
+      status: 202,
+      body: {
+        ...nextState,
+        method: "qr",
+        adapter: getTdlibAdapterStatus()
+      }
+    };
+  } catch (error) {
+    return {
+      status: 500,
+      body: {
+        ...state,
+        method: "qr",
+        runtime: "error",
+        adapter: getTdlibAdapterStatus(),
+        message: error instanceof Error ? error.message : "TDLib QR authorization failed."
+      }
+    };
+  }
 }
 
 export async function requestPhoneAuth(payload) {
@@ -172,21 +206,37 @@ export async function requestPhoneAuth(payload) {
     };
   }
 
-  const nextState = await saveState({
-    ...state,
-    runtime: "waiting_auth",
-    authorizationState: "wait_code",
-    phoneMasked,
-    message: (await requestTdlibPhoneAuth()).message
-  });
+  try {
+    const result = await requestTdlibPhoneAuth(phoneNumber);
+    const nextState = await saveState({
+      ...state,
+      runtime: "waiting_auth",
+      authorizationState: result.authorizationState?._ ?? "wait_code",
+      phoneMasked,
+      message: result.message
+    });
 
-  return {
-    status: 202,
-    body: {
-      ...nextState,
-      method: "phone"
-    }
-  };
+    return {
+      status: 202,
+      body: {
+        ...nextState,
+        method: "phone",
+        adapter: getTdlibAdapterStatus()
+      }
+    };
+  } catch (error) {
+    return {
+      status: 500,
+      body: {
+        ...state,
+        method: "phone",
+        runtime: "error",
+        phoneMasked,
+        adapter: getTdlibAdapterStatus(),
+        message: error instanceof Error ? error.message : "TDLib phone authorization failed."
+      }
+    };
+  }
 }
 
 export async function verifyCode(payload) {
@@ -209,18 +259,38 @@ export async function verifyCode(payload) {
     };
   }
 
-  return {
-    status: 202,
-    body: {
-      ...state,
-      runtime: "waiting_auth",
-      authorizationState: "wait_code",
-      message: (await checkTdlibAuthenticationCode()).message
-    }
-  };
+  try {
+    const result = await checkTdlibAuthenticationCode(code);
+    return {
+      status: 202,
+      body: {
+        ...state,
+        runtime: "waiting_auth",
+        authorizationState: result.authorizationState?._ ?? "wait_code",
+        adapter: getTdlibAdapterStatus(),
+        message: result.message
+      }
+    };
+  } catch (error) {
+    return {
+      status: 500,
+      body: {
+        ...state,
+        runtime: "error",
+        adapter: getTdlibAdapterStatus(),
+        message: error instanceof Error ? error.message : "TDLib code verification failed."
+      }
+    };
+  }
 }
 
 export async function logout() {
+  try {
+    await logOutTdlib();
+  } catch {
+    // Continue clearing local runtime state even if TDLib is already stopped.
+  }
+
   const state = await saveState({
     ...initialState,
     runtime: tdlibConfigured() ? "waiting_auth" : "not_configured",

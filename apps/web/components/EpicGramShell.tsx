@@ -150,6 +150,8 @@ export function EpicGramShell({ section }: Props) {
   const [authMode, setAuthMode] = useState<AuthMode>("qr");
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
+  const [qrLink, setQrLink] = useState("");
+  const [qrDataUrl, setQrDataUrl] = useState("");
   const [authMessage, setAuthMessage] = useState("TDLib backend пока не подключен.");
 
   useEffect(() => {
@@ -157,6 +159,38 @@ export function EpicGramShell({ section }: Props) {
       navigator.serviceWorker.register("/sw.js").catch(() => undefined);
     }
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function renderQr() {
+      if (!qrLink) {
+        setQrDataUrl("");
+        return;
+      }
+
+      const qrcode = await import("qrcode");
+      const toDataUrl = qrcode.toDataURL ?? qrcode.default.toDataURL;
+      const dataUrl = await toDataUrl(qrLink, {
+        errorCorrectionLevel: "M",
+        margin: 1,
+        scale: 8,
+        color: {
+          dark: "#0e1621",
+          light: "#ffffff"
+        }
+      });
+      if (!cancelled) setQrDataUrl(dataUrl);
+    }
+
+    renderQr().catch(() => {
+      if (!cancelled) setQrDataUrl("");
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [qrLink]);
 
   const filteredItems = useMemo(() => localItems.filter((item) => item.folder === activeFolder), [activeFolder]);
   const activeItem = localItems.find((item) => item.id === activeItemId) ?? filteredItems[0] ?? localItems[0];
@@ -169,7 +203,8 @@ export function EpicGramShell({ section }: Props) {
 
   async function requestQrAuth() {
     const response = await fetch("/api/telegram/auth/qr", { method: "POST" });
-    const data = (await response.json()) as { message?: string };
+    const data = (await response.json()) as { message?: string; qrLink?: string };
+    setQrLink(data.qrLink ?? "");
     setAuthMessage(data.message ?? "QR авторизация ожидает backend.");
   }
 
@@ -252,6 +287,8 @@ export function EpicGramShell({ section }: Props) {
           setPhone={setPhone}
           code={code}
           setCode={setCode}
+          qrLink={qrLink}
+          qrDataUrl={qrDataUrl}
           authMessage={authMessage}
           requestQrAuth={requestQrAuth}
           requestPhoneAuth={requestPhoneAuth}
@@ -397,6 +434,8 @@ function AuthPanel({
   setPhone,
   code,
   setCode,
+  qrLink,
+  qrDataUrl,
   authMessage,
   requestQrAuth,
   requestPhoneAuth,
@@ -408,6 +447,8 @@ function AuthPanel({
   setPhone: (value: string) => void;
   code: string;
   setCode: (value: string) => void;
+  qrLink: string;
+  qrDataUrl: string;
   authMessage: string;
   requestQrAuth: () => void;
   requestPhoneAuth: () => void;
@@ -422,7 +463,7 @@ function AuthPanel({
         <button onClick={() => setAuthMode("phone")} className={`rounded-lg px-3 py-2 text-sm font-semibold ${authMode === "phone" ? "bg-tg-active text-white" : "text-tg-muted"}`}>Номер телефона</button>
       </div>
       {authMode === "qr" ? (
-        <QrAuthState requestQrAuth={requestQrAuth} />
+        <QrAuthState qrLink={qrLink} qrDataUrl={qrDataUrl} requestQrAuth={requestQrAuth} />
       ) : (
         <PhoneAuthState
           phone={phone}
@@ -438,15 +479,23 @@ function AuthPanel({
   );
 }
 
-function QrAuthState({ requestQrAuth }: { requestQrAuth: () => void }) {
+function QrAuthState({ qrLink, qrDataUrl, requestQrAuth }: { qrLink: string; qrDataUrl: string; requestQrAuth: () => void }) {
   return (
     <div className="mt-5">
-      <div className="mx-auto grid h-56 w-56 place-items-center rounded-2xl bg-white p-5 text-[#17212b]"><QrCode className="h-40 w-40" /></div>
+      <div className="mx-auto grid h-56 w-56 place-items-center rounded-2xl bg-white p-5 text-[#17212b]">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {qrDataUrl ? <img src={qrDataUrl} alt="Telegram QR authorization" className="h-48 w-48" /> : <QrCode className="h-40 w-40" />}
+      </div>
       <ol className="mt-5 space-y-2 text-sm leading-6 text-tg-muted">
         <li>1. Откройте Telegram на телефоне.</li>
         <li>2. Настройки → Устройства → Подключить устройство.</li>
-        <li>3. После backend-подключения здесь появится реальный QR.</li>
+        <li>3. Нажмите запрос QR и отсканируйте код.</li>
       </ol>
+      {qrLink && (
+        <a href={qrLink} className="mt-4 block truncate rounded-xl bg-tg-bg px-3 py-2 text-center text-sm text-tg-accent hover:bg-tg-hover">
+          Открыть ссылку Telegram
+        </a>
+      )}
       <button onClick={requestQrAuth} className="mt-5 w-full rounded-xl bg-tg-blue px-4 py-3 font-semibold text-white">Запросить QR</button>
     </div>
   );
@@ -529,6 +578,8 @@ function AuthModal({
   setPhone,
   code,
   setCode,
+  qrLink,
+  qrDataUrl,
   authMessage,
   requestQrAuth,
   requestPhoneAuth,
@@ -541,6 +592,8 @@ function AuthModal({
   setPhone: (value: string) => void;
   code: string;
   setCode: (value: string) => void;
+  qrLink: string;
+  qrDataUrl: string;
   authMessage: string;
   requestQrAuth: () => void;
   requestPhoneAuth: () => void;
@@ -559,6 +612,8 @@ function AuthModal({
             setPhone={setPhone}
             code={code}
             setCode={setCode}
+            qrLink={qrLink}
+            qrDataUrl={qrDataUrl}
             authMessage={authMessage}
             requestQrAuth={requestQrAuth}
             requestPhoneAuth={requestPhoneAuth}
