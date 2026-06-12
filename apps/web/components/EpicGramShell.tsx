@@ -203,6 +203,7 @@ export function EpicGramShell({ section }: Props) {
   const [activeItemId, setActiveItemId] = useState(localItems[0].id);
   const [menuOpen, setMenuOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [authFlowActive, setAuthFlowActive] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>("qr");
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
@@ -264,11 +265,12 @@ export function EpicGramShell({ section }: Props) {
       setTelegramStatus(status);
       if (authOpen && status.qrLink) setQrLink(status.qrLink);
 
-      if (authOpen && isTelegramReady(status)) {
+      if (authOpen && authFlowActive && isTelegramReady(status)) {
         const accountName = primaryTelegramAccount(status)?.displayName;
         setQrLink("");
         setQrDataUrl("");
         setAuthOpen(false);
+        setAuthFlowActive(false);
         setAuthMessage(accountName ? `Telegram авторизован: ${accountName}` : "Telegram аккаунт авторизован.");
       }
     }
@@ -282,7 +284,7 @@ export function EpicGramShell({ section }: Props) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [authOpen]);
+  }, [authFlowActive, authOpen]);
 
   useEffect(() => {
     if (!telegramReady) {
@@ -362,6 +364,7 @@ export function EpicGramShell({ section }: Props) {
   }
 
   async function requestQrAuth() {
+    setAuthFlowActive(true);
     const response = await fetch("/api/telegram/auth/qr", { method: "POST" });
     const data = (await response.json()) as { message?: string; qrLink?: string };
     setQrLink(data.qrLink ?? "");
@@ -369,6 +372,7 @@ export function EpicGramShell({ section }: Props) {
   }
 
   async function requestPhoneAuth() {
+    setAuthFlowActive(true);
     setQrLink("");
     setQrDataUrl("");
     const response = await fetch("/api/telegram/auth/phone", {
@@ -381,6 +385,7 @@ export function EpicGramShell({ section }: Props) {
   }
 
   async function requestCodeAuth() {
+    setAuthFlowActive(true);
     const response = await fetch("/api/telegram/auth/code", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -395,6 +400,7 @@ export function EpicGramShell({ section }: Props) {
       if (isTelegramReady(status)) {
         const accountName = primaryTelegramAccount(status)?.displayName;
         setAuthOpen(false);
+        setAuthFlowActive(false);
         setAuthMessage(accountName ? `Telegram авторизован: ${accountName}` : "Telegram аккаунт авторизован.");
       }
     }
@@ -406,6 +412,7 @@ export function EpicGramShell({ section }: Props) {
     setQrLink("");
     setQrDataUrl("");
     setCode("");
+    setAuthFlowActive(false);
     setAuthMessage(data.message ?? (response.ok ? "Авторизация сброшена." : "Не удалось сбросить авторизацию."));
   }
 
@@ -486,11 +493,16 @@ export function EpicGramShell({ section }: Props) {
           qrLink={qrLink}
           qrDataUrl={qrDataUrl}
           authMessage={authMessage}
+          telegramStatus={telegramStatus}
+          telegramChatsCount={telegramChats.length}
           requestQrAuth={requestQrAuth}
           requestPhoneAuth={requestPhoneAuth}
           requestCodeAuth={requestCodeAuth}
           resetAuth={resetAuth}
-          onClose={() => setAuthOpen(false)}
+          onClose={() => {
+            setAuthOpen(false);
+            setAuthFlowActive(false);
+          }}
         />
       )}
     </main>
@@ -726,6 +738,8 @@ function AuthPanel({
   qrLink,
   qrDataUrl,
   authMessage,
+  telegramStatus,
+  telegramChatsCount,
   requestQrAuth,
   requestPhoneAuth,
   requestCodeAuth,
@@ -740,15 +754,33 @@ function AuthPanel({
   qrLink: string;
   qrDataUrl: string;
   authMessage: string;
+  telegramStatus: TelegramStatus | null;
+  telegramChatsCount: number;
   requestQrAuth: () => void;
   requestPhoneAuth: () => void;
   requestCodeAuth: () => void;
   resetAuth: () => void;
 }) {
+  const telegramReady = isTelegramReady(telegramStatus);
+  const account = primaryTelegramAccount(telegramStatus);
+
   return (
     <div className="relative w-full max-w-md rounded-2xl bg-tg-panel p-5 shadow-telegram">
       <h2 className="text-xl font-semibold">Авторизация Telegram</h2>
       <p className="mt-2 text-sm leading-6 text-tg-muted">Подключение должно идти через официальный Telegram API/TDLib на backend. В браузере не храним сессии, коды и секреты.</p>
+      {telegramReady && (
+        <div className="mt-4 rounded-xl border border-tg-line bg-tg-bg p-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-tg-accent">
+            <ShieldCheck className="h-4 w-4" />
+            Telegram уже подключен
+          </div>
+          <div className="mt-2 text-sm leading-6 text-tg-muted">
+            <div>Аккаунт: {account?.displayName ?? "подключен"}</div>
+            {account?.phoneMasked && <div>Телефон: {account.phoneMasked}</div>}
+            <div>Чатов загружено: {telegramChatsCount}</div>
+          </div>
+        </div>
+      )}
       <div className="mt-5 grid grid-cols-2 gap-2 rounded-xl bg-tg-bg p-1">
         <button onClick={() => setAuthMode("qr")} className={`rounded-lg px-3 py-2 text-sm font-semibold ${authMode === "qr" ? "bg-tg-active text-white" : "text-tg-muted"}`}>QR-код</button>
         <button onClick={() => setAuthMode("phone")} className={`rounded-lg px-3 py-2 text-sm font-semibold ${authMode === "phone" ? "bg-tg-active text-white" : "text-tg-muted"}`}>Номер телефона</button>
@@ -893,6 +925,8 @@ function AuthModal({
   qrLink,
   qrDataUrl,
   authMessage,
+  telegramStatus,
+  telegramChatsCount,
   requestQrAuth,
   requestPhoneAuth,
   requestCodeAuth,
@@ -908,6 +942,8 @@ function AuthModal({
   qrLink: string;
   qrDataUrl: string;
   authMessage: string;
+  telegramStatus: TelegramStatus | null;
+  telegramChatsCount: number;
   requestQrAuth: () => void;
   requestPhoneAuth: () => void;
   requestCodeAuth: () => void;
@@ -929,6 +965,8 @@ function AuthModal({
             qrLink={qrLink}
             qrDataUrl={qrDataUrl}
             authMessage={authMessage}
+            telegramStatus={telegramStatus}
+            telegramChatsCount={telegramChatsCount}
             requestQrAuth={requestQrAuth}
             requestPhoneAuth={requestPhoneAuth}
             requestCodeAuth={requestCodeAuth}
