@@ -38,6 +38,15 @@ type TelegramChat = {
   title: string;
   type?: string;
   unreadCount?: number;
+  lastMessage?: TelegramMessage | null;
+};
+type TelegramMessage = {
+  id: string;
+  chatId: string;
+  date?: string | null;
+  isOutgoing?: boolean;
+  content: string;
+  authorSignature?: string | null;
 };
 type TelegramStatus = {
   runtime?: string;
@@ -49,6 +58,11 @@ type TelegramStatus = {
 type TelegramChatsResponse = {
   chats?: TelegramChat[];
   chatsCount?: number;
+  message?: string;
+};
+type TelegramMessagesResponse = {
+  messages?: TelegramMessage[];
+  messagesCount?: number;
   message?: string;
 };
 
@@ -174,6 +188,16 @@ function primaryTelegramAccount(status: TelegramStatus | null) {
   return status?.accounts?.[0] ?? null;
 }
 
+function chatMatchesFolder(chat: TelegramChat, folder: FolderId) {
+  const isChannelLike = chat.type === "chatTypeSupergroup";
+  return folder === "channels" ? isChannelLike : !isChannelLike;
+}
+
+function formatMessageTime(value?: string | null) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
+
 export function EpicGramShell({ section }: Props) {
   const [activeFolder, setActiveFolder] = useState<FolderId>("chats");
   const [activeItemId, setActiveItemId] = useState(localItems[0].id);
@@ -187,6 +211,8 @@ export function EpicGramShell({ section }: Props) {
   const [authMessage, setAuthMessage] = useState("TDLib backend пока не подключен.");
   const [telegramStatus, setTelegramStatus] = useState<TelegramStatus | null>(null);
   const [telegramChats, setTelegramChats] = useState<TelegramChat[]>([]);
+  const [selectedTelegramChatId, setSelectedTelegramChatId] = useState("");
+  const [telegramMessages, setTelegramMessages] = useState<TelegramMessage[]>([]);
   const telegramReady = isTelegramReady(telegramStatus);
 
   useEffect(() => {
@@ -283,8 +309,51 @@ export function EpicGramShell({ section }: Props) {
     };
   }, [telegramReady]);
 
+  useEffect(() => {
+    if (telegramChats.length === 0) {
+      setSelectedTelegramChatId("");
+      return;
+    }
+
+    const currentExists = telegramChats.some((chat) => chat.id === selectedTelegramChatId);
+    if (!currentExists) setSelectedTelegramChatId(telegramChats[0].id);
+  }, [selectedTelegramChatId, telegramChats]);
+
+  useEffect(() => {
+    if (!selectedTelegramChatId) {
+      setTelegramMessages([]);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function loadTelegramMessages() {
+      const response = await fetch(`/api/telegram/messages?chatId=${encodeURIComponent(selectedTelegramChatId)}`, { cache: "no-store" });
+      const data = (await response.json()) as TelegramMessagesResponse;
+      if (!cancelled && response.ok) setTelegramMessages(data.messages ?? []);
+    }
+
+    loadTelegramMessages().catch(() => undefined);
+    const timer = window.setInterval(() => {
+      loadTelegramMessages().catch(() => undefined);
+    }, 10000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [selectedTelegramChatId]);
+
   const filteredItems = useMemo(() => localItems.filter((item) => item.folder === activeFolder), [activeFolder]);
   const activeItem = localItems.find((item) => item.id === activeItemId) ?? filteredItems[0] ?? localItems[0];
+  const useTelegramChats = telegramReady && telegramChats.length > 0;
+  const visibleTelegramChats = useMemo(
+    () => telegramChats.filter((chat) => chatMatchesFolder(chat, activeFolder)),
+    [activeFolder, telegramChats]
+  );
+  const activeTelegramChat = useTelegramChats
+    ? telegramChats.find((chat) => chat.id === selectedTelegramChatId) ?? visibleTelegramChats[0] ?? telegramChats[0]
+    : null;
 
   function selectFolder(folder: FolderId) {
     setActiveFolder(folder);
@@ -360,7 +429,9 @@ export function EpicGramShell({ section }: Props) {
           <div className="grid grid-cols-2 gap-2 border-b border-tg-line px-3 py-2">
             {folders.map((folder) => {
               const Icon = folder.icon;
-              const count = localItems.filter((item) => item.folder === folder.id).length;
+              const count = useTelegramChats
+                ? telegramChats.filter((chat) => chatMatchesFolder(chat, folder.id)).length
+                : localItems.filter((item) => item.folder === folder.id).length;
               return (
                 <button key={folder.id} onClick={() => selectFolder(folder.id)} className={`flex items-center justify-center gap-2 rounded-full px-3 py-2 text-sm ${activeFolder === folder.id ? "bg-tg-active text-white" : "text-tg-muted hover:bg-tg-hover hover:text-tg-text"}`}>
                   <Icon className="h-4 w-4" />
@@ -372,17 +443,30 @@ export function EpicGramShell({ section }: Props) {
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {filteredItems.map((item) => (
-              <LocalItemRow key={item.id} item={item} active={item.id === activeItem.id} onClick={() => setActiveItemId(item.id)} />
-            ))}
+            {useTelegramChats
+              ? visibleTelegramChats.map((chat) => (
+                  <TelegramChatRow
+                    key={chat.id}
+                    chat={chat}
+                    active={chat.id === activeTelegramChat?.id}
+                    onClick={() => setSelectedTelegramChatId(chat.id)}
+                  />
+                ))
+              : filteredItems.map((item) => (
+                  <LocalItemRow key={item.id} item={item} active={item.id === activeItem.id} onClick={() => setActiveItemId(item.id)} />
+                ))}
           </div>
         </section>
 
         <section className="flex h-full min-h-0 min-w-0 flex-col bg-tg-chat">
-          <ItemHeader item={activeItem} />
+          {activeTelegramChat ? <TelegramChatHeader chat={activeTelegramChat} /> : <ItemHeader item={activeItem} />}
           <div className="relative min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_20%_10%,rgba(100,255,154,.08),transparent_24%),linear-gradient(135deg,rgba(14,22,33,.96),rgba(8,13,20,.98))] p-6">
             <div className="pointer-events-none absolute inset-0 opacity-[0.06] [background-image:linear-gradient(rgba(100,255,154,.7)_1px,transparent_1px),linear-gradient(90deg,rgba(100,255,154,.7)_1px,transparent_1px)] [background-size:32px_32px]" />
-          <ItemWorkspace item={activeItem} telegramStatus={telegramStatus} telegramChats={telegramChats} onAuth={() => setAuthOpen(true)} />
+            {activeTelegramChat ? (
+              <TelegramChatWorkspace chat={activeTelegramChat} messages={telegramMessages} />
+            ) : (
+              <ItemWorkspace item={activeItem} telegramStatus={telegramStatus} telegramChats={telegramChats} onAuth={() => setAuthOpen(true)} />
+            )}
           </div>
         </section>
 
@@ -428,6 +512,68 @@ function LocalItemRow({ item, active, onClick }: { item: LocalItem; active: bool
         <p className={`mt-1 truncate text-sm ${active ? "text-blue-100/85" : "text-tg-muted"}`}>{item.subtitle}</p>
       </div>
     </button>
+  );
+}
+
+function TelegramChatRow({ chat, active, onClick }: { chat: TelegramChat; active: boolean; onClick: () => void }) {
+  const preview = chat.lastMessage?.content || "Нет превью сообщения";
+
+  return (
+    <button onClick={onClick} className={`flex w-full gap-3 px-3 py-2.5 text-left ${active ? "bg-tg-active" : "hover:bg-tg-hover"}`}>
+      <div className={`grid h-12 w-12 shrink-0 place-items-center rounded-full ${active ? "bg-white/15" : "bg-tg-bg"} text-tg-accent`}>
+        {chat.type === "chatTypePrivate" ? <User className="h-5 w-5" /> : <Users className="h-5 w-5" />}
+      </div>
+      <div className="min-w-0 flex-1 border-b border-tg-line/70 pb-2">
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1 truncate font-semibold">{chat.title}</div>
+          <div className={`text-xs ${active ? "text-blue-100/80" : "text-tg-muted"}`}>{formatMessageTime(chat.lastMessage?.date)}</div>
+        </div>
+        <div className="mt-1 flex items-center gap-2">
+          <p className={`min-w-0 flex-1 truncate text-sm ${active ? "text-blue-100/85" : "text-tg-muted"}`}>{preview}</p>
+          {Boolean(chat.unreadCount) && <span className="rounded-full bg-tg-blue px-2 py-0.5 text-xs text-white">{chat.unreadCount}</span>}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function TelegramChatHeader({ chat }: { chat: TelegramChat }) {
+  return (
+    <header className="flex h-16 items-center gap-3 border-b border-tg-line bg-tg-header px-4">
+      <div className="grid h-11 w-11 place-items-center rounded-full bg-tg-active text-tg-accent">
+        {chat.type === "chatTypePrivate" ? <User className="h-5 w-5" /> : <Users className="h-5 w-5" />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <h1 className="truncate font-semibold">{chat.title}</h1>
+        <p className="text-sm text-tg-muted">TDLib · {chat.type ?? "chat"}</p>
+      </div>
+      <button className="grid h-10 w-10 place-items-center rounded-full text-tg-muted hover:bg-tg-hover hover:text-tg-text">
+        <MoreVertical className="h-5 w-5" />
+      </button>
+    </header>
+  );
+}
+
+function TelegramChatWorkspace({ chat, messages }: { chat: TelegramChat; messages: TelegramMessage[] }) {
+  return (
+    <div className="relative mx-auto flex max-w-3xl flex-col gap-3">
+      <div className="mx-auto rounded-full bg-black/30 px-3 py-1 text-xs text-tg-muted">Реальный Telegram-чат · {messages.length} сообщений</div>
+      {messages.length === 0 && (
+        <section className="rounded-2xl bg-tg-panel p-4 shadow-telegram">
+          <h2 className="font-semibold">{chat.title}</h2>
+          <p className="mt-2 text-sm leading-6 text-tg-muted">TDLib авторизован, чат выбран, история сообщений еще загружается или недоступна локально.</p>
+        </section>
+      )}
+      {messages.map((message) => (
+        <div key={message.id} className={`flex ${message.isOutgoing ? "justify-end" : "justify-start"}`}>
+          <div className={`max-w-[78%] rounded-2xl px-4 py-2 shadow-telegram ${message.isOutgoing ? "bg-tg-active text-white" : "bg-tg-bubble text-tg-text"}`}>
+            {message.authorSignature && <div className="mb-1 text-xs font-semibold text-tg-accent">{message.authorSignature}</div>}
+            <div className="whitespace-pre-wrap break-words text-sm leading-6">{message.content || "Сообщение без текстового превью"}</div>
+            <div className={`mt-1 text-right text-[11px] ${message.isOutgoing ? "text-blue-100/75" : "text-tg-muted"}`}>{formatMessageTime(message.date)}</div>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

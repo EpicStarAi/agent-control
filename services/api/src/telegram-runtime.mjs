@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   checkTdlibAuthenticationCode,
   getTdlibChats,
+  getTdlibMessages,
   getTdlibSessionSnapshot,
   getTdlibAdapterStatus,
   logOutTdlib,
@@ -197,6 +198,61 @@ export async function getChats() {
         chatsCount: 0,
         adapter: getTdlibAdapterStatus(),
         message: error instanceof Error ? error.message : "TDLib chat loading failed."
+      }
+    };
+  }
+}
+
+export async function getMessages({ chatId }) {
+  const state = await syncTdlibState(await readState());
+  if (!chatId) {
+    return {
+      status: 400,
+      body: {
+        ...state,
+        messages: [],
+        message: "chatId is required"
+      }
+    };
+  }
+
+  if (!tdlibConfigured()) {
+    return {
+      status: 503,
+      body: {
+        ...state,
+        tdlibConfigured: false,
+        missingConfig: missingTdlibConfig(),
+        messages: [],
+        message: notConfiguredMessage()
+      }
+    };
+  }
+
+  try {
+    const result = await getTdlibMessages({ chatId, limit: 40 });
+    return {
+      status: isReadyAuthorizationState(result.authorizationState?._) ? 200 : 401,
+      body: {
+        ...state,
+        runtime: isReadyAuthorizationState(result.authorizationState?._) ? "ready" : "waiting_auth",
+        authorizationState: result.authorizationState?._ ?? state.authorizationState,
+        messages: result.messages,
+        messagesCount: result.messages.length,
+        totalCount: result.totalCount,
+        adapter: getTdlibAdapterStatus(),
+        message: result.message
+      }
+    };
+  } catch (error) {
+    return {
+      status: 500,
+      body: {
+        ...state,
+        messages: [],
+        messagesCount: 0,
+        adapter: getTdlibAdapterStatus(),
+        message: error instanceof Error ? error.message : "TDLib message loading failed."
       }
     };
   }

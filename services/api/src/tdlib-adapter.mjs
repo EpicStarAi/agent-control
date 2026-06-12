@@ -143,7 +143,39 @@ function formatChat(chat) {
     type: chat.type?._ ?? "chat",
     unreadCount: chat.unread_count ?? 0,
     isMarkedAsUnread: Boolean(chat.is_marked_as_unread),
-    lastReadInboxMessageId: chat.last_read_inbox_message_id ? String(chat.last_read_inbox_message_id) : null
+    lastReadInboxMessageId: chat.last_read_inbox_message_id ? String(chat.last_read_inbox_message_id) : null,
+    lastMessage: formatMessage(chat.last_message)
+  };
+}
+
+function formatMessageContent(content) {
+  if (!content) return "";
+  if (content._ === "messageText") return content.text?.text ?? "";
+  if (content.caption?.text) return content.caption.text;
+  if (content._ === "messagePhoto") return "Фото";
+  if (content._ === "messageVideo") return "Видео";
+  if (content._ === "messageAudio") return "Аудио";
+  if (content._ === "messageVoiceNote") return "Голосовое сообщение";
+  if (content._ === "messageDocument") return content.document?.file_name ? `Файл: ${content.document.file_name}` : "Документ";
+  if (content._ === "messageSticker") return "Стикер";
+  if (content._ === "messageAnimation") return "GIF";
+  if (content._ === "messageContact") return "Контакт";
+  if (content._ === "messageLocation") return "Геолокация";
+  if (content._ === "messageChatAddMembers") return "Добавлены участники";
+  if (content._ === "messageChatJoinByLink") return "Вход по ссылке";
+  return content._ ? content._.replace(/^message/, "") : "Сообщение";
+}
+
+function formatMessage(message) {
+  if (!message) return null;
+  return {
+    id: String(message.id),
+    chatId: String(message.chat_id),
+    date: message.date ? new Date(message.date * 1000).toISOString() : null,
+    isOutgoing: Boolean(message.is_outgoing),
+    senderId: message.sender_id?.user_id ? String(message.sender_id.user_id) : message.sender_id?.chat_id ? String(message.sender_id.chat_id) : null,
+    content: formatMessageContent(message.content),
+    authorSignature: message.author_signature || null
   };
 }
 
@@ -213,6 +245,34 @@ export async function getTdlibChats({ limit = 30 } = {}) {
     account: await getCurrentAccount(tdClient),
     chats: await getCurrentChats(tdClient, limit),
     message: "Telegram chats loaded from TDLib."
+  };
+}
+
+export async function getTdlibMessages({ chatId, limit = 40 } = {}) {
+  const tdClient = await ensureClient();
+  const authorizationState = await getCurrentAuthorizationState(tdClient);
+  if (!READY_STATES.has(authorizationState?._)) {
+    return {
+      authorizationState,
+      messages: [],
+      message: "Telegram account is not authorized yet."
+    };
+  }
+
+  const history = await tdClient.invoke({
+    _: "getChatHistory",
+    chat_id: Number(chatId),
+    from_message_id: 0,
+    offset: 0,
+    limit,
+    only_local: false
+  });
+
+  return {
+    authorizationState,
+    messages: (history.messages ?? []).map(formatMessage).filter(Boolean).reverse(),
+    totalCount: history.total_count ?? 0,
+    message: "Telegram messages loaded from TDLib."
   };
 }
 

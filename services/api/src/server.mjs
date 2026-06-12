@@ -4,6 +4,7 @@ import {
   getConfig,
   getChats,
   getStatus,
+  getMessages,
   logout,
   requestPhoneAuth,
   requestQrAuth,
@@ -51,6 +52,10 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === "GET" && url.pathname === "/telegram/chats") {
       const result = await getChats();
+      return send(response, result.status, result.body);
+    }
+    if (request.method === "GET" && url.pathname === "/telegram/messages") {
+      const result = await getMessages({ chatId: url.searchParams.get("chatId") });
       return send(response, result.status, result.body);
     }
     if (request.method === "POST" && url.pathname === "/telegram/auth/qr") {
