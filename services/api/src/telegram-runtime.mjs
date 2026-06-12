@@ -1,5 +1,11 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  checkTdlibAuthenticationCode,
+  getTdlibAdapterStatus,
+  requestTdlibPhoneAuth,
+  requestTdlibQrAuth
+} from "./tdlib-adapter.mjs";
 
 const stateDir = path.resolve(process.cwd(), ".epicgram");
 const stateFile = path.join(stateDir, "telegram-runtime.json");
@@ -68,14 +74,25 @@ function notConfiguredMessage() {
   return `TDLib backend is reachable, but real Telegram login is blocked until this local config is set: ${missing.join(", ")}.`;
 }
 
+function configDiagnostics() {
+  return {
+    tdlibConfigured: tdlibConfigured(),
+    missingConfig: missingTdlibConfig(),
+    enabled: process.env.EPICGRAM_TDLIB_ENABLED === "true",
+    apiIdPresent: configuredValue(process.env.TELEGRAM_API_ID),
+    apiHashPresent: configuredValue(process.env.TELEGRAM_API_HASH),
+    databaseKeyPresent: configuredValue(process.env.EPICGRAM_TDLIB_DATABASE_KEY),
+    adapter: getTdlibAdapterStatus()
+  };
+}
+
 export async function getStatus() {
   const state = await readState();
   if (!tdlibConfigured()) {
     return {
       ...state,
       runtime: "not_configured",
-      tdlibConfigured: false,
-      missingConfig: missingTdlibConfig(),
+      ...configDiagnostics(),
       message: notConfiguredMessage()
     };
   }
@@ -83,8 +100,18 @@ export async function getStatus() {
   return {
     ...state,
     runtime: state.accounts.length > 0 ? "ready" : "waiting_auth",
-    tdlibConfigured: true,
+    ...configDiagnostics(),
     message: "TDLib configuration is present. Runtime adapter is ready for TDLib client wiring."
+  };
+}
+
+export async function getConfig() {
+  return {
+    runtime: tdlibConfigured() ? "config_ready" : "not_configured",
+    ...configDiagnostics(),
+    message: tdlibConfigured()
+      ? "Local TDLib config is present. Native TDLib adapter is the next required layer."
+      : notConfiguredMessage()
   };
 }
 
@@ -109,7 +136,7 @@ export async function requestQrAuth() {
     runtime: "waiting_auth",
     authorizationState: "wait_other_device_confirmation",
     qrLink: null,
-    message: "TDLib is configured. Next step is wiring requestQrCodeAuthentication to produce a real t.me login link."
+    message: (await requestTdlibQrAuth()).message
   });
 
   return {
@@ -150,7 +177,7 @@ export async function requestPhoneAuth(payload) {
     runtime: "waiting_auth",
     authorizationState: "wait_code",
     phoneMasked,
-    message: "TDLib is configured. Next step is wiring setAuthenticationPhoneNumber to send the Telegram code."
+    message: (await requestTdlibPhoneAuth()).message
   });
 
   return {
@@ -188,7 +215,7 @@ export async function verifyCode(payload) {
       ...state,
       runtime: "waiting_auth",
       authorizationState: "wait_code",
-      message: "TDLib is configured. Next step is wiring checkAuthenticationCode."
+      message: (await checkTdlibAuthenticationCode()).message
     }
   };
 }

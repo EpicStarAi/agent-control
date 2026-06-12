@@ -1,6 +1,7 @@
 import http from "node:http";
 import { loadLocalEnv } from "./env.mjs";
 import {
+  getConfig,
   getStatus,
   logout,
   requestPhoneAuth,
@@ -42,6 +43,9 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === "GET" && url.pathname === "/telegram/status") {
       return send(response, 200, await getStatus());
+    }
+    if (request.method === "GET" && url.pathname === "/telegram/config") {
+      return send(response, 200, await getConfig());
     }
     if (request.method === "POST" && url.pathname === "/telegram/auth/qr") {
       const result = await requestQrAuth();

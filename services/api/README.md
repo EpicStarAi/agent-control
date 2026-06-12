@@ -27,12 +27,15 @@ For local development, the backend loads `.env.local` from the repository root b
 ## MVP HTTP contract
 
 - `GET /api/telegram/status`
+- `GET /api/telegram/config`
 - `POST /api/telegram/auth/qr`
 - `POST /api/telegram/auth/phone`
 - `POST /api/telegram/auth/code`
 - `POST /api/telegram/logout`
 
 The current service implements the HTTP contract and persists runtime state under `.epicgram/`. Real Telegram login is blocked until TDLib configuration is present.
+
+The current TDLib adapter is intentionally a stub boundary. It maps the required auth operations to official TDLib method names and blocks real login until a native `tdjson` binding is installed and wired.
 
 ## Required environment
 
