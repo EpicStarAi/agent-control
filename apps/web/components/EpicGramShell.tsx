@@ -27,6 +27,13 @@ import type { Section } from "@/data/mock";
 type Props = { section: Section };
 type AuthMode = "qr" | "phone";
 type FolderId = "chats" | "channels";
+type TelegramStatus = {
+  runtime?: string;
+  authorizationState?: string;
+  qrLink?: string | null;
+  message?: string;
+  accounts?: Array<{ displayName?: string }>;
+};
 
 const BRAND_NAME = "EPIC☠️GRAM";
 
@@ -192,6 +199,38 @@ export function EpicGramShell({ section }: Props) {
     };
   }, [qrLink]);
 
+  useEffect(() => {
+    if (!authOpen) return undefined;
+
+    let cancelled = false;
+
+    async function syncTelegramStatus() {
+      const response = await fetch("/api/telegram/status", { cache: "no-store" });
+      const status = (await response.json()) as TelegramStatus;
+      if (cancelled) return;
+
+      if (status.qrLink) setQrLink(status.qrLink);
+
+      if (status.runtime === "ready" || status.authorizationState === "authorizationStateReady") {
+        const accountName = status.accounts?.[0]?.displayName;
+        setQrLink("");
+        setQrDataUrl("");
+        setAuthOpen(false);
+        setAuthMessage(accountName ? `Telegram авторизован: ${accountName}` : "Telegram аккаунт авторизован.");
+      }
+    }
+
+    syncTelegramStatus().catch(() => undefined);
+    const timer = window.setInterval(() => {
+      syncTelegramStatus().catch(() => undefined);
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [authOpen]);
+
   const filteredItems = useMemo(() => localItems.filter((item) => item.folder === activeFolder), [activeFolder]);
   const activeItem = localItems.find((item) => item.id === activeItemId) ?? filteredItems[0] ?? localItems[0];
 
@@ -228,6 +267,15 @@ export function EpicGramShell({ section }: Props) {
     });
     const data = (await response.json()) as { message?: string };
     setAuthMessage(data.message ?? (response.ok ? "Код отправлен на проверку." : "Код не принят Telegram."));
+    if (response.ok) {
+      const statusResponse = await fetch("/api/telegram/status", { cache: "no-store" });
+      const status = (await statusResponse.json()) as TelegramStatus;
+      if (status.runtime === "ready" || status.authorizationState === "authorizationStateReady") {
+        const accountName = status.accounts?.[0]?.displayName;
+        setAuthOpen(false);
+        setAuthMessage(accountName ? `Telegram авторизован: ${accountName}` : "Telegram аккаунт авторизован.");
+      }
+    }
   }
 
   async function resetAuth() {

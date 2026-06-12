@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   checkTdlibAuthenticationCode,
+  getTdlibSessionSnapshot,
   getTdlibAdapterStatus,
   logOutTdlib,
   requestTdlibPhoneAuth,
@@ -88,8 +89,45 @@ function configDiagnostics() {
   };
 }
 
+function isReadyAuthorizationState(authorizationState) {
+  return authorizationState === "authorizationStateReady";
+}
+
+async function syncTdlibState(state) {
+  if (!tdlibConfigured()) return state;
+
+  try {
+    const snapshot = await getTdlibSessionSnapshot();
+    const authorizationState = snapshot.authorizationState?._ ?? state.authorizationState;
+
+    if (isReadyAuthorizationState(authorizationState)) {
+      return saveState({
+        ...state,
+        runtime: "ready",
+        authorizationState,
+        accounts: snapshot.account ? [snapshot.account] : state.accounts,
+        qrLink: null,
+        message: "Telegram аккаунт авторизован."
+      });
+    }
+
+    if (authorizationState && authorizationState !== state.authorizationState) {
+      return saveState({
+        ...state,
+        runtime: "waiting_auth",
+        authorizationState,
+        message: state.message
+      });
+    }
+  } catch {
+    return state;
+  }
+
+  return state;
+}
+
 export async function getStatus() {
-  const state = await readState();
+  const state = await syncTdlibState(await readState());
   if (!tdlibConfigured()) {
     return {
       ...state,
@@ -101,9 +139,11 @@ export async function getStatus() {
 
   return {
     ...state,
-    runtime: state.accounts.length > 0 ? "ready" : "waiting_auth",
+    runtime: state.accounts.length > 0 || isReadyAuthorizationState(state.authorizationState) ? "ready" : "waiting_auth",
     ...configDiagnostics(),
-    message: "TDLib configuration is present. Runtime adapter is ready for TDLib client wiring."
+    message: state.accounts.length > 0 || isReadyAuthorizationState(state.authorizationState)
+      ? "Telegram аккаунт авторизован."
+      : "TDLib configuration is present. Runtime adapter is ready for TDLib client wiring."
   };
 }
 
@@ -155,8 +195,9 @@ export async function requestQrAuth() {
     const result = await requestTdlibQrAuth();
     const nextState = await saveState({
       ...state,
-      runtime: "waiting_auth",
+      runtime: isReadyAuthorizationState(result.authorizationState?._) ? "ready" : "waiting_auth",
       authorizationState: result.authorizationState?._ ?? "wait_other_device_confirmation",
+      accounts: result.account ? [result.account] : state.accounts,
       qrLink: result.qrLink ?? null,
       message: result.message
     });
@@ -211,8 +252,9 @@ export async function requestPhoneAuth(payload) {
     const result = await requestTdlibPhoneAuth(phoneNumber, { resetCurrentFlow: true });
     const nextState = await saveState({
       ...state,
-      runtime: "waiting_auth",
+      runtime: isReadyAuthorizationState(result.authorizationState?._) ? "ready" : "waiting_auth",
       authorizationState: result.authorizationState?._ ?? "wait_code",
+      accounts: result.account ? [result.account] : state.accounts,
       phoneMasked,
       message: result.message
     });
@@ -262,12 +304,19 @@ export async function verifyCode(payload) {
 
   try {
     const result = await checkTdlibAuthenticationCode(code);
+    const nextState = await saveState({
+      ...state,
+      runtime: isReadyAuthorizationState(result.authorizationState?._) ? "ready" : "waiting_auth",
+      authorizationState: result.authorizationState?._ ?? "wait_code",
+      accounts: result.account ? [result.account] : state.accounts,
+      qrLink: isReadyAuthorizationState(result.authorizationState?._) ? null : state.qrLink,
+      message: result.message
+    });
+
     return {
       status: 202,
       body: {
-        ...state,
-        runtime: "waiting_auth",
-        authorizationState: result.authorizationState?._ ?? "wait_code",
+        ...nextState,
         adapter: getTdlibAdapterStatus(),
         message: result.message
       }

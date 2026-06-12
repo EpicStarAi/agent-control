@@ -11,6 +11,7 @@ export const TD_METHODS = {
 };
 
 const AUTH_WAIT_TIMEOUT_MS = 10000;
+const READY_STATES = new Set(["authorizationStateReady"]);
 
 let configured = false;
 let client = null;
@@ -119,6 +120,30 @@ async function getCurrentAuthorizationState(tdClient) {
   return authorizationState;
 }
 
+function formatAccount(user) {
+  if (!user) return null;
+  const firstName = user.first_name ?? "";
+  const lastName = user.last_name ?? "";
+  const displayName = `${firstName} ${lastName}`.trim() || user.username || "Telegram account";
+
+  return {
+    id: String(user.id),
+    displayName,
+    username: user.username ? `@${user.username}` : null,
+    phoneMasked: user.phone_number ? `+${String(user.phone_number).slice(0, 4)}***${String(user.phone_number).slice(-2)}` : null,
+    type: user.type?._ ?? "user"
+  };
+}
+
+async function getCurrentAccount(tdClient) {
+  try {
+    return formatAccount(await tdClient.invoke({ _: "getMe" }));
+  } catch (error) {
+    lastError = error instanceof Error ? error.message : String(error);
+    return null;
+  }
+}
+
 export function getTdlibAdapterStatus() {
   let tdlibInfo = null;
   try {
@@ -173,6 +198,16 @@ export async function requestTdlibPhoneAuth(phoneNumber, options = {}) {
   let tdClient = await ensureClient();
   const currentAuthorizationState = await getCurrentAuthorizationState(tdClient);
 
+  if (READY_STATES.has(currentAuthorizationState?._)) {
+    return {
+      ok: true,
+      method: TD_METHODS.phone,
+      authorizationState: currentAuthorizationState,
+      account: await getCurrentAccount(tdClient),
+      message: "Telegram account is already authorized."
+    };
+  }
+
   if (options.resetCurrentFlow || currentAuthorizationState?._ === "authorizationStateWaitOtherDeviceConfirmation") {
     await resetTdlibAuthSession({ deleteDatabase: true });
     tdClient = await ensureClient();
@@ -199,6 +234,7 @@ export async function requestTdlibPhoneAuth(phoneNumber, options = {}) {
     ok: true,
     method: TD_METHODS.phone,
     authorizationState,
+    account: READY_STATES.has(authorizationState?._) ? await getCurrentAccount(tdClient) : null,
     message: "Telegram phone authorization requested. Check Telegram for the login code."
   };
 }
@@ -206,11 +242,18 @@ export async function requestTdlibPhoneAuth(phoneNumber, options = {}) {
 export async function checkTdlibAuthenticationCode(code) {
   const tdClient = await ensureClient();
   await tdClient.invoke({ _: TD_METHODS.code, code });
+  const authorizationState = await waitForAuthorizationState((state) =>
+    ["authorizationStateReady", "authorizationStateWaitCode", "authorizationStateWaitPassword"].includes(state?._)
+  );
+
   return {
     ok: true,
     method: TD_METHODS.code,
-    authorizationState: lastAuthorizationState,
-    message: "Telegram authentication code submitted."
+    authorizationState,
+    account: READY_STATES.has(authorizationState?._) ? await getCurrentAccount(tdClient) : null,
+    message: READY_STATES.has(authorizationState?._)
+      ? "Telegram account authorized."
+      : "Telegram authentication code submitted."
   };
 }
 
@@ -246,5 +289,16 @@ export async function resetTdlibAuthSession({ deleteDatabase = false } = {}) {
     deletedDatabase: deleteDatabase,
     authorizationState: lastAuthorizationState,
     message: deleteDatabase ? "TDLib local auth database was reset." : "TDLib client was closed."
+  };
+}
+
+export async function getTdlibSessionSnapshot() {
+  const tdClient = await ensureClient();
+  const authorizationState = await getCurrentAuthorizationState(tdClient);
+
+  return {
+    authorizationState,
+    account: READY_STATES.has(authorizationState?._) ? await getCurrentAccount(tdClient) : null,
+    adapter: getTdlibAdapterStatus()
   };
 }
