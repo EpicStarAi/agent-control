@@ -5,6 +5,7 @@ import {
   getChats,
   getStatus,
   getMessages,
+  getPhoto,
   logout,
   requestPhoneAuth,
   requestQrAuth,
@@ -36,6 +37,15 @@ function send(response, status, body) {
   response.end(`${JSON.stringify(body)}\n`);
 }
 
+function sendBinary(response, status, body, contentType) {
+  response.writeHead(status, {
+    "content-type": contentType,
+    "access-control-allow-origin": "*",
+    "cache-control": status === 200 ? "public, max-age=86400" : "no-store"
+  });
+  response.end(body);
+}
+
 const server = http.createServer(async (request, response) => {
   try {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${host}:${port}`}`);
@@ -57,6 +67,10 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/telegram/messages") {
       const result = await getMessages({ chatId: url.searchParams.get("chatId") });
       return send(response, result.status, result.body);
+    }
+    if (request.method === "GET" && url.pathname === "/telegram/photo") {
+      const result = await getPhoto({ fileId: url.searchParams.get("fileId") });
+      return sendBinary(response, result.status, result.body, result.contentType);
     }
     if (request.method === "POST" && url.pathname === "/telegram/auth/qr") {
       const result = await requestQrAuth();

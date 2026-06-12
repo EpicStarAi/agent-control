@@ -38,6 +38,7 @@ type TelegramChat = {
   title: string;
   type?: string;
   isChannel?: boolean;
+  photoSmallFileId?: string | null;
   unreadCount?: number;
   lastMessage?: TelegramMessage | null;
 };
@@ -206,11 +207,16 @@ function initialsFromTitle(title?: string | null) {
   return parts.map((part) => part[0]).join("").toUpperCase();
 }
 
-function TelegramAvatar({ title, type, active }: { title: string; type?: string; active?: boolean }) {
+function TelegramAvatar({ title, type, active, photoFileId }: { title: string; type?: string; active?: boolean; photoFileId?: string | null }) {
   const isPrivate = type === "chatTypePrivate";
   return (
-    <div className={`grid h-12 w-12 shrink-0 place-items-center rounded-full ${active ? "bg-white/15" : "bg-gradient-to-br from-[#2b5278] to-[#17212b]"} text-sm font-bold text-tg-accent ring-1 ring-white/10`}>
-      {isPrivate ? initialsFromTitle(title) : <span>{initialsFromTitle(title)}</span>}
+    <div className={`grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full ${active ? "bg-white/15" : "bg-gradient-to-br from-[#2b5278] to-[#17212b]"} text-sm font-bold text-tg-accent ring-1 ring-white/10`}>
+      {photoFileId ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={`/api/telegram/photo?fileId=${encodeURIComponent(photoFileId)}`} alt="" className="h-full w-full object-cover" />
+      ) : (
+        <span>{isPrivate ? initialsFromTitle(title) : initialsFromTitle(title)}</span>
+      )}
     </div>
   );
 }
@@ -554,7 +560,7 @@ function TelegramChatRow({ chat, active, onClick }: { chat: TelegramChat; active
 
   return (
     <button onClick={onClick} className={`flex w-full gap-3 px-3 py-2.5 text-left ${active ? "bg-tg-active" : "hover:bg-tg-hover"}`}>
-      <TelegramAvatar title={chat.title} type={chat.type} active={active} />
+      <TelegramAvatar title={chat.title} type={chat.type} active={active} photoFileId={chat.photoSmallFileId} />
       <div className="min-w-0 flex-1 border-b border-tg-line/70 pb-2">
         <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1 truncate font-semibold">{chat.title}</div>
@@ -572,7 +578,7 @@ function TelegramChatRow({ chat, active, onClick }: { chat: TelegramChat; active
 function TelegramChatHeader({ chat }: { chat: TelegramChat }) {
   return (
     <header className="flex h-16 items-center gap-3 border-b border-tg-line bg-tg-header px-4">
-      <TelegramAvatar title={chat.title} type={chat.type} active />
+      <TelegramAvatar title={chat.title} type={chat.type} active photoFileId={chat.photoSmallFileId} />
       <div className="min-w-0 flex-1">
         <h1 className="truncate font-semibold">{chat.title}</h1>
         <p className="text-sm text-tg-muted">TDLib · {chat.type ?? "chat"}</p>

@@ -1,4 +1,4 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import * as tdl from "tdl";
 import { getTdjson, getTdlibInfo } from "prebuilt-tdlib";
@@ -138,11 +138,13 @@ function formatAccount(user) {
 function formatChat(chat) {
   if (!chat) return null;
   const isChannel = Boolean(chat.type?.is_channel);
+  const photoSmall = chat.photo?.small ?? null;
   return {
     id: String(chat.id),
     title: chat.title || "Без названия",
     type: chat.type?._ ?? "chat",
     isChannel,
+    photoSmallFileId: photoSmall?.id ? String(photoSmall.id) : null,
     unreadCount: chat.unread_count ?? 0,
     isMarkedAsUnread: Boolean(chat.is_marked_as_unread),
     lastReadInboxMessageId: chat.last_read_inbox_message_id ? String(chat.last_read_inbox_message_id) : null,
@@ -275,6 +277,51 @@ export async function getTdlibMessages({ chatId, limit = 40 } = {}) {
     messages: (history.messages ?? []).map(formatMessage).filter(Boolean).reverse(),
     totalCount: history.total_count ?? 0,
     message: "Telegram messages loaded from TDLib."
+  };
+}
+
+export async function getTdlibPhotoFile(fileId) {
+  const numericFileId = Number(fileId);
+  if (!Number.isFinite(numericFileId)) {
+    return {
+      status: 400,
+      body: null,
+      contentType: "application/json; charset=utf-8",
+      message: "fileId must be numeric"
+    };
+  }
+
+  const tdClient = await ensureClient();
+  const authorizationState = await getCurrentAuthorizationState(tdClient);
+  if (!READY_STATES.has(authorizationState?._)) {
+    return {
+      status: 401,
+      body: Buffer.from(JSON.stringify({ message: "Telegram account is not authorized yet." })),
+      contentType: "application/json; charset=utf-8"
+    };
+  }
+
+  const file = await tdClient.invoke({
+    _: "downloadFile",
+    file_id: numericFileId,
+    priority: 16,
+    offset: 0,
+    limit: 0,
+    synchronous: true
+  });
+  const localPath = file.local?.path;
+  if (!localPath) {
+    return {
+      status: 404,
+      body: Buffer.from(JSON.stringify({ message: "Photo file is not available locally." })),
+      contentType: "application/json; charset=utf-8"
+    };
+  }
+
+  return {
+    status: 200,
+    body: await readFile(localPath),
+    contentType: "image/jpeg"
   };
 }
 

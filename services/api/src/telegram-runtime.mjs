@@ -4,6 +4,7 @@ import {
   checkTdlibAuthenticationCode,
   getTdlibChats,
   getTdlibMessages,
+  getTdlibPhotoFile,
   getTdlibSessionSnapshot,
   getTdlibAdapterStatus,
   logOutTdlib,
@@ -254,6 +255,26 @@ export async function getMessages({ chatId }) {
         adapter: getTdlibAdapterStatus(),
         message: error instanceof Error ? error.message : "TDLib message loading failed."
       }
+    };
+  }
+}
+
+export async function getPhoto({ fileId }) {
+  if (!fileId) {
+    return {
+      status: 400,
+      body: Buffer.from(JSON.stringify({ message: "fileId is required" })),
+      contentType: "application/json; charset=utf-8"
+    };
+  }
+
+  try {
+    return await getTdlibPhotoFile(fileId);
+  } catch (error) {
+    return {
+      status: 500,
+      body: Buffer.from(JSON.stringify({ message: error instanceof Error ? error.message : "TDLib photo loading failed." })),
+      contentType: "application/json; charset=utf-8"
     };
   }
 }
