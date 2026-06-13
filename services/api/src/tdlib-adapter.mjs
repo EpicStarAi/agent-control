@@ -146,7 +146,16 @@ function formatAccount(user) {
   };
 }
 
-function formatChat(chat) {
+function classifyChat(chat, user = null) {
+  const type = chat?.type?._;
+  if (type === "chatTypePrivate") return user?.type?._ === "userTypeBot" ? "bot" : "private";
+  if (type === "chatTypeSecret") return "private";
+  if (type === "chatTypeSupergroup" && chat.type?.is_channel) return "channel";
+  if (type === "chatTypeBasicGroup" || type === "chatTypeSupergroup") return "group";
+  return "chat";
+}
+
+function formatChat(chat, { list = "main", user = null } = {}) {
   if (!chat) return null;
   const isChannel = Boolean(chat.type?.is_channel);
   const photoSmall = chat.photo?.small ?? null;
@@ -154,7 +163,11 @@ function formatChat(chat) {
     id: String(chat.id),
     title: chat.title || "Без названия",
     type: chat.type?._ ?? "chat",
+    category: classifyChat(chat, user),
+    list,
     isChannel,
+    isBot: user?.type?._ === "userTypeBot",
+    username: user?.username ? `@${user.username}` : null,
     photoSmallFileId: photoSmall?.id ? String(photoSmall.id) : null,
     unreadCount: chat.unread_count ?? 0,
     isMarkedAsUnread: Boolean(chat.is_marked_as_unread),
@@ -203,23 +216,50 @@ async function getCurrentAccount(tdClient) {
   }
 }
 
-async function getCurrentChats(tdClient, limit = 30) {
+async function getPrivateUser(tdClient, chat) {
+  if (chat?.type?._ !== "chatTypePrivate" || !chat.type?.user_id) return null;
+  try {
+    return await tdClient.invoke({ _: "getUser", user_id: chat.type.user_id });
+  } catch {
+    return null;
+  }
+}
+
+async function getChatsFromList(tdClient, chatList, list, limit) {
   const chats = await tdClient.invoke({
     _: "getChats",
-    chat_list: { _: "chatListMain" },
+    chat_list: chatList,
     limit
   });
   const chatIds = chats.chat_ids ?? [];
   const hydratedChats = await Promise.all(
     chatIds.slice(0, limit).map(async (chatId) => {
       try {
-        return formatChat(await tdClient.invoke({ _: "getChat", chat_id: chatId }));
+        const chat = await tdClient.invoke({ _: "getChat", chat_id: chatId });
+        const user = await getPrivateUser(tdClient, chat);
+        return formatChat(chat, { list, user });
       } catch {
         return null;
       }
     })
   );
   return hydratedChats.filter(Boolean);
+}
+
+async function getCurrentChats(tdClient, limit = 60) {
+  const mainLimit = Math.max(limit, 60);
+  const archiveLimit = Math.min(Math.max(Math.floor(limit / 2), 20), 60);
+  const [mainChats, archiveChats] = await Promise.all([
+    getChatsFromList(tdClient, { _: "chatListMain" }, "main", mainLimit),
+    getChatsFromList(tdClient, { _: "chatListArchive" }, "archive", archiveLimit).catch(() => [])
+  ]);
+  const seen = new Set();
+
+  return [...mainChats, ...archiveChats].filter((chat) => {
+    if (seen.has(chat.id)) return false;
+    seen.add(chat.id);
+    return true;
+  });
 }
 
 export function getTdlibAdapterStatus() {

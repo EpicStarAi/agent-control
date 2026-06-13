@@ -4,14 +4,17 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   Archive,
+  Bot,
   CheckCircle2,
   Cpu,
   Database,
   FileClock,
+  Inbox,
   Menu,
   MessageCircle,
   Moon,
   MoreVertical,
+  PanelRight,
   QrCode,
   Radio,
   Search,
@@ -26,7 +29,7 @@ import type { Section } from "@/data/mock";
 
 type Props = { section: Section };
 type AuthMode = "qr" | "phone";
-type FolderId = "chats" | "channels";
+type FolderId = "all" | "private" | "groups" | "channels" | "bots" | "unread" | "archive";
 type TelegramAccount = {
   id?: string;
   displayName?: string;
@@ -37,9 +40,14 @@ type TelegramChat = {
   id: string;
   title: string;
   type?: string;
+  category?: "private" | "group" | "channel" | "bot" | "chat";
+  list?: "main" | "archive";
   isChannel?: boolean;
+  isBot?: boolean;
+  username?: string | null;
   photoSmallFileId?: string | null;
   unreadCount?: number;
+  isMarkedAsUnread?: boolean;
   lastMessage?: TelegramMessage | null;
 };
 type TelegramMessage = {
@@ -73,7 +81,7 @@ const CLIENT_VERSION = "epicgram-ui-2026-06-13-cachefix";
 
 type LocalItem = {
   id: string;
-  folder: FolderId;
+  folder: "groups" | "channels";
   title: string;
   subtitle: string;
   kind: "group" | "channel";
@@ -83,14 +91,19 @@ type LocalItem = {
 };
 
 const folders = [
-  { id: "chats" as const, label: "Чаты", icon: Users },
-  { id: "channels" as const, label: "Каналы", icon: Radio }
+  { id: "all" as const, label: "Все", icon: MessageCircle },
+  { id: "private" as const, label: "Личные", icon: User },
+  { id: "groups" as const, label: "Группы", icon: Users },
+  { id: "channels" as const, label: "Каналы", icon: Radio },
+  { id: "bots" as const, label: "Боты", icon: Bot },
+  { id: "unread" as const, label: "Новые", icon: Inbox },
+  { id: "archive" as const, label: "Архив", icon: Archive }
 ];
 
 const localItems: LocalItem[] = [
   {
     id: "group-tdlib-core",
-    folder: "chats",
+    folder: "groups",
     title: "Техгруппа: TDLib Core",
     subtitle: "Авторизация, QR, номер телефона, статус сессии",
     kind: "group",
@@ -104,7 +117,7 @@ const localItems: LocalItem[] = [
   },
   {
     id: "group-sessions",
-    folder: "chats",
+    folder: "groups",
     title: "Техгруппа: Сессии",
     subtitle: "Шифрование, хранение, список подключенных аккаунтов",
     kind: "group",
@@ -118,7 +131,7 @@ const localItems: LocalItem[] = [
   },
   {
     id: "group-agents",
-    folder: "chats",
+    folder: "groups",
     title: "Техгруппа: AI-операторы",
     subtitle: "Права агентов, память, подтверждение действий",
     kind: "group",
@@ -192,8 +205,28 @@ function primaryTelegramAccount(status: TelegramStatus | null) {
 }
 
 function chatMatchesFolder(chat: TelegramChat, folder: FolderId) {
-  const isChannelLike = Boolean(chat.isChannel);
-  return folder === "channels" ? isChannelLike : !isChannelLike;
+  if (folder === "all") return chat.list !== "archive";
+  if (folder === "archive") return chat.list === "archive";
+  if (folder === "unread") return Boolean(chat.unreadCount) || Boolean(chat.isMarkedAsUnread);
+  if (folder === "channels") return chat.category === "channel" || Boolean(chat.isChannel);
+  if (folder === "bots") return chat.category === "bot" || Boolean(chat.isBot);
+  if (folder === "groups") return chat.category === "group";
+  if (folder === "private") return chat.category === "private";
+  return true;
+}
+
+function telegramFolderLabel(folder: FolderId) {
+  return folders.find((item) => item.id === folder)?.label ?? "Все";
+}
+
+function chatTypeLabel(chat?: TelegramChat | null) {
+  if (!chat) return "чат";
+  if (chat.category === "bot") return "бот";
+  if (chat.category === "private") return "личный чат";
+  if (chat.category === "group") return "группа";
+  if (chat.category === "channel") return "канал";
+  if (chat.isChannel) return "канал";
+  return "чат";
 }
 
 function formatMessageTime(value?: string | null) {
@@ -223,7 +256,7 @@ function TelegramAvatar({ title, type, active, photoFileId }: { title: string; t
 }
 
 export function EpicGramShell({ section }: Props) {
-  const [activeFolder, setActiveFolder] = useState<FolderId>("chats");
+  const [activeFolder, setActiveFolder] = useState<FolderId>("all");
   const [activeItemId, setActiveItemId] = useState(localItems[0].id);
   const [menuOpen, setMenuOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
@@ -351,9 +384,10 @@ export function EpicGramShell({ section }: Props) {
       return;
     }
 
-    const currentExists = telegramChats.some((chat) => chat.id === selectedTelegramChatId);
-    if (!currentExists) setSelectedTelegramChatId(telegramChats[0].id);
-  }, [selectedTelegramChatId, telegramChats]);
+    const visibleChats = telegramChats.filter((chat) => chatMatchesFolder(chat, activeFolder));
+    const currentExists = visibleChats.some((chat) => chat.id === selectedTelegramChatId);
+    if (!currentExists) setSelectedTelegramChatId((visibleChats[0] ?? telegramChats[0]).id);
+  }, [activeFolder, selectedTelegramChatId, telegramChats]);
 
   useEffect(() => {
     if (!selectedTelegramChatId) {
@@ -468,14 +502,14 @@ export function EpicGramShell({ section }: Props) {
             </div>
           </header>
 
-          <div className="grid grid-cols-2 gap-2 border-b border-tg-line px-3 py-2">
+          <div className="flex gap-2 overflow-x-auto border-b border-tg-line px-3 py-2">
             {folders.map((folder) => {
               const Icon = folder.icon;
               const count = useTelegramChats
                 ? telegramChats.filter((chat) => chatMatchesFolder(chat, folder.id)).length
                 : localItems.filter((item) => item.folder === folder.id).length;
               return (
-                <button key={folder.id} onClick={() => selectFolder(folder.id)} className={`flex items-center justify-center gap-2 rounded-full px-3 py-2 text-sm ${activeFolder === folder.id ? "bg-tg-active text-white" : "text-tg-muted hover:bg-tg-hover hover:text-tg-text"}`}>
+                <button key={folder.id} onClick={() => selectFolder(folder.id)} className={`flex shrink-0 items-center justify-center gap-2 rounded-full px-3 py-2 text-sm ${activeFolder === folder.id ? "bg-tg-active text-white" : "text-tg-muted hover:bg-tg-hover hover:text-tg-text"}`}>
                   <Icon className="h-4 w-4" />
                   {folder.label}
                   <span className="rounded-full bg-black/20 px-1.5 text-xs">{count}</span>
@@ -486,14 +520,16 @@ export function EpicGramShell({ section }: Props) {
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             {useTelegramChats
-              ? visibleTelegramChats.map((chat) => (
-                  <TelegramChatRow
-                    key={chat.id}
-                    chat={chat}
-                    active={chat.id === activeTelegramChat?.id}
-                    onClick={() => setSelectedTelegramChatId(chat.id)}
-                  />
-                ))
+              ? visibleTelegramChats.length > 0
+                ? visibleTelegramChats.map((chat) => (
+                    <TelegramChatRow
+                      key={chat.id}
+                      chat={chat}
+                      active={chat.id === activeTelegramChat?.id}
+                      onClick={() => setSelectedTelegramChatId(chat.id)}
+                    />
+                  ))
+                : <EmptyChatFilter folder={activeFolder} />
               : filteredItems.map((item) => (
                   <LocalItemRow key={item.id} item={item} active={item.id === activeItem.id} onClick={() => setActiveItemId(item.id)} />
                 ))}
@@ -523,7 +559,18 @@ export function EpicGramShell({ section }: Props) {
         </section>
 
         <aside className="hidden h-full min-h-0 flex-col border-l border-tg-line bg-tg-panel xl:flex">
-          <InfoPanel item={activeItem} telegramStatus={telegramStatus} telegramChats={telegramChats} onAuth={() => setAuthOpen(true)} />
+          {activeTelegramChat ? (
+            <TelegramInfoPanel
+              chat={activeTelegramChat}
+              activeFolder={activeFolder}
+              messages={telegramMessages}
+              telegramStatus={telegramStatus}
+              telegramChats={telegramChats}
+              onAuth={() => setAuthOpen(true)}
+            />
+          ) : (
+            <InfoPanel item={activeItem} telegramStatus={telegramStatus} telegramChats={telegramChats} onAuth={() => setAuthOpen(true)} />
+          )}
         </aside>
       </div>
 
@@ -598,12 +645,24 @@ function TelegramChatHeader({ chat }: { chat: TelegramChat }) {
       <TelegramAvatar title={chat.title} type={chat.type} active photoFileId={chat.photoSmallFileId} />
       <div className="min-w-0 flex-1">
         <h1 className="truncate font-semibold">{chat.title}</h1>
-        <p className="text-sm text-tg-muted">TDLib · {chat.type ?? "chat"}</p>
+        <p className="text-sm text-tg-muted">Telegram · {chatTypeLabel(chat)}{chat.username ? ` · ${chat.username}` : ""}</p>
       </div>
       <button className="grid h-10 w-10 place-items-center rounded-full text-tg-muted hover:bg-tg-hover hover:text-tg-text">
         <MoreVertical className="h-5 w-5" />
       </button>
     </header>
+  );
+}
+
+function EmptyChatFilter({ folder }: { folder: FolderId }) {
+  return (
+    <div className="p-6 text-center">
+      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-tg-bg text-tg-muted">
+        <MessageCircle className="h-6 w-6" />
+      </div>
+      <h3 className="mt-4 font-semibold">В папке «{telegramFolderLabel(folder)}» пусто</h3>
+      <p className="mt-2 text-sm leading-6 text-tg-muted">Это реальный фильтр TDLib. Если чат есть в Telegram, он появится после синхронизации backend.</p>
+    </div>
   );
 }
 
@@ -766,6 +825,10 @@ function SettingsWorkspace({
 }) {
   const telegramReady = isTelegramReady(telegramStatus);
   const account = primaryTelegramAccount(telegramStatus);
+  const privateCount = telegramChats.filter((chat) => chat.category === "private").length;
+  const groupCount = telegramChats.filter((chat) => chat.category === "group").length;
+  const channelCount = telegramChats.filter((chat) => chat.category === "channel" || chat.isChannel).length;
+  const botCount = telegramChats.filter((chat) => chat.category === "bot" || chat.isBot).length;
 
   return (
     <div className="relative mx-auto grid max-w-4xl gap-4 lg:grid-cols-2">
@@ -780,6 +843,7 @@ function SettingsWorkspace({
           <InfoRow label="Аккаунт" value={account?.displayName ?? "нет"} />
           <InfoRow label="Телефон" value={account?.phoneMasked ?? "нет"} />
           <InfoRow label="Чаты загружены" value={`${telegramChats.length}`} />
+          <InfoRow label="Категории" value={`личные ${privateCount} · группы ${groupCount} · каналы ${channelCount} · боты ${botCount}`} />
         </div>
         <button onClick={onAuth} className="mt-4 w-full rounded-xl bg-tg-blue px-4 py-3 text-sm font-semibold text-white">
           {telegramReady ? "Управлять авторизацией" : "Авторизовать Telegram"}
@@ -879,6 +943,80 @@ function MenuItem({ icon: Icon, label, value }: { icon: React.ComponentType<{ cl
       <span className="flex-1">{label}</span>
       {value && <span className="text-xs text-tg-muted">{value}</span>}
     </div>
+  );
+}
+
+function TelegramInfoPanel({
+  chat,
+  activeFolder,
+  messages,
+  telegramStatus,
+  telegramChats,
+  onAuth
+}: {
+  chat: TelegramChat;
+  activeFolder: FolderId;
+  messages: TelegramMessage[];
+  telegramStatus: TelegramStatus | null;
+  telegramChats: TelegramChat[];
+  onAuth: () => void;
+}) {
+  const account = primaryTelegramAccount(telegramStatus);
+  const unreadTotal = telegramChats.reduce((sum, item) => sum + (item.unreadCount ?? 0), 0);
+
+  return (
+    <>
+      <header className="flex h-16 items-center justify-between border-b border-tg-line px-4">
+        <div>
+          <h3 className="font-semibold">Инфо</h3>
+          <p className="text-sm text-tg-muted">Telegram + AI workspace</p>
+        </div>
+        <PanelRight className="h-5 w-5 text-tg-muted" />
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <section className="mb-5 flex flex-col items-center rounded-xl bg-tg-bg p-4 text-center">
+          <TelegramAvatar title={chat.title} type={chat.type} active photoFileId={chat.photoSmallFileId} />
+          <h3 className="mt-3 max-w-full truncate text-lg font-semibold">{chat.title}</h3>
+          <p className="mt-1 text-sm text-tg-muted">{chatTypeLabel(chat)}{chat.username ? ` · ${chat.username}` : ""}</p>
+        </section>
+
+        <section className="mb-5 overflow-hidden rounded-xl bg-tg-bg">
+          <InfoRow label="Активная папка" value={telegramFolderLabel(activeFolder)} />
+          <InfoRow label="Список TDLib" value={chat.list === "archive" ? "архив" : "основной"} />
+          <InfoRow label="Категория" value={chatTypeLabel(chat)} />
+          <InfoRow label="Непрочитано в чате" value={`${chat.unreadCount ?? 0}`} />
+          <InfoRow label="Сообщений загружено" value={`${messages.length}`} />
+          <InfoRow label="Последнее сообщение" value={chat.lastMessage?.date ? new Date(chat.lastMessage.date).toLocaleString("ru-RU") : "нет"} />
+        </section>
+
+        <section className="mb-5 rounded-xl bg-tg-bg p-4">
+          <div className="mb-3 flex items-center gap-2 font-semibold">
+            <Cpu className="h-5 w-5 text-tg-accent" />
+            AI-контекст
+          </div>
+          <div className="space-y-2 text-sm leading-6 text-tg-muted">
+            <div className="rounded-lg bg-tg-panel px-3 py-2">Память: отдельная для этого чата, пока только локальный слой.</div>
+            <div className="rounded-lg bg-tg-panel px-3 py-2">Сводки: будут создаваться после явного действия оператора.</div>
+            <div className="rounded-lg bg-tg-panel px-3 py-2">Отправка: в MVP только через подтверждение человека.</div>
+          </div>
+        </section>
+
+        <section className="rounded-xl bg-tg-bg p-4">
+          <div className="mb-3 flex items-center gap-2 font-semibold">
+            <ShieldCheck className="h-5 w-5 text-tg-accent" />
+            Сессия
+          </div>
+          <div className="space-y-2 text-sm leading-6 text-tg-muted">
+            <div>Аккаунт: {account?.displayName ?? "подключен"}</div>
+            <div>Всего чатов: {telegramChats.length}</div>
+            <div>Всего непрочитано: {unreadTotal}</div>
+          </div>
+          <button onClick={onAuth} className="mt-4 w-full rounded-xl bg-tg-blue px-4 py-3 text-sm font-semibold text-white">
+            Управлять авторизацией
+          </button>
+        </section>
+      </div>
+    </>
   );
 }
 
@@ -1036,7 +1174,7 @@ function InfoPanel({
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <section className="mb-5 overflow-hidden rounded-xl bg-tg-bg">
-          <InfoRow label="Папка" value={item.folder === "chats" ? "Чаты" : "Каналы"} />
+          <InfoRow label="Папка" value={item.folder === "groups" ? "Группы" : "Каналы"} />
           <InfoRow label="Память" value={`${item.memory.length} записи`} />
           <InfoRow label="Задачи" value={`${item.tasks.length} пункта`} />
           <InfoRow label="Telegram" value={telegramReady ? "авторизован" : "не авторизован"} />

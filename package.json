@@ -38,5 +38,8 @@
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.4.2"
+  },
+  "optionalDependencies": {
+    "@prebuilt-tdlib/linux-x64-glibc": "^0.1008064.0"
   }
 }
