@@ -1,5 +1,6 @@
 import http from "node:http";
 import { loadLocalEnv } from "./env.mjs";
+import { getAiStatus } from "./ai-runtime.mjs";
 import {
   getConfig,
   getChats,
@@ -53,6 +54,9 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "OPTIONS") return send(response, 204, {});
     if (request.method === "GET" && url.pathname === "/health") {
       return send(response, 200, { ok: true, service: "epicgram-api" });
+    }
+    if (request.method === "GET" && url.pathname === "/ai/status") {
+      return send(response, 200, getAiStatus());
     }
     if (request.method === "GET" && url.pathname === "/telegram/status") {
       return send(response, 200, await getStatus());

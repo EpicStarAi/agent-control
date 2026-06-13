@@ -78,6 +78,16 @@ type TelegramMessagesResponse = {
   messagesCount?: number;
   message?: string;
 };
+type AiStatus = {
+  runtime?: string;
+  provider?: string;
+  enabled?: boolean;
+  apiKeyPresent?: boolean;
+  apiKeyMasked?: string | null;
+  model?: string;
+  sendMode?: string;
+  message?: string;
+};
 
 const BRAND_NAME = "EPIC☠️GRAM";
 const CLIENT_VERSION = "epicgram-ui-2026-06-13-cachefix";
@@ -287,6 +297,7 @@ export function EpicGramShell({ section }: Props) {
   const [selectedTelegramChatId, setSelectedTelegramChatId] = useState("");
   const [telegramMessages, setTelegramMessages] = useState<TelegramMessage[]>([]);
   const [clientDiagnostics, setClientDiagnostics] = useState("проверка кэша...");
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [chatSyncMessage, setChatSyncMessage] = useState("");
   const [messageDraft, setMessageDraft] = useState("");
@@ -371,6 +382,26 @@ export function EpicGramShell({ section }: Props) {
       window.clearInterval(timer);
     };
   }, [authFlowActive, authOpen]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function syncAiStatus() {
+      const response = await fetch("/api/ai/status", { cache: "no-store" });
+      const status = (await response.json()) as AiStatus;
+      if (!cancelled) setAiStatus(status);
+    }
+
+    syncAiStatus().catch(() => undefined);
+    const timer = window.setInterval(() => {
+      syncAiStatus().catch(() => undefined);
+    }, 15000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     if (!telegramReady) {
@@ -616,6 +647,7 @@ export function EpicGramShell({ section }: Props) {
               <SettingsWorkspace
                 telegramStatus={telegramStatus}
                 telegramChats={telegramChats}
+                aiStatus={aiStatus}
                 clientDiagnostics={clientDiagnostics}
                 onClearClient={() => clearClientCaches(true)}
                 onAuth={() => setAuthOpen(true)}
@@ -930,12 +962,14 @@ function ItemWorkspace({
 function SettingsWorkspace({
   telegramStatus,
   telegramChats,
+  aiStatus,
   clientDiagnostics,
   onClearClient,
   onAuth
 }: {
   telegramStatus: TelegramStatus | null;
   telegramChats: TelegramChat[];
+  aiStatus: AiStatus | null;
   clientDiagnostics: string;
   onClearClient: () => void;
   onAuth: () => void;
@@ -965,6 +999,21 @@ function SettingsWorkspace({
         <button onClick={onAuth} className="mt-4 w-full rounded-xl bg-tg-blue px-4 py-3 text-sm font-semibold text-white">
           {telegramReady ? "Управлять авторизацией" : "Авторизовать Telegram"}
         </button>
+      </section>
+
+      <section className="rounded-2xl bg-tg-panel p-4 shadow-telegram">
+        <div className="mb-3 flex items-center gap-2 font-semibold text-tg-accent">
+          <Cpu className="h-5 w-5" />
+          AI-провайдер
+        </div>
+        <div className="overflow-hidden rounded-xl bg-tg-bg">
+          <InfoRow label="Статус" value={aiStatus?.runtime === "ready" ? "подключен" : aiStatus?.runtime === "missing_key" ? "нет ключа" : "выключен"} />
+          <InfoRow label="Провайдер" value={aiStatus?.provider ?? "openai"} />
+          <InfoRow label="Модель" value={aiStatus?.model ?? "gpt-4.1-mini"} />
+          <InfoRow label="API key" value={aiStatus?.apiKeyMasked ?? "нет"} />
+          <InfoRow label="Режим отправки" value={aiStatus?.sendMode === "operator_approval_required" ? "только после подтверждения" : "не настроен"} />
+        </div>
+        <p className="mt-3 text-sm leading-6 text-tg-muted">{aiStatus?.message ?? "Проверка AI backend..."}</p>
       </section>
 
       <section className="rounded-2xl bg-tg-panel p-4 shadow-telegram">
