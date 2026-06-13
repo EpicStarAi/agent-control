@@ -12,6 +12,11 @@ export const TD_METHODS = {
 
 const AUTH_WAIT_TIMEOUT_MS = 10000;
 const READY_STATES = new Set(["authorizationStateReady"]);
+const TRANSIENT_AUTH_STATES = new Set([
+  "authorizationStateWaitTdlibParameters",
+  "authorizationStateWaitEncryptionKey",
+  "authorizationStateWaitPhoneNumber"
+]);
 
 let configured = false;
 let client = null;
@@ -118,6 +123,12 @@ async function getCurrentAuthorizationState(tdClient) {
   const authorizationState = await tdClient.invoke({ _: "getAuthorizationState" });
   lastAuthorizationState = authorizationState;
   return authorizationState;
+}
+
+async function getStableAuthorizationState(tdClient) {
+  const authorizationState = await getCurrentAuthorizationState(tdClient);
+  if (!TRANSIENT_AUTH_STATES.has(authorizationState?._)) return authorizationState;
+  return waitForAuthorizationState((state) => Boolean(state?._) && !TRANSIENT_AUTH_STATES.has(state._));
 }
 
 function formatAccount(user) {
@@ -235,7 +246,7 @@ export function getTdlibAdapterStatus() {
 
 export async function getTdlibChats({ limit = 30 } = {}) {
   const tdClient = await ensureClient();
-  const authorizationState = await getCurrentAuthorizationState(tdClient);
+  const authorizationState = await getStableAuthorizationState(tdClient);
   if (!READY_STATES.has(authorizationState?._)) {
     return {
       authorizationState,
@@ -254,7 +265,7 @@ export async function getTdlibChats({ limit = 30 } = {}) {
 
 export async function getTdlibMessages({ chatId, limit = 40 } = {}) {
   const tdClient = await ensureClient();
-  const authorizationState = await getCurrentAuthorizationState(tdClient);
+  const authorizationState = await getStableAuthorizationState(tdClient);
   if (!READY_STATES.has(authorizationState?._)) {
     return {
       authorizationState,
@@ -292,7 +303,7 @@ export async function getTdlibPhotoFile(fileId) {
   }
 
   const tdClient = await ensureClient();
-  const authorizationState = await getCurrentAuthorizationState(tdClient);
+  const authorizationState = await getStableAuthorizationState(tdClient);
   if (!READY_STATES.has(authorizationState?._)) {
     return {
       status: 401,
@@ -453,7 +464,7 @@ export async function resetTdlibAuthSession({ deleteDatabase = false } = {}) {
 
 export async function getTdlibSessionSnapshot() {
   const tdClient = await ensureClient();
-  const authorizationState = await getCurrentAuthorizationState(tdClient);
+  const authorizationState = await getStableAuthorizationState(tdClient);
 
   return {
     authorizationState,

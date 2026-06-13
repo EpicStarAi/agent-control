@@ -69,6 +69,7 @@ type TelegramMessagesResponse = {
 };
 
 const BRAND_NAME = "EPIC☠️GRAM";
+const CLIENT_VERSION = "epicgram-ui-2026-06-13-cachefix";
 
 type LocalItem = {
   id: string;
@@ -237,20 +238,23 @@ export function EpicGramShell({ section }: Props) {
   const [telegramChats, setTelegramChats] = useState<TelegramChat[]>([]);
   const [selectedTelegramChatId, setSelectedTelegramChatId] = useState("");
   const [telegramMessages, setTelegramMessages] = useState<TelegramMessage[]>([]);
+  const [clientDiagnostics, setClientDiagnostics] = useState("проверка кэша...");
   const telegramReady = isTelegramReady(telegramStatus);
 
   useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.getRegistrations()
-        .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
-        .catch(() => undefined);
-    }
-    if ("caches" in window) {
-      caches.keys()
-        .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
-        .catch(() => undefined);
-    }
+    clearClientCaches(false).catch(() => undefined);
   }, []);
+
+  async function clearClientCaches(reload: boolean) {
+    const registrations = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistrations() : [];
+    await Promise.all(registrations.map((registration) => registration.unregister()));
+
+    const cacheKeys = "caches" in window ? await caches.keys() : [];
+    await Promise.all(cacheKeys.map((key) => caches.delete(key)));
+
+    setClientDiagnostics(`версия ${CLIENT_VERSION}; service workers: ${registrations.length}; caches: ${cacheKeys.length}`);
+    if (reload) window.location.reload();
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -503,7 +507,13 @@ export function EpicGramShell({ section }: Props) {
             {showTelegramChat ? (
               <TelegramChatWorkspace chat={activeTelegramChat as TelegramChat} messages={telegramMessages} />
             ) : section === "settings" ? (
-              <SettingsWorkspace telegramStatus={telegramStatus} telegramChats={telegramChats} onAuth={() => setAuthOpen(true)} />
+              <SettingsWorkspace
+                telegramStatus={telegramStatus}
+                telegramChats={telegramChats}
+                clientDiagnostics={clientDiagnostics}
+                onClearClient={() => clearClientCaches(true)}
+                onAuth={() => setAuthOpen(true)}
+              />
             ) : section === "accounts" ? (
               <AccountsWorkspace telegramStatus={telegramStatus} telegramChats={telegramChats} onAuth={() => setAuthOpen(true)} />
             ) : (
@@ -741,7 +751,19 @@ function ItemWorkspace({
   );
 }
 
-function SettingsWorkspace({ telegramStatus, telegramChats, onAuth }: { telegramStatus: TelegramStatus | null; telegramChats: TelegramChat[]; onAuth: () => void }) {
+function SettingsWorkspace({
+  telegramStatus,
+  telegramChats,
+  clientDiagnostics,
+  onClearClient,
+  onAuth
+}: {
+  telegramStatus: TelegramStatus | null;
+  telegramChats: TelegramChat[];
+  clientDiagnostics: string;
+  onClearClient: () => void;
+  onAuth: () => void;
+}) {
   const telegramReady = isTelegramReady(telegramStatus);
   const account = primaryTelegramAccount(telegramStatus);
 
@@ -773,8 +795,12 @@ function SettingsWorkspace({ telegramStatus, telegramChats, onAuth }: { telegram
           <InfoRow label="Режим" value="локальный TDLib backend" />
           <InfoRow label="Отправка сообщений" value="только после подтверждения человека" />
           <InfoRow label="Секреты" value=".env.local, не в браузере" />
-          <InfoRow label="Кэш UI" value="service worker без перехвата API" />
+          <InfoRow label="Кэш UI" value={clientDiagnostics} />
+          <InfoRow label="Версия UI" value={CLIENT_VERSION} />
         </div>
+        <button onClick={onClearClient} className="mt-4 w-full rounded-xl border border-tg-line px-4 py-3 text-sm font-semibold text-tg-muted hover:bg-tg-hover hover:text-white">
+          Очистить кэш клиента и перезагрузить
+        </button>
       </section>
     </div>
   );
