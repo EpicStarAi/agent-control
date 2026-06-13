@@ -15,9 +15,12 @@ import {
   Moon,
   MoreVertical,
   PanelRight,
+  Paperclip,
   QrCode,
   Radio,
+  RefreshCw,
   Search,
+  Send,
   Settings,
   ShieldCheck,
   Smartphone,
@@ -229,6 +232,18 @@ function chatTypeLabel(chat?: TelegramChat | null) {
   return "чат";
 }
 
+function chatMatchesSearch(chat: TelegramChat, query: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return true;
+  const haystack = [
+    chat.title,
+    chat.username,
+    chatTypeLabel(chat),
+    chat.lastMessage?.content
+  ].filter(Boolean).join(" ").toLowerCase();
+  return haystack.includes(normalizedQuery);
+}
+
 function formatMessageTime(value?: string | null) {
   if (!value) return "";
   return new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
@@ -272,6 +287,10 @@ export function EpicGramShell({ section }: Props) {
   const [selectedTelegramChatId, setSelectedTelegramChatId] = useState("");
   const [telegramMessages, setTelegramMessages] = useState<TelegramMessage[]>([]);
   const [clientDiagnostics, setClientDiagnostics] = useState("проверка кэша...");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [chatSyncMessage, setChatSyncMessage] = useState("");
+  const [messageDraft, setMessageDraft] = useState("");
+  const [approvalNotice, setApprovalNotice] = useState("");
   const telegramReady = isTelegramReady(telegramStatus);
 
   useEffect(() => {
@@ -356,15 +375,20 @@ export function EpicGramShell({ section }: Props) {
   useEffect(() => {
     if (!telegramReady) {
       setTelegramChats([]);
+      setChatSyncMessage("Telegram не авторизован");
       return undefined;
     }
 
     let cancelled = false;
 
     async function loadTelegramChats() {
+      setChatSyncMessage("Синхронизация TDLib...");
       const response = await fetch("/api/telegram/chats", { cache: "no-store" });
       const data = (await response.json()) as TelegramChatsResponse;
-      if (!cancelled && response.ok) setTelegramChats(data.chats ?? []);
+      if (!cancelled && response.ok) {
+        setTelegramChats(data.chats ?? []);
+        setChatSyncMessage(`обновлено: ${data.chats?.length ?? 0}`);
+      }
     }
 
     loadTelegramChats().catch(() => undefined);
@@ -418,8 +442,8 @@ export function EpicGramShell({ section }: Props) {
   const activeItem = localItems.find((item) => item.id === activeItemId) ?? filteredItems[0] ?? localItems[0];
   const useTelegramChats = telegramReady && telegramChats.length > 0;
   const visibleTelegramChats = useMemo(
-    () => telegramChats.filter((chat) => chatMatchesFolder(chat, activeFolder)),
-    [activeFolder, telegramChats]
+    () => telegramChats.filter((chat) => chatMatchesFolder(chat, activeFolder) && chatMatchesSearch(chat, searchQuery)),
+    [activeFolder, searchQuery, telegramChats]
   );
   const activeTelegramChat = useTelegramChats
     ? telegramChats.find((chat) => chat.id === selectedTelegramChatId) ?? visibleTelegramChats[0] ?? telegramChats[0]
@@ -430,6 +454,37 @@ export function EpicGramShell({ section }: Props) {
     setActiveFolder(folder);
     const first = localItems.find((item) => item.folder === folder);
     if (first) setActiveItemId(first.id);
+  }
+
+  async function refreshTelegramChats() {
+    if (!telegramReady) {
+      setChatSyncMessage("Telegram не авторизован");
+      return;
+    }
+
+    setChatSyncMessage("Синхронизация TDLib...");
+    const response = await fetch("/api/telegram/chats", { cache: "no-store" });
+    const data = (await response.json()) as TelegramChatsResponse;
+    if (response.ok) {
+      setTelegramChats(data.chats ?? []);
+      setChatSyncMessage(`обновлено: ${data.chats?.length ?? 0}`);
+    } else {
+      setChatSyncMessage(data.message ?? "ошибка синхронизации");
+    }
+  }
+
+  async function refreshTelegramMessages() {
+    if (!selectedTelegramChatId) return;
+    const response = await fetch(`/api/telegram/messages?chatId=${encodeURIComponent(selectedTelegramChatId)}`, { cache: "no-store" });
+    const data = (await response.json()) as TelegramMessagesResponse;
+    if (response.ok) setTelegramMessages(data.messages ?? []);
+  }
+
+  function queueDraftForApproval() {
+    const cleanDraft = messageDraft.trim();
+    if (!cleanDraft) return;
+    setApprovalNotice("Черновик поставлен в очередь подтверждения оператора. Реальная отправка в Telegram в MVP заблокирована.");
+    setMessageDraft("");
   }
 
   async function requestQrAuth() {
@@ -497,8 +552,15 @@ export function EpicGramShell({ section }: Props) {
               </button>
               <label className="flex h-10 min-w-0 flex-1 items-center gap-3 rounded-full bg-tg-bg px-4 text-tg-muted">
                 <Search className="h-4 w-4" />
-                <input className="w-full bg-transparent text-sm outline-none placeholder:text-tg-muted" placeholder="Поиск" />
+                <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="w-full bg-transparent text-sm outline-none placeholder:text-tg-muted" placeholder="Поиск" />
               </label>
+              <button onClick={refreshTelegramChats} className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-tg-muted hover:bg-tg-hover hover:text-tg-text" aria-label="Обновить чаты">
+                <RefreshCw className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-3 text-xs text-tg-muted">
+              <span>{telegramReady ? "TDLib подключен" : "ожидание Telegram"}</span>
+              <span className="truncate">{chatSyncMessage}</span>
             </div>
           </header>
 
@@ -529,7 +591,7 @@ export function EpicGramShell({ section }: Props) {
                       onClick={() => setSelectedTelegramChatId(chat.id)}
                     />
                   ))
-                : <EmptyChatFilter folder={activeFolder} />
+                : <EmptyChatFilter folder={activeFolder} query={searchQuery} />
               : filteredItems.map((item) => (
                   <LocalItemRow key={item.id} item={item} active={item.id === activeItem.id} onClick={() => setActiveItemId(item.id)} />
                 ))}
@@ -541,7 +603,15 @@ export function EpicGramShell({ section }: Props) {
           <div className="relative min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_20%_10%,rgba(100,255,154,.08),transparent_24%),linear-gradient(135deg,rgba(14,22,33,.96),rgba(8,13,20,.98))] p-6">
             <div className="pointer-events-none absolute inset-0 opacity-[0.06] [background-image:linear-gradient(rgba(100,255,154,.7)_1px,transparent_1px),linear-gradient(90deg,rgba(100,255,154,.7)_1px,transparent_1px)] [background-size:32px_32px]" />
             {showTelegramChat ? (
-              <TelegramChatWorkspace chat={activeTelegramChat as TelegramChat} messages={telegramMessages} />
+              <TelegramChatWorkspace
+                chat={activeTelegramChat as TelegramChat}
+                messages={telegramMessages}
+                draft={messageDraft}
+                setDraft={setMessageDraft}
+                approvalNotice={approvalNotice}
+                onRefreshMessages={refreshTelegramMessages}
+                onQueueDraft={queueDraftForApproval}
+              />
             ) : section === "settings" ? (
               <SettingsWorkspace
                 telegramStatus={telegramStatus}
@@ -654,37 +724,84 @@ function TelegramChatHeader({ chat }: { chat: TelegramChat }) {
   );
 }
 
-function EmptyChatFilter({ folder }: { folder: FolderId }) {
+function EmptyChatFilter({ folder, query }: { folder: FolderId; query: string }) {
   return (
     <div className="p-6 text-center">
       <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-tg-bg text-tg-muted">
         <MessageCircle className="h-6 w-6" />
       </div>
-      <h3 className="mt-4 font-semibold">В папке «{telegramFolderLabel(folder)}» пусто</h3>
-      <p className="mt-2 text-sm leading-6 text-tg-muted">Это реальный фильтр TDLib. Если чат есть в Telegram, он появится после синхронизации backend.</p>
+      <h3 className="mt-4 font-semibold">{query.trim() ? "Ничего не найдено" : `В папке «${telegramFolderLabel(folder)}» пусто`}</h3>
+      <p className="mt-2 text-sm leading-6 text-tg-muted">
+        {query.trim()
+          ? "Поиск работает по названию, username, типу чата и последнему превью сообщения."
+          : "Это реальный фильтр TDLib. Если чат есть в Telegram, он появится после синхронизации backend."}
+      </p>
     </div>
   );
 }
 
-function TelegramChatWorkspace({ chat, messages }: { chat: TelegramChat; messages: TelegramMessage[] }) {
+function TelegramChatWorkspace({
+  chat,
+  messages,
+  draft,
+  setDraft,
+  approvalNotice,
+  onRefreshMessages,
+  onQueueDraft
+}: {
+  chat: TelegramChat;
+  messages: TelegramMessage[];
+  draft: string;
+  setDraft: (value: string) => void;
+  approvalNotice: string;
+  onRefreshMessages: () => void;
+  onQueueDraft: () => void;
+}) {
   return (
-    <div className="relative mx-auto flex max-w-3xl flex-col gap-3">
-      <div className="mx-auto rounded-full bg-black/30 px-3 py-1 text-xs text-tg-muted">Реальный Telegram-чат · {messages.length} сообщений</div>
-      {messages.length === 0 && (
-        <section className="rounded-2xl bg-tg-panel p-4 shadow-telegram">
-          <h2 className="font-semibold">{chat.title}</h2>
-          <p className="mt-2 text-sm leading-6 text-tg-muted">TDLib авторизован, чат выбран, история сообщений еще загружается или недоступна локально.</p>
-        </section>
-      )}
-      {messages.map((message) => (
-        <div key={message.id} className={`flex ${message.isOutgoing ? "justify-end" : "justify-start"}`}>
-          <div className={`max-w-[78%] rounded-2xl px-4 py-2 shadow-telegram ${message.isOutgoing ? "bg-tg-active text-white" : "bg-tg-bubble text-tg-text"}`}>
-            {message.authorSignature && <div className="mb-1 text-xs font-semibold text-tg-accent">{message.authorSignature}</div>}
-            <div className="whitespace-pre-wrap break-words text-sm leading-6">{message.content || "Сообщение без текстового превью"}</div>
-            <div className={`mt-1 text-right text-[11px] ${message.isOutgoing ? "text-blue-100/75" : "text-tg-muted"}`}>{formatMessageTime(message.date)}</div>
+    <div className="relative mx-auto flex h-full max-w-3xl flex-col gap-3">
+      <div className="flex items-center justify-center gap-2">
+        <div className="rounded-full bg-black/30 px-3 py-1 text-xs text-tg-muted">Реальный Telegram-чат · {messages.length} сообщений</div>
+        <button onClick={onRefreshMessages} className="grid h-7 w-7 place-items-center rounded-full bg-black/30 text-tg-muted hover:bg-tg-hover hover:text-white" aria-label="Обновить историю">
+          <RefreshCw className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-2">
+        {messages.length === 0 && (
+          <section className="rounded-2xl bg-tg-panel p-4 shadow-telegram">
+            <h2 className="font-semibold">{chat.title}</h2>
+            <p className="mt-2 text-sm leading-6 text-tg-muted">TDLib авторизован, чат выбран, история сообщений еще загружается или недоступна локально.</p>
+          </section>
+        )}
+        {messages.map((message) => (
+          <div key={message.id} className={`flex ${message.isOutgoing ? "justify-end" : "justify-start"}`}>
+            <div className={`max-w-[78%] rounded-2xl px-4 py-2 shadow-telegram ${message.isOutgoing ? "bg-tg-active text-white" : "bg-tg-bubble text-tg-text"}`}>
+              {message.authorSignature && <div className="mb-1 text-xs font-semibold text-tg-accent">{message.authorSignature}</div>}
+              <div className="whitespace-pre-wrap break-words text-sm leading-6">{message.content || "Сообщение без текстового превью"}</div>
+              <div className={`mt-1 text-right text-[11px] ${message.isOutgoing ? "text-blue-100/75" : "text-tg-muted"}`}>{formatMessageTime(message.date)}</div>
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
+
+      {approvalNotice && <div className="rounded-xl border border-tg-line bg-tg-panel px-3 py-2 text-sm text-tg-muted">{approvalNotice}</div>}
+
+      <div className="flex items-end gap-2 rounded-2xl bg-tg-panel p-2 shadow-telegram">
+        <button className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-tg-muted hover:bg-tg-hover hover:text-white" aria-label="Вложение">
+          <Paperclip className="h-5 w-5" />
+        </button>
+        <textarea
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          rows={1}
+          placeholder="Сообщение"
+          className="max-h-32 min-h-10 flex-1 resize-none rounded-xl bg-tg-bg px-4 py-2.5 text-sm leading-5 outline-none placeholder:text-tg-muted"
+        />
+        <button onClick={onQueueDraft} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-tg-blue text-white hover:bg-tg-active" aria-label="Поставить в очередь отправки">
+          <Send className="h-5 w-5" />
+        </button>
+      </div>
+      <div className="px-2 text-xs text-tg-muted">Безопасный MVP: кнопка отправки создает черновик на подтверждение, но не отправляет его в Telegram.</div>
     </div>
   );
 }
