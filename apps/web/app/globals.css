@@ -4,8 +4,8 @@
 
 :root {
   color-scheme: dark;
-  background: #020403;
-  color: #d9ffe7;
+  background: #06050a;
+  color: #ffe9ee;
 }
 
 * {
@@ -21,9 +21,9 @@ body {
   margin: 0;
   overflow-x: hidden;
   background:
-    radial-gradient(circle at 14% 12%, rgba(57, 255, 136, 0.12), transparent 28%),
-    radial-gradient(circle at 82% 24%, rgba(69, 243, 255, 0.08), transparent 24%),
-    linear-gradient(180deg, #020403 0%, #020403 44%, #000 100%);
+    radial-gradient(circle at 14% 12%, rgba(255, 45, 85, 0.13), transparent 28%),
+    radial-gradient(circle at 82% 24%, rgba(225, 29, 63, 0.09), transparent 24%),
+    linear-gradient(180deg, #06050a 0%, #06050a 44%, #000 100%);
 }
 
 button,
@@ -37,15 +37,15 @@ button {
 }
 
 ::selection {
-  background: rgba(57, 255, 136, 0.24);
-  color: #f4fff8;
+  background: rgba(255, 45, 85, 0.26);
+  color: #fff4f6;
 }
 
 .digital-rain {
   position: fixed;
   inset: 0;
   z-index: -2;
-  opacity: 0.28;
+  opacity: 0.22;
   pointer-events: none;
   overflow: hidden;
 }
@@ -55,20 +55,29 @@ button {
   content: "01001011 10110 0010110 11001 011010 101101 01001 111000 01010 001101 11010 011001 10101 010011 11100 00110";
   position: absolute;
   inset: -50% 0 0;
-  color: rgba(57, 255, 136, 0.36);
+  color: rgba(255, 45, 85, 0.34);
   font-family: Consolas, ui-monospace, monospace;
   font-size: 13px;
   line-height: 1.75;
   letter-spacing: 0.42em;
   word-break: break-all;
-  text-shadow: 0 0 12px rgba(57, 255, 136, 0.55);
+  text-shadow: 0 0 12px rgba(255, 45, 85, 0.55);
   animation: rain 18s linear infinite;
   writing-mode: vertical-rl;
 }
 
+@keyframes rain {
+  from {
+    transform: translateY(-50%);
+  }
+  to {
+    transform: translateY(0%);
+  }
+}
+
 .digital-rain::after {
   left: 44%;
-  opacity: 0.55;
+  opacity: 0.5;
   animation-duration: 25s;
   animation-delay: -8s;
 }
@@ -79,18 +88,18 @@ button {
   z-index: -1;
   pointer-events: none;
   background:
-    linear-gradient(rgba(57, 255, 136, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(57, 255, 136, 0.028) 1px, transparent 1px);
+    linear-gradient(rgba(255, 45, 85, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 45, 85, 0.03) 1px, transparent 1px);
   background-size: 100% 4px, 48px 48px;
   mask-image: linear-gradient(to bottom, transparent, black 8%, black 92%, transparent);
 }
 
 .terminal-panel {
-  border: 1px solid rgba(57, 255, 136, 0.18);
+  border: 1px solid rgba(255, 59, 92, 0.18);
   background:
-    linear-gradient(180deg, rgba(7, 17, 12, 0.92), rgba(2, 8, 5, 0.92)),
-    rgba(7, 17, 12, 0.9);
-  box-shadow: 0 0 0 1px rgba(57, 255, 136, 0.04), 0 18px 70px rgba(0, 0, 0, 0.52), inset 0 0 38px rgba(57, 255, 136, 0.025);
+    linear-gradient(180deg, rgba(17, 7, 11, 0.92), rgba(8, 4, 6, 0.92)),
+    rgba(17, 7, 11, 0.9);
+  box-shadow: 0 0 0 1px rgba(255, 59, 92, 0.04), 0 18px 70px rgba(0, 0, 0, 0.55), inset 0 0 38px rgba(255, 45, 85, 0.03);
 }
 
 .terminal-panel::before {
@@ -98,12 +107,12 @@ button {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(57, 255, 136, 0.08), transparent 22%);
+  background: linear-gradient(180deg, rgba(255, 45, 85, 0.08), transparent 22%);
   opacity: 0.45;
 }
 
 .matrix-scroll {
-  scrollbar-color: rgba(57, 255, 136, 0.45) rgba(5, 12, 8, 0.8);
+  scrollbar-color: rgba(255, 45, 85, 0.45) rgba(12, 5, 8, 0.8);
   scrollbar-width: thin;
 }
 
@@ -112,12 +121,29 @@ button {
 }
 
 .matrix-scroll::-webkit-scrollbar-track {
-  background: rgba(5, 12, 8, 0.8);
+  background: rgba(12, 5, 8, 0.8);
 }
 
 .matrix-scroll::-webkit-scrollbar-thumb {
-  background: rgba(57, 255, 136, 0.45);
+  background: rgba(255, 45, 85, 0.45);
   border-radius: 0;
+}
+
+/* ── EPIC☠STAR brand chrome (Phase 3) ─────────────────────────── */
+.epic-title {
+  background: linear-gradient(92deg, #ff6b81 0%, #ff2d55 48%, #e11d3f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: 0.08em;
+}
+
+.epic-glow {
+  filter: drop-shadow(0 0 6px rgba(255, 45, 85, 0.55));
+}
+
+.epic-divider {
+  background: linear-gradient(90deg, transparent, rgba(255, 45, 85, 0.5), transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {

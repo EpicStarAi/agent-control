@@ -10,7 +10,8 @@ import {
   logOutTdlib,
   requestTdlibPhoneAuth,
   requestTdlibQrAuth,
-  resetTdlibAuthSession
+  resetTdlibAuthSession,
+  sendTdlibMessage
 } from "./tdlib-adapter.mjs";
 
 const stateDir = path.resolve(process.cwd(), ".epicgram");
@@ -497,4 +498,91 @@ export async function resetAuth() {
       ...configDiagnostics()
     }
   };
+}
+
+const outboxFile = path.join(stateDir, "outbox.json");
+
+async function appendOutbox(entry) {
+  let log = [];
+  try {
+    log = JSON.parse(await readFile(outboxFile, "utf8"));
+    if (!Array.isArray(log)) log = [];
+  } catch {
+    log = [];
+  }
+  log.push({ ...entry, at: now() });
+  await mkdir(stateDir, { recursive: true });
+  await writeFile(outboxFile, `${JSON.stringify(log.slice(-500), null, 2)}\n`, "utf8");
+}
+
+// Operator-gated outbound send.
+//
+// SAFETY: this is the ONLY path that writes to Telegram, and it only proceeds
+// when the request carries an explicit operator approval flag (the human
+// clicking "Отправить" in the UI). The AI layer never calls this. The configured
+// EPICGRAM_AI_SEND_MODE is honored and never weakened: any value other than an
+// explicit auto mode requires the operator approval flag to be present.
+export async function sendMessage(payload) {
+  const chatId = payload?.chatId;
+  const text = String(payload?.text ?? "").trim();
+  const operatorApproved = payload?.operatorApproved === true;
+  const sendMode = process.env.EPICGRAM_AI_SEND_MODE || "operator_approval_required";
+
+  if (!chatId) return { status: 400, body: { message: "chatId is required" } };
+  if (!text) return { status: 400, body: { message: "text is required" } };
+
+  if (!tdlibConfigured()) {
+    return {
+      status: 503,
+      body: { tdlibConfigured: false, missingConfig: missingTdlibConfig(), message: notConfiguredMessage() }
+    };
+  }
+
+  // Approval gate. Only an explicit "auto_send" mode could bypass operator
+  // approval — and we ship "operator_approval_required", so a missing approval
+  // flag is always rejected here.
+  const autoSendAllowed = sendMode === "auto_send";
+  if (!operatorApproved && !autoSendAllowed) {
+    await appendOutbox({ chatId: String(chatId), text, status: "blocked_no_approval", sendMode });
+    return {
+      status: 412,
+      body: {
+        sent: false,
+        sendMode,
+        message:
+          "Отправка заблокирована approval-гейтом. Нужно явное подтверждение оператора (operatorApproved=true)."
+      }
+    };
+  }
+
+  try {
+    const result = await sendTdlibMessage({ chatId, text });
+    if (!result.ok) {
+      await appendOutbox({ chatId: String(chatId), text, status: "failed", reason: result.message, sendMode });
+      return { status: 409, body: { sent: false, sendMode, message: result.message } };
+    }
+    await appendOutbox({
+      chatId: String(chatId),
+      text,
+      status: "sent",
+      sendMode,
+      approvedBy: process.env.EPICGRAM_OPERATOR_EMAIL || "operator"
+    });
+    return {
+      status: 200,
+      body: { sent: true, sendMode, sentMessage: result.sentMessage, message: "Сообщение отправлено в Telegram." }
+    };
+  } catch (error) {
+    await appendOutbox({
+      chatId: String(chatId),
+      text,
+      status: "error",
+      reason: error instanceof Error ? error.message : String(error),
+      sendMode
+    });
+    return {
+      status: 500,
+      body: { sent: false, sendMode, message: error instanceof Error ? error.message : "TDLib send failed." }
+    };
+  }
 }

@@ -9,8 +9,6 @@ const config: Config = {
         mono: ["var(--font-jetbrains)", "Consolas", "ui-monospace", "monospace"]
       },
       colors: {
-        // EPIC STAR / DEEP INSIDE - dark neon shell, red accent.
-        // Token names kept stable (tg-*) so the whole UI re-skins without code churn.
         tg: {
           bg: "#0a0b0f",
           rail: "#101218",
@@ -27,7 +25,6 @@ const config: Config = {
           accent: "#ff3b5c",
           blue: "#e11d3f"
         },
-        // Brand scale for new EPIC STAR chrome (logo, glows, accents).
         epic: {
           red: "#ff2d55",
           neon: "#ff3b5c",

@@ -418,3 +418,39 @@ h1 {
     right: 16px;
   }
 }
+
+/* ── EPIC☠STAR pet-project promo banner (unobtrusive, dismissible) ─────────── */
+.pet-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px 40px 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(124, 58, 237, .18), rgba(236, 72, 153, .14));
+  border: 1px solid rgba(255, 255, 255, .12);
+}
+.pet-banner__icon { font-size: 22px; line-height: 1; }
+.pet-banner__copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.pet-banner__copy strong { font-size: 14px; }
+.pet-banner__copy span { font-size: 12px; opacity: .75; }
+.pet-banner__cta { display: flex; gap: 8px; flex-shrink: 0; }
+.pet-banner__btn {
+  font-size: 12px; font-weight: 700; text-decoration: none;
+  padding: 7px 12px; border-radius: 9px; white-space: nowrap;
+  color: #fff; border: 1px solid rgba(255, 255, 255, .18);
+  background: rgba(255, 255, 255, .06);
+}
+.pet-banner__btn.primary { background: linear-gradient(135deg, #7c3aed, #ec4899); border-color: transparent; }
+.pet-banner__close {
+  position: absolute; top: 8px; right: 10px;
+  background: none; border: none; color: #fff; opacity: .6;
+  font-size: 18px; line-height: 1; cursor: pointer;
+}
+.pet-banner__close:hover { opacity: 1; }
+@media (max-width: 520px) {
+  .pet-banner { flex-wrap: wrap; }
+  .pet-banner__cta { width: 100%; }
+  .pet-banner__btn { flex: 1; text-align: center; }
+}

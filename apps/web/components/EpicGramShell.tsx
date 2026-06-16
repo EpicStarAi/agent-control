@@ -5,11 +5,13 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Archive,
   Bot,
+  Brain,
   CheckCircle2,
   Cpu,
   Database,
   FileClock,
   Inbox,
+  Loader2,
   Menu,
   MessageCircle,
   Moon,
@@ -24,6 +26,7 @@ import {
   Settings,
   ShieldCheck,
   Smartphone,
+  Sparkles,
   User,
   Users,
   X
@@ -269,13 +272,60 @@ function initialsFromTitle(title?: string | null) {
 function TelegramAvatar({ title, type, active, photoFileId }: { title: string; type?: string; active?: boolean; photoFileId?: string | null }) {
   const isPrivate = type === "chatTypePrivate";
   return (
-    <div className={`grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full ${active ? "bg-white/15" : "bg-gradient-to-br from-[#2b5278] to-[#17212b]"} text-sm font-bold text-tg-accent ring-1 ring-white/10`}>
+    <div className={`grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full ${active ? "bg-white/10" : "bg-gradient-to-br from-[#3d1320] to-[#12131a]"} text-sm font-bold text-tg-accent ring-1 ring-white/10`}>
       {photoFileId ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={`/api/telegram/photo?fileId=${encodeURIComponent(photoFileId)}`} alt="" className="h-full w-full object-cover" />
       ) : (
         <span>{isPrivate ? initialsFromTitle(title) : initialsFromTitle(title)}</span>
       )}
+    </div>
+  );
+}
+
+function EpicStarMark({ className = "h-7 w-7" }: { className?: string }) {
+  // EPIC☠STAR neon skull-star mark (red). Inline SVG so it inherits brand glow.
+  return (
+    <svg viewBox="0 0 48 48" className={className} role="img" aria-label="EPIC☠STAR">
+      <defs>
+        <linearGradient id="epicStarGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#ff6b81" />
+          <stop offset="55%" stopColor="#ff2d55" />
+          <stop offset="100%" stopColor="#e11d3f" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M24 3l5.5 11.1 12.2 1.8-8.8 8.6 2.1 12.2L24 31.9 11 36.7l2.1-12.2-8.8-8.6 12.2-1.8L24 3z"
+        fill="none"
+        stroke="url(#epicStarGrad)"
+        strokeWidth="2"
+        strokeLinejoin="round"
+        opacity="0.85"
+      />
+      <path
+        d="M24 13c-4.5 0-8 3.4-8 8 0 2.9 1.4 5 3.4 6.3v3.1c0 1 .8 1.8 1.8 1.8h5.6c1 0 1.8-.8 1.8-1.8v-3.1c2-1.3 3.4-3.4 3.4-6.3 0-4.6-3.5-8-8-8z"
+        fill="url(#epicStarGrad)"
+      />
+      <circle cx="20.5" cy="20.8" r="2.3" fill="#0a0b0f" />
+      <circle cx="27.5" cy="20.8" r="2.3" fill="#0a0b0f" />
+      <path d="M22.5 26h3M23 26v3M25 26v3" stroke="#0a0b0f" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function BrandBar() {
+  return (
+    <div className="flex items-center gap-2.5 border-b border-tg-line bg-tg-header/80 px-4 py-2.5">
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-epic-ink ring-1 ring-tg-line epic-glow">
+        <EpicStarMark className="h-7 w-7" />
+      </span>
+      <div className="min-w-0 flex-1 leading-tight">
+        <div className="truncate text-sm font-bold tracking-wide epic-title">EPIC☠STAR</div>
+        <div className="truncate text-[11px] text-tg-muted">DEEP INSIDE · EPIC☠️GRAM</div>
+      </div>
+      <span className="shrink-0 rounded-full border border-tg-line bg-tg-bg px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-tg-accent">
+        client
+      </span>
     </div>
   );
 }
@@ -302,6 +352,10 @@ export function EpicGramShell({ section }: Props) {
   const [chatSyncMessage, setChatSyncMessage] = useState("");
   const [messageDraft, setMessageDraft] = useState("");
   const [approvalNotice, setApprovalNotice] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [sendBusy, setSendBusy] = useState(false);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [memoryCount, setMemoryCount] = useState<number | null>(null);
   const telegramReady = isTelegramReady(telegramStatus);
 
   useEffect(() => {
@@ -335,7 +389,7 @@ export function EpicGramShell({ section }: Props) {
         margin: 1,
         scale: 8,
         color: {
-          dark: "#0e1621",
+          dark: "#0a0b0f",
           light: "#ffffff"
         }
       });
@@ -447,18 +501,23 @@ export function EpicGramShell({ section }: Props) {
   useEffect(() => {
     if (!selectedTelegramChatId) {
       setTelegramMessages([]);
+      setMessagesLoading(false);
       return undefined;
     }
 
     let cancelled = false;
+    setMessagesLoading(true);
 
     async function loadTelegramMessages() {
       const response = await fetch(`/api/telegram/messages?chatId=${encodeURIComponent(selectedTelegramChatId)}`, { cache: "no-store" });
       const data = (await response.json()) as TelegramMessagesResponse;
       if (!cancelled && response.ok) setTelegramMessages(data.messages ?? []);
+      if (!cancelled) setMessagesLoading(false);
     }
 
-    loadTelegramMessages().catch(() => undefined);
+    loadTelegramMessages().catch(() => {
+      if (!cancelled) setMessagesLoading(false);
+    });
     const timer = window.setInterval(() => {
       loadTelegramMessages().catch(() => undefined);
     }, 10000);
@@ -468,6 +527,39 @@ export function EpicGramShell({ section }: Props) {
       window.clearInterval(timer);
     };
   }, [selectedTelegramChatId]);
+
+  // Memory indicator: read-only probe of the persona's per-conversation memory.
+  // Purely additive — surfaces "помнит N реплик" without changing send/suggest flow.
+  useEffect(() => {
+    if (!selectedTelegramChatId) {
+      setMemoryCount(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function loadMemory() {
+      try {
+        const response = await fetch(`/api/ai/memory?conversationId=${encodeURIComponent(selectedTelegramChatId)}&limit=50`, { cache: "no-store" });
+        if (!response.ok) {
+          if (!cancelled) setMemoryCount(null);
+          return;
+        }
+        const data = (await response.json()) as { count?: number };
+        if (!cancelled) setMemoryCount(typeof data.count === "number" ? data.count : null);
+      } catch {
+        if (!cancelled) setMemoryCount(null);
+      }
+    }
+
+    loadMemory();
+    const timer = window.setInterval(loadMemory, 15000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [selectedTelegramChatId, telegramMessages.length]);
 
   const filteredItems = useMemo(() => localItems.filter((item) => item.folder === activeFolder), [activeFolder]);
   const activeItem = localItems.find((item) => item.id === activeItemId) ?? filteredItems[0] ?? localItems[0];
@@ -511,11 +603,60 @@ export function EpicGramShell({ section }: Props) {
     if (response.ok) setTelegramMessages(data.messages ?? []);
   }
 
-  function queueDraftForApproval() {
+  async function requestAiSuggestion() {
+    if (!selectedTelegramChatId) return;
+    setAiBusy(true);
+    setApprovalNotice("EPIC☠STAR готовит черновик...");
+    try {
+      const response = await fetch("/api/ai/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: selectedTelegramChatId,
+          chatTitle: activeTelegramChat?.title ?? null,
+          history: telegramMessages
+        })
+      });
+      const data = (await response.json()) as { draft?: string; error?: string };
+      if (response.ok && data.draft) {
+        setMessageDraft(data.draft);
+        setApprovalNotice("AI-черновик готов. Проверьте, при необходимости отредактируйте и нажмите «Отправить». Автоматической отправки нет.");
+      } else {
+        setApprovalNotice(data.error ?? "Не удалось получить черновик от мозга.");
+      }
+    } catch {
+      setApprovalNotice("Backend недоступен для AI-подсказки.");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  // Real outbound send. Only fires on an explicit operator click and the backend
+  // re-checks the approval gate (operatorApproved). The AI never calls this.
+  async function sendApprovedMessage() {
     const cleanDraft = messageDraft.trim();
-    if (!cleanDraft) return;
-    setApprovalNotice("Черновик поставлен в очередь подтверждения оператора. Реальная отправка в Telegram в MVP заблокирована.");
-    setMessageDraft("");
+    if (!cleanDraft || !selectedTelegramChatId) return;
+    setSendBusy(true);
+    setApprovalNotice("Отправка по подтверждению оператора...");
+    try {
+      const response = await fetch("/api/telegram/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId: selectedTelegramChatId, text: cleanDraft, operatorApproved: true })
+      });
+      const data = (await response.json()) as { sent?: boolean; message?: string };
+      if (response.ok && data.sent) {
+        setMessageDraft("");
+        setApprovalNotice("Сообщение отправлено в Telegram (подтверждено оператором).");
+        await refreshTelegramMessages();
+      } else {
+        setApprovalNotice(data.message ?? "Отправка не удалась.");
+      }
+    } catch {
+      setApprovalNotice("Backend недоступен для отправки.");
+    } finally {
+      setSendBusy(false);
+    }
   }
 
   async function requestQrAuth() {
@@ -576,6 +717,7 @@ export function EpicGramShell({ section }: Props) {
       <div className="grid h-full min-h-0 grid-cols-[minmax(320px,390px)_1fr] xl:grid-cols-[390px_1fr_320px]">
         <section className="relative flex h-full min-h-0 flex-col border-r border-tg-line bg-tg-panel">
           {menuOpen && <TelegramMenu onClose={() => setMenuOpen(false)} onAuth={() => setAuthOpen(true)} />}
+          <BrandBar />
           <header className="border-b border-tg-line px-4 py-3">
             <div className="flex items-center gap-3">
               <button onClick={() => setMenuOpen((value) => !value)} className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-tg-muted hover:bg-tg-hover hover:text-tg-text" aria-label="Открыть меню">
@@ -631,8 +773,8 @@ export function EpicGramShell({ section }: Props) {
 
         <section className="flex h-full min-h-0 min-w-0 flex-col bg-tg-chat">
           {showTelegramChat ? <TelegramChatHeader chat={activeTelegramChat as TelegramChat} /> : <SectionHeader section={section} item={activeItem} />}
-          <div className="relative min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_20%_10%,rgba(100,255,154,.08),transparent_24%),linear-gradient(135deg,rgba(14,22,33,.96),rgba(8,13,20,.98))] p-6">
-            <div className="pointer-events-none absolute inset-0 opacity-[0.06] [background-image:linear-gradient(rgba(100,255,154,.7)_1px,transparent_1px),linear-gradient(90deg,rgba(100,255,154,.7)_1px,transparent_1px)] [background-size:32px_32px]" />
+          <div className="relative min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_20%_10%,rgba(255,45,85,.09),transparent_26%),linear-gradient(135deg,rgba(12,12,18,.96),rgba(7,7,12,.98))] p-6">
+            <div className="pointer-events-none absolute inset-0 opacity-[0.05] [background-image:linear-gradient(rgba(255,59,92,.7)_1px,transparent_1px),linear-gradient(90deg,rgba(255,59,92,.7)_1px,transparent_1px)] [background-size:32px_32px]" />
             {showTelegramChat ? (
               <TelegramChatWorkspace
                 chat={activeTelegramChat as TelegramChat}
@@ -641,7 +783,13 @@ export function EpicGramShell({ section }: Props) {
                 setDraft={setMessageDraft}
                 approvalNotice={approvalNotice}
                 onRefreshMessages={refreshTelegramMessages}
-                onQueueDraft={queueDraftForApproval}
+                onSuggest={requestAiSuggestion}
+                onSendApproved={sendApprovedMessage}
+                aiBusy={aiBusy}
+                sendBusy={sendBusy}
+                aiStatus={aiStatus}
+                messagesLoading={messagesLoading}
+                memoryCount={memoryCount}
               />
             ) : section === "settings" ? (
               <SettingsWorkspace
@@ -713,9 +861,9 @@ function LocalItemRow({ item, active, onClick }: { item: LocalItem; active: bool
       <div className="min-w-0 flex-1 border-b border-tg-line/70 pb-2">
         <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1 truncate font-semibold">{item.title}</div>
-          <div className={`text-xs ${active ? "text-blue-100/80" : "text-tg-muted"}`}>{item.badge}</div>
+          <div className={`text-xs ${active ? "text-white/75" : "text-tg-muted"}`}>{item.badge}</div>
         </div>
-        <p className={`mt-1 truncate text-sm ${active ? "text-blue-100/85" : "text-tg-muted"}`}>{item.subtitle}</p>
+        <p className={`mt-1 truncate text-sm ${active ? "text-white/80" : "text-tg-muted"}`}>{item.subtitle}</p>
       </div>
     </button>
   );
@@ -730,10 +878,10 @@ function TelegramChatRow({ chat, active, onClick }: { chat: TelegramChat; active
       <div className="min-w-0 flex-1 border-b border-tg-line/70 pb-2">
         <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1 truncate font-semibold">{chat.title}</div>
-          <div className={`text-xs ${active ? "text-blue-100/80" : "text-tg-muted"}`}>{formatMessageTime(chat.lastMessage?.date)}</div>
+          <div className={`text-xs ${active ? "text-white/75" : "text-tg-muted"}`}>{formatMessageTime(chat.lastMessage?.date)}</div>
         </div>
         <div className="mt-1 flex items-center gap-2">
-          <p className={`min-w-0 flex-1 truncate text-sm ${active ? "text-blue-100/85" : "text-tg-muted"}`}>{preview}</p>
+          <p className={`min-w-0 flex-1 truncate text-sm ${active ? "text-white/80" : "text-tg-muted"}`}>{preview}</p>
           {Boolean(chat.unreadCount) && <span className="rounded-full bg-tg-blue px-2 py-0.5 text-xs text-white">{chat.unreadCount}</span>}
         </div>
       </div>
@@ -772,6 +920,11 @@ function EmptyChatFilter({ folder, query }: { folder: FolderId; query: string })
   );
 }
 
+function isNoticeError(notice: string) {
+  const lowered = notice.toLowerCase();
+  return ["не удалось", "недоступ", "ошибка", "не отправ", "не принят", "не запуст"].some((token) => lowered.includes(token));
+}
+
 function TelegramChatWorkspace({
   chat,
   messages,
@@ -779,7 +932,13 @@ function TelegramChatWorkspace({
   setDraft,
   approvalNotice,
   onRefreshMessages,
-  onQueueDraft
+  onSuggest,
+  onSendApproved,
+  aiBusy,
+  sendBusy,
+  aiStatus,
+  messagesLoading,
+  memoryCount
 }: {
   chat: TelegramChat;
   messages: TelegramMessage[];
@@ -787,22 +946,48 @@ function TelegramChatWorkspace({
   setDraft: (value: string) => void;
   approvalNotice: string;
   onRefreshMessages: () => void;
-  onQueueDraft: () => void;
+  onSuggest: () => void;
+  onSendApproved: () => void;
+  aiBusy: boolean;
+  sendBusy: boolean;
+  aiStatus: AiStatus | null;
+  messagesLoading: boolean;
+  memoryCount: number | null;
 }) {
+  const brainOnline = aiStatus?.runtime === "ready";
+  const noticeIsError = approvalNotice ? isNoticeError(approvalNotice) : false;
+
   return (
     <div className="relative mx-auto flex h-full max-w-3xl flex-col gap-3">
-      <div className="flex items-center justify-center gap-2">
+      <div className="flex flex-wrap items-center justify-center gap-2">
         <div className="rounded-full bg-black/30 px-3 py-1 text-xs text-tg-muted">Реальный Telegram-чат · {messages.length} сообщений</div>
+        {memoryCount !== null && (
+          <div className="flex items-center gap-1.5 rounded-full border border-tg-line bg-black/30 px-3 py-1 text-xs text-tg-accent" title="Персона помнит контекст этого диалога">
+            <Brain className="h-3.5 w-3.5" />
+            {memoryCount > 0 ? `помнит ${memoryCount} реплик контекста` : "память диалога пуста"}
+          </div>
+        )}
         <button onClick={onRefreshMessages} className="grid h-7 w-7 place-items-center rounded-full bg-black/30 text-tg-muted hover:bg-tg-hover hover:text-white" aria-label="Обновить историю">
           <RefreshCw className="h-3.5 w-3.5" />
         </button>
       </div>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-2">
-        {messages.length === 0 && (
-          <section className="rounded-2xl bg-tg-panel p-4 shadow-telegram">
-            <h2 className="font-semibold">{chat.title}</h2>
-            <p className="mt-2 text-sm leading-6 text-tg-muted">TDLib авторизован, чат выбран, история сообщений еще загружается или недоступна локально.</p>
+        {messages.length === 0 && messagesLoading && (
+          <section className="flex items-center gap-3 rounded-2xl border border-tg-line bg-tg-panel p-4 shadow-telegram">
+            <Loader2 className="h-5 w-5 shrink-0 animate-spin text-tg-accent" />
+            <p className="text-sm leading-6 text-tg-muted">Загружаем историю из TDLib…</p>
+          </section>
+        )}
+        {messages.length === 0 && !messagesLoading && (
+          <section className="rounded-2xl border border-tg-line bg-tg-panel p-5 text-center shadow-telegram">
+            <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-tg-bg text-tg-accent">
+              <MessageCircle className="h-6 w-6" />
+            </div>
+            <h2 className="mt-3 font-semibold">{chat.title}</h2>
+            <p className="mt-2 text-sm leading-6 text-tg-muted">
+              История пока пуста или недоступна локально. Напишите первое сообщение — или попросите EPIC☠STAR подсказать черновик ответа.
+            </p>
           </section>
         )}
         {messages.map((message) => (
@@ -810,15 +995,56 @@ function TelegramChatWorkspace({
             <div className={`max-w-[78%] rounded-2xl px-4 py-2 shadow-telegram ${message.isOutgoing ? "bg-tg-active text-white" : "bg-tg-bubble text-tg-text"}`}>
               {message.authorSignature && <div className="mb-1 text-xs font-semibold text-tg-accent">{message.authorSignature}</div>}
               <div className="whitespace-pre-wrap break-words text-sm leading-6">{message.content || "Сообщение без текстового превью"}</div>
-              <div className={`mt-1 text-right text-[11px] ${message.isOutgoing ? "text-blue-100/75" : "text-tg-muted"}`}>{formatMessageTime(message.date)}</div>
+              <div className={`mt-1 text-right text-[11px] ${message.isOutgoing ? "text-white/70" : "text-tg-muted"}`}>{formatMessageTime(message.date)}</div>
             </div>
           </div>
         ))}
       </div>
 
-      {approvalNotice && <div className="rounded-xl border border-tg-line bg-tg-panel px-3 py-2 text-sm text-tg-muted">{approvalNotice}</div>}
+      {/* AI panel — EPIC☠STAR suggests, the operator sends. */}
+      <div className="rounded-2xl border border-tg-line bg-tg-panel/90 p-3 shadow-neon">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-sm font-semibold text-tg-text">
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-epic-ink ring-1 ring-tg-line epic-glow">
+              <EpicStarMark className="h-5 w-5" />
+            </span>
+            AI-ассистент
+          </div>
+          <span
+            className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+              brainOnline ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-tg-line bg-black/30 text-tg-muted"
+            }`}
+            title={aiStatus?.message ?? ""}
+          >
+            <span className={`h-2 w-2 rounded-full ${brainOnline ? "bg-emerald-400 animate-epic-pulse" : "bg-tg-muted"}`} />
+            {brainOnline ? `мозг онлайн · ${aiStatus?.provider ?? "ai"}${aiStatus?.model ? ` · ${aiStatus.model}` : ""}` : "мозг оффлайн"}
+          </span>
+        </div>
 
-      <div className="flex items-end gap-2 rounded-2xl bg-tg-panel p-2 shadow-telegram">
+        <button
+          onClick={onSuggest}
+          disabled={aiBusy}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-epic-neon to-epic-ember px-4 py-2.5 text-sm font-semibold text-white shadow-neon transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+          aria-label="Сгенерировать черновик ответа EPIC☠STAR"
+        >
+          {aiBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {aiBusy ? "EPIC☠STAR думает…" : "🤖 Подсказать ответ (EPIC☠STAR)"}
+        </button>
+        <p className="mt-2 text-center text-[11px] text-tg-muted">AI предлагает — отправляешь ты.</p>
+      </div>
+
+      {approvalNotice && (
+        <div
+          className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-sm ${
+            noticeIsError ? "border-epic-ember/40 bg-epic-deep/20 text-tg-text" : "border-tg-line bg-tg-panel text-tg-muted"
+          }`}
+        >
+          {noticeIsError ? <X className="mt-0.5 h-4 w-4 shrink-0 text-epic-neon" /> : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-tg-accent" />}
+          <span className="leading-6">{approvalNotice}</span>
+        </div>
+      )}
+
+      <div className="flex items-end gap-2 rounded-2xl border border-tg-line bg-tg-panel p-2 shadow-telegram">
         <button className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-tg-muted hover:bg-tg-hover hover:text-white" aria-label="Вложение">
           <Paperclip className="h-5 w-5" />
         </button>
@@ -826,14 +1052,26 @@ function TelegramChatWorkspace({
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           rows={1}
-          placeholder="Сообщение"
+          placeholder="Черновик ответа (можно отредактировать перед отправкой)"
           className="max-h-32 min-h-10 flex-1 resize-none rounded-xl bg-tg-bg px-4 py-2.5 text-sm leading-5 outline-none placeholder:text-tg-muted"
         />
-        <button onClick={onQueueDraft} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-tg-blue text-white hover:bg-tg-active" aria-label="Поставить в очередь отправки">
-          <Send className="h-5 w-5" />
+        <button
+          onClick={onSendApproved}
+          disabled={sendBusy || !draft.trim()}
+          className="flex h-10 shrink-0 items-center gap-2 rounded-xl bg-tg-blue px-3.5 text-sm font-semibold text-white shadow-neon hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label="Отправить в Telegram (подтверждение оператора)"
+        >
+          {sendBusy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+          <span className="hidden sm:inline">Отправить</span>
         </button>
       </div>
-      <div className="px-2 text-xs text-tg-muted">Безопасный MVP: кнопка отправки создает черновик на подтверждение, но не отправляет его в Telegram.</div>
+      <div className="flex items-start gap-2 px-2 text-xs text-tg-muted">
+        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-tg-accent" />
+        <span>
+          Approval-гейт: AI только предлагает черновик. Отправка в Telegram — исключительно по вашему клику «Отправить», автоотправки нет
+          (EPICGRAM_AI_SEND_MODE={aiStatus?.sendMode ?? "operator_approval_required"}).
+        </span>
+      </div>
     </div>
   );
 }
@@ -908,7 +1146,7 @@ function ItemWorkspace({
         <h2 className="mt-2 text-xl font-semibold">{item.title}</h2>
         <p className="mt-2 text-sm leading-6 text-tg-muted">{item.subtitle}</p>
       </section>
-      <section className="rounded-2xl bg-[#143236] p-4 shadow-telegram">
+      <section className="rounded-2xl border border-tg-line bg-[#1c1117] p-4 shadow-telegram">
         <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-tg-accent">
           <Database className="h-4 w-4" />
           Память
@@ -1067,14 +1305,17 @@ function AccountsWorkspace({ telegramStatus, telegramChats, onAuth }: { telegram
 function TelegramMenu({ onClose, onAuth }: { onClose: () => void; onAuth: () => void }) {
   return (
     <div className="absolute inset-y-0 left-0 z-20 w-full border-r border-tg-line bg-tg-panel shadow-telegram">
-      <div className="bg-gradient-to-br from-[#22364a] to-[#17212b] p-5">
-        <button onClick={onClose} className="mb-6 grid h-14 w-14 place-items-center rounded-full bg-tg-active text-lg font-bold">E</button>
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <div className="font-semibold tracking-wide">{BRAND_NAME}</div>
-            <div className="mt-1 text-sm text-tg-muted">Локальная AI-структура создана</div>
+      <div className="relative overflow-hidden bg-gradient-to-br from-[#2a0c16] to-[#101218] p-5">
+        <div className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:linear-gradient(rgba(255,59,92,.7)_1px,transparent_1px),linear-gradient(90deg,rgba(255,59,92,.7)_1px,transparent_1px)] [background-size:26px_26px]" />
+        <button onClick={onClose} className="relative mb-6 grid h-14 w-14 place-items-center rounded-2xl bg-epic-ink ring-1 ring-tg-line epic-glow" aria-label="Закрыть меню">
+          <EpicStarMark className="h-10 w-10" />
+        </button>
+        <div className="relative flex items-end justify-between gap-3">
+          <div className="min-w-0">
+            <div className="truncate text-lg font-bold tracking-wide epic-title">EPIC☠STAR</div>
+            <div className="mt-1 text-sm text-tg-muted">{BRAND_NAME} · DEEP INSIDE</div>
           </div>
-          <span className="rounded-full bg-tg-bg px-2 py-1 text-xs text-tg-muted">offline</span>
+          <span className="shrink-0 rounded-full border border-tg-line bg-tg-bg px-2 py-1 text-xs text-tg-muted">v3</span>
         </div>
       </div>
       <div className="border-b border-tg-line px-3 py-2">
@@ -1266,7 +1507,7 @@ function AuthPanel({
 function QrAuthState({ qrLink, qrDataUrl, requestQrAuth }: { qrLink: string; qrDataUrl: string; requestQrAuth: () => void }) {
   return (
     <div className="mt-5">
-      <div className="mx-auto grid h-56 w-56 place-items-center rounded-2xl bg-white p-5 text-[#17212b]">
+      <div className="mx-auto grid h-56 w-56 place-items-center rounded-2xl bg-white p-5 text-[#0a0b0f]">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         {qrDataUrl ? <img src={qrDataUrl} alt="Telegram QR authorization" className="h-48 w-48" /> : <QrCode className="h-40 w-40" />}
       </div>

@@ -331,6 +331,38 @@ export async function getTdlibMessages({ chatId, limit = 40 } = {}) {
   };
 }
 
+export async function sendTdlibMessage({ chatId, text } = {}) {
+  const cleanText = String(text ?? "").trim();
+  if (!chatId) throw new Error("chatId is required");
+  if (!cleanText) throw new Error("text is required");
+
+  const tdClient = await ensureClient();
+  const authorizationState = await getStableAuthorizationState(tdClient);
+  if (!READY_STATES.has(authorizationState?._)) {
+    return {
+      ok: false,
+      authorizationState,
+      message: "Telegram account is not authorized yet."
+    };
+  }
+
+  const sent = await tdClient.invoke({
+    _: "sendMessage",
+    chat_id: Number(chatId),
+    input_message_content: {
+      _: "inputMessageText",
+      text: { _: "formattedText", text: cleanText }
+    }
+  });
+
+  return {
+    ok: true,
+    authorizationState,
+    message: "Message sent to Telegram via TDLib.",
+    sentMessage: formatMessage(sent)
+  };
+}
+
 export async function getTdlibPhotoFile(fileId) {
   const numericFileId = Number(fileId);
   if (!Number.isFinite(numericFileId)) {

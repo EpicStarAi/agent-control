@@ -30,11 +30,10 @@
     "tdl": "^8.1.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^5.4.11",
     "@types/node": "^20.11.30",
     "@types/react": "^18.2.67",
     "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.19",
     "electron": "^42.4.0",
     "eslint": "^8.57.0",
@@ -42,9 +41,12 @@
     "playwright": "^1.60.0",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5.4.2"
+    "typescript": "^5.4.2",
+    "vite": "^5.4.11"
   },
   "optionalDependencies": {
-    "@prebuilt-tdlib/linux-x64-glibc": "^0.1008064.0"
+    "@prebuilt-tdlib/win32-x64": "^0.1008064.0",
+    "@prebuilt-tdlib/linux-x64-glibc": "^0.1008064.0",
+    "@prebuilt-tdlib/darwin-arm64": "^0.1008064.0"
   }
 }

@@ -167,6 +167,7 @@ export default function App() {
       </header>
 
       <main className="content">
+        <PetProjectBanner />
         {tab === 'agents' && <AgentsView agents={agents} stats={stats} setAgents={setAgents} />}
         {tab === 'ai' && <CopilotView messages={messages} command={command} setCommand={setCommand} sendCommand={sendCommand} />}
         {tab === 'stats' && <StatsView agents={agents} stats={stats} />}
@@ -179,6 +180,40 @@ export default function App() {
         <button className={tab === 'stats' ? 'active' : ''} onClick={() => setTab('stats')}><span>📊</span>СТАТИСТИКА</button>
         <button className={tab === 'system' ? 'active' : ''} onClick={() => setTab('system')}><span>⚙️</span>СИСТЕМА</button>
       </nav>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ненавязчивый промо-баннер пет-проекта EPIC☠STAR (мини-апп / сайт).
+// Только UI + ссылки. Никаких авто-рассылок и фоновых запросов. Закрывается и
+// запоминает выбор в localStorage. Ссылки настраиваются через VITE_EPICSTAR_*.
+// ─────────────────────────────────────────────────────────────────────────────
+const EPICSTAR_SITE = import.meta.env.VITE_EPICSTAR_URL || 'https://epicstar.fun';
+const EPICSTAR_BOT = import.meta.env.VITE_EPICSTAR_BOT || 'EpicStarBot';
+const EPICSTAR_TG = `https://t.me/${EPICSTAR_BOT}?startapp=epicgram`;
+
+function PetProjectBanner() {
+  const [hidden, setHidden] = useState(() => {
+    try { return localStorage.getItem('epicstar_promo_dismissed') === '1'; } catch { return false; }
+  });
+  if (hidden) return null;
+  function dismiss() {
+    try { localStorage.setItem('epicstar_promo_dismissed', '1'); } catch { /* ignore */ }
+    setHidden(true);
+  }
+  return (
+    <div className="pet-banner" role="complementary" aria-label="EPIC STAR promo">
+      <span className="pet-banner__icon">⭐</span>
+      <div className="pet-banner__copy">
+        <strong>EPIC☠STAR — приложение / мини-апп</strong>
+        <span>Дерзкий AI-компаньон и тапер. Открой в Telegram или на сайте.</span>
+      </div>
+      <div className="pet-banner__cta">
+        <a className="pet-banner__btn primary" href={EPICSTAR_TG} target="_blank" rel="noopener noreferrer">Открыть мини-апп</a>
+        <a className="pet-banner__btn" href={EPICSTAR_SITE} target="_blank" rel="noopener noreferrer">epicstar.fun</a>
+      </div>
+      <button className="pet-banner__close" onClick={dismiss} aria-label="Скрыть">×</button>
     </div>
   );
 }

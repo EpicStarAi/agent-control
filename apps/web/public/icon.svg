@@ -2,19 +2,19 @@
   <defs>
     <filter id="glow" x="-35%" y="-35%" width="170%" height="170%">
       <feGaussianBlur stdDeviation="8" result="blur"/>
-      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.36 0 0 0 0 1 0 0 0 0 0.62 0 0 0 .8 0"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 1 0 0 0 0 0.18 0 0 0 0 0.33 0 0 0 .8 0"/>
       <feBlend in="SourceGraphic"/>
     </filter>
   </defs>
-  <rect width="512" height="512" rx="112" fill="#05080c"/>
-  <path d="M80 112h352M80 400h352M112 80v352M400 80v352" stroke="#143236" stroke-width="10" opacity=".55"/>
-  <circle cx="256" cy="248" r="168" fill="#101821" stroke="#64ff9a" stroke-width="10" filter="url(#glow)"/>
-  <path d="M256 92 92 184l164 236 164-236L256 92Z" fill="none" stroke="#2b5278" stroke-width="12" opacity=".8"/>
-  <path d="M168 226c0-59 38-104 88-104s88 45 88 104c0 40-15 67-39 84v55c0 13-10 23-23 23h-52c-13 0-23-10-23-23v-55c-24-17-39-44-39-84Z" fill="#64ff9a"/>
-  <circle cx="220" cy="230" r="28" fill="#05080c"/>
-  <circle cx="292" cy="230" r="28" fill="#05080c"/>
-  <path d="m256 263-21 42h42l-21-42Z" fill="#05080c"/>
-  <path d="M222 337h68M238 337v34M256 337v34M274 337v34" stroke="#05080c" stroke-width="12" stroke-linecap="round"/>
-  <path d="M122 298 98 414l118-60M390 298l24 116-118-60" fill="none" stroke="#64ff9a" stroke-width="15" stroke-linecap="round" stroke-linejoin="round" opacity=".9"/>
-  <path d="M120 454h272" stroke="#64ff9a" stroke-width="12" stroke-linecap="round" opacity=".8"/>
+  <rect width="512" height="512" rx="112" fill="#0a0b0f"/>
+  <path d="M80 112h352M80 400h352M112 80v352M400 80v352" stroke="#2a161d" stroke-width="10" opacity=".55"/>
+  <circle cx="256" cy="248" r="168" fill="#15101a" stroke="#ff2d55" stroke-width="10" filter="url(#glow)"/>
+  <path d="M256 92 92 184l164 236 164-236L256 92Z" fill="none" stroke="#7a0f22" stroke-width="12" opacity=".8"/>
+  <path d="M168 226c0-59 38-104 88-104s88 45 88 104c0 40-15 67-39 84v55c0 13-10 23-23 23h-52c-13 0-23-10-23-23v-55c-24-17-39-44-39-84Z" fill="#ff2d55"/>
+  <circle cx="220" cy="230" r="28" fill="#0a0b0f"/>
+  <circle cx="292" cy="230" r="28" fill="#0a0b0f"/>
+  <path d="m256 263-21 42h42l-21-42Z" fill="#0a0b0f"/>
+  <path d="M222 337h68M238 337v34M256 337v34M274 337v34" stroke="#0a0b0f" stroke-width="12" stroke-linecap="round"/>
+  <path d="M122 298 98 414l118-60M390 298l24 116-118-60" fill="none" stroke="#ff2d55" stroke-width="15" stroke-linecap="round" stroke-linejoin="round" opacity=".9"/>
+  <path d="M120 454h272" stroke="#ff2d55" stroke-width="12" stroke-linecap="round" opacity=".8"/>
 </svg>

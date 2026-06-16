@@ -1,6 +1,8 @@
 import http from "node:http";
 import { loadLocalEnv } from "./env.mjs";
 import { getAiStatus } from "./ai-runtime.mjs";
+import { generateDraftReply } from "./ai-chat.mjs";
+import { getRecentMemory } from "./memory-store.mjs";
 import {
   getConfig,
   getChats,
@@ -11,7 +13,8 @@ import {
   requestPhoneAuth,
   requestQrAuth,
   resetAuth,
-  verifyCode
+  verifyCode,
+  sendMessage
 } from "./telegram-runtime.mjs";
 
 await loadLocalEnv();
@@ -57,6 +60,26 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === "GET" && url.pathname === "/ai/status") {
       return send(response, 200, getAiStatus());
+    }
+    if (request.method === "POST" && url.pathname === "/ai/suggest") {
+      const payload = await readJson(request);
+      const result = await generateDraftReply({
+        conversationId: payload?.conversationId ?? payload?.chatId,
+        chatTitle: payload?.chatTitle,
+        history: Array.isArray(payload?.history) ? payload.history : [],
+        instruction: payload?.instruction
+      });
+      return send(response, result.ok ? 200 : result.status ?? 502, result);
+    }
+    if (request.method === "GET" && url.pathname === "/ai/memory") {
+      const conversationId = url.searchParams.get("conversationId") ?? url.searchParams.get("chatId");
+      const limit = Number(url.searchParams.get("limit") ?? 20);
+      const entries = await getRecentMemory(conversationId, Number.isFinite(limit) ? limit : 20);
+      return send(response, 200, { conversationId, count: entries.length, entries });
+    }
+    if (request.method === "POST" && url.pathname === "/telegram/send") {
+      const result = await sendMessage(await readJson(request));
+      return send(response, result.status, result.body);
     }
     if (request.method === "GET" && url.pathname === "/telegram/status") {
       return send(response, 200, await getStatus());
