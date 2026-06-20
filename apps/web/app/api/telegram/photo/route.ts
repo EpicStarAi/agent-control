@@ -4,7 +4,10 @@ const API_BASE_URL = process.env.EPICGRAM_API_BASE_URL ?? "http://127.0.0.1:8788
 
 export async function GET(request: NextRequest) {
   const fileId = request.nextUrl.searchParams.get("fileId") ?? "";
-  const response = await fetch(`${API_BASE_URL}/telegram/photo?fileId=${encodeURIComponent(fileId)}`, {
+  const accountId = request.nextUrl.searchParams.get("accountId");
+  const params = new URLSearchParams({ fileId });
+  if (accountId) params.set("accountId", accountId);
+  const response = await fetch(`${API_BASE_URL}/telegram/photo?${params.toString()}`, {
     cache: "no-store"
   });
   const body = await response.arrayBuffer();
