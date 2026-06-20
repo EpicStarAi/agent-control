@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, copyFile, open } from "node:fs/promises";
 import path from "node:path";
 import QRCode from "qrcode";
 import {
@@ -126,19 +126,43 @@ function withStateLock(task) {
   return run;
 }
 
+// PHASE O: crash-safe JSON write. Writes to a temp file, fsyncs it, backs up the
+// current good file to <file>.bak, then atomically renames the temp over the
+// target. A crash mid-write can only damage the temp file; the real file is
+// always either the previous or the new complete version — never half-written.
+async function atomicWriteJson(targetFile, dataString) {
+  await mkdir(path.dirname(targetFile), { recursive: true });
+  const tmpFile = `${targetFile}.tmp`;
+  const handle = await open(tmpFile, "w");
+  try {
+    await handle.writeFile(dataString, "utf8");
+    try { await handle.sync(); } catch { /* fsync unsupported on this fs — best effort */ }
+  } finally {
+    await handle.close();
+  }
+  try { await copyFile(targetFile, `${targetFile}.bak`); } catch { /* no prior good file to back up */ }
+  await rename(tmpFile, targetFile);
+}
+
 async function readState() {
   try {
     const raw = await readFile(stateFile, "utf8");
     return normalizeState(JSON.parse(raw));
   } catch {
-    return normalizeState({ ...initialState, updatedAt: now() });
+    // PHASE O: main state missing/corrupt -> try the .bak backup before falling
+    // back to a fresh initial state (which would otherwise drop the accounts).
+    try {
+      const rawBak = await readFile(`${stateFile}.bak`, "utf8");
+      return normalizeState(JSON.parse(rawBak));
+    } catch {
+      return normalizeState({ ...initialState, updatedAt: now() });
+    }
   }
 }
 
 async function saveState(nextState) {
-  await mkdir(stateDir, { recursive: true });
   const state = normalizeState({ ...nextState, updatedAt: now() });
-  await writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  await atomicWriteJson(stateFile, `${JSON.stringify(state, null, 2)}\n`);
   return state;
 }
 
@@ -322,6 +346,25 @@ export async function removeAccountSlot(payload) {
     message: "Слот Telegram-аккаунта удалён."
   });
   return { status: 200, body: { ...saved, method: "account_remove", ...configDiagnostics(nextActive) } };
+  });
+}
+
+// PHASE O: explicit, opt-in maintenance. Removes ONLY stale unauthorized slots
+// (not "ready", no displayName, and not the active account). NEVER runs
+// automatically and NEVER removes an authorized account. Not wired to any route;
+// call deliberately from a maintenance script if needed.
+export async function cleanupStaleSlots() {
+  return withStateLock(async () => {
+    const state = normalizeState(await readState());
+    const kept = state.accounts.filter((slot) =>
+      slot.status === "ready" || Boolean(slot.displayName) || slot.slotId === state.activeAccountId
+    );
+    const removed = state.accounts.length - kept.length;
+    if (removed === 0) {
+      return { status: 200, body: { ...state, method: "cleanup", removed: 0, message: "Нет устаревших слотов для очистки." } };
+    }
+    const saved = await saveState({ ...state, accounts: kept });
+    return { status: 200, body: { ...saved, method: "cleanup", removed, message: `Очищено устаревших waiting_auth слотов: ${removed}.` } };
   });
 }
 
@@ -827,8 +870,7 @@ async function appendOutbox(entry) {
     log = [];
   }
   log.push({ ...entry, at: now() });
-  await mkdir(stateDir, { recursive: true });
-  await writeFile(outboxFile, `${JSON.stringify(log.slice(-500), null, 2)}\n`, "utf8");
+  await atomicWriteJson(outboxFile, `${JSON.stringify(log.slice(-500), null, 2)}\n`);
   });
 }
 
