@@ -1,5 +1,5 @@
-import { EpicGramShell } from "@/components/EpicGramShell";
+import { AgentRegistry } from "@/components/AgentRegistry";
 
 export default function AgentsPage() {
-  return <EpicGramShell section="agents" />;
+  return <AgentRegistry />;
 }
