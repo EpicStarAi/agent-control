@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   checkTdlibAuthenticationCode,
+  checkTdlibAuthenticationPassword,
   getTdlibChats,
   getTdlibMessages,
   getTdlibPhotoFile,
@@ -20,8 +21,10 @@ const stateFile = path.join(stateDir, "telegram-runtime.json");
 const initialState = {
   runtime: "not_configured",
   mode: "local_backend",
+  activeAccountId: "main",
   authorizationState: "backend_ready",
-  accounts: [],
+  accounts: [{ slotId: "main", label: "Аккаунт 1", status: "waiting_auth" }],
+  account: null,
   qrLink: null,
   phoneMasked: null,
   updatedAt: null,
@@ -38,6 +41,68 @@ function maskPhone(phoneNumber) {
   return `${clean.slice(0, 4)}***${clean.slice(-2)}`;
 }
 
+function safeAccountId(accountId = "main") {
+  const raw = String(accountId || "main").trim();
+  if (raw === "undefined" || raw === "null") return "main";
+  return raw.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "main";
+}
+
+function nextAccountLabel(accounts) {
+  return `Аккаунт ${Array.isArray(accounts) ? accounts.length + 1 : 1}`;
+}
+
+function normalizeAccountSlot(slot, fallbackId = "main", index = 0) {
+  const slotId = safeAccountId(slot?.slotId ?? slot?.id ?? fallbackId);
+  return {
+    slotId,
+    id: slot?.id ?? null,
+    label: slot?.label ?? slot?.displayName ?? `Аккаунт ${index + 1}`,
+    displayName: slot?.displayName ?? null,
+    username: slot?.username ?? null,
+    phoneMasked: slot?.phoneMasked ?? null,
+    status: slot?.status ?? (slot?.displayName ? "ready" : "waiting_auth"),
+    authorizationState: slot?.authorizationState ?? null,
+    active: false
+  };
+}
+
+function normalizeState(rawState) {
+  const merged = { ...initialState, ...rawState };
+  const rawAccounts = Array.isArray(merged.accounts) && merged.accounts.length > 0 ? merged.accounts : initialState.accounts;
+  const accounts = rawAccounts.map((slot, index) => normalizeAccountSlot(slot, index === 0 ? "main" : `account-${index + 1}`, index));
+  const activeAccountId = safeAccountId(merged.activeAccountId ?? accounts[0]?.slotId ?? "main");
+  const hasActive = accounts.some((slot) => slot.slotId === activeAccountId);
+  const normalizedAccounts = (hasActive ? accounts : [{ ...normalizeAccountSlot(null, activeAccountId, 0), label: nextAccountLabel(accounts) }, ...accounts])
+    .map((slot) => ({ ...slot, active: slot.slotId === activeAccountId }));
+  const activeAccount = normalizedAccounts.find((slot) => slot.slotId === activeAccountId) ?? normalizedAccounts[0];
+
+  return {
+    ...merged,
+    activeAccountId,
+    accounts: normalizedAccounts,
+    account: activeAccount?.displayName ? activeAccount : merged.account ?? null
+  };
+}
+
+function upsertAccountSlot(state, accountId, patch = {}) {
+  const id = safeAccountId(accountId);
+  const normalized = normalizeState(state);
+  const existing = normalized.accounts.find((slot) => slot.slotId === id);
+  const nextSlot = {
+    ...(existing ?? normalizeAccountSlot(null, id, normalized.accounts.length)),
+    ...patch,
+    slotId: id
+  };
+  const accounts = existing
+    ? normalized.accounts.map((slot) => (slot.slotId === id ? nextSlot : slot))
+    : [...normalized.accounts, nextSlot];
+  return normalizeState({ ...normalized, accounts });
+}
+
+function accountIdFromPayload(payload, state) {
+  return safeAccountId(payload?.accountId ?? state?.activeAccountId ?? "main");
+}
+
 function configuredValue(value) {
   if (!value) return false;
   const normalized = String(value).trim();
@@ -47,18 +112,31 @@ function configuredValue(value) {
   return true;
 }
 
+// PHASE M (RISK-1): serialize every state transaction. The whole
+// read -> mutate -> write sequence of each mutating export runs inside this
+// lock, so concurrent requests can never interleave and lose updates / corrupt
+// the account list. Tasks run strictly one-at-a-time in arrival order; a failing
+// task does not break the chain for the next one. Read-only paths (getPhoto)
+// do not persist and so are intentionally left lock-free.
+let stateMutationChain = Promise.resolve();
+function withStateLock(task) {
+  const run = stateMutationChain.then(task, task);
+  stateMutationChain = run.then(() => undefined, () => undefined);
+  return run;
+}
+
 async function readState() {
   try {
     const raw = await readFile(stateFile, "utf8");
-    return { ...initialState, ...JSON.parse(raw) };
+    return normalizeState(JSON.parse(raw));
   } catch {
-    return { ...initialState, updatedAt: now() };
+    return normalizeState({ ...initialState, updatedAt: now() });
   }
 }
 
 async function saveState(nextState) {
   await mkdir(stateDir, { recursive: true });
-  const state = { ...nextState, updatedAt: now() };
+  const state = normalizeState({ ...nextState, updatedAt: now() });
   await writeFile(stateFile, `${JSON.stringify(state, null, 2)}\n`, "utf8");
   return state;
 }
@@ -81,7 +159,7 @@ function notConfiguredMessage() {
   return `TDLib backend is reachable, but real Telegram login is blocked until this local config is set: ${missing.join(", ")}.`;
 }
 
-function configDiagnostics() {
+function configDiagnostics(accountId = "main") {
   return {
     tdlibConfigured: tdlibConfigured(),
     missingConfig: missingTdlibConfig(),
@@ -89,7 +167,7 @@ function configDiagnostics() {
     apiIdPresent: configuredValue(process.env.TELEGRAM_API_ID),
     apiHashPresent: configuredValue(process.env.TELEGRAM_API_HASH),
     databaseKeyPresent: configuredValue(process.env.EPICGRAM_TDLIB_DATABASE_KEY),
-    adapter: getTdlibAdapterStatus()
+    adapter: getTdlibAdapterStatus(accountId)
   };
 }
 
@@ -99,17 +177,24 @@ function isReadyAuthorizationState(authorizationState) {
 
 async function syncTdlibState(state) {
   if (!tdlibConfigured()) return state;
+  const accountId = safeAccountId(state.activeAccountId);
 
   try {
-    const snapshot = await getTdlibSessionSnapshot();
+    const snapshot = await getTdlibSessionSnapshot(accountId);
     const authorizationState = snapshot.authorizationState?._ ?? state.authorizationState;
+    const nextState = upsertAccountSlot(state, accountId, {
+      ...(snapshot.account ?? {}),
+      label: snapshot.account?.displayName ?? state.accounts.find((slot) => slot.slotId === accountId)?.label ?? "Аккаунт",
+      status: isReadyAuthorizationState(authorizationState) ? "ready" : "waiting_auth",
+      authorizationState
+    });
 
     if (isReadyAuthorizationState(authorizationState)) {
       return saveState({
-        ...state,
+        ...nextState,
         runtime: "ready",
         authorizationState,
-        accounts: snapshot.account ? [snapshot.account] : state.accounts,
+        account: snapshot.account ?? nextState.account,
         qrLink: null,
         message: "Telegram аккаунт авторизован."
       });
@@ -117,10 +202,10 @@ async function syncTdlibState(state) {
 
     if (authorizationState && authorizationState !== state.authorizationState) {
       return saveState({
-        ...state,
+        ...nextState,
         runtime: "waiting_auth",
         authorizationState,
-        message: state.message
+        message: nextState.message
       });
     }
   } catch {
@@ -131,38 +216,130 @@ async function syncTdlibState(state) {
 }
 
 export async function getStatus() {
+  return withStateLock(async () => {
   const state = await syncTdlibState(await readState());
+  const accountId = safeAccountId(state.activeAccountId);
+  const activeAccount = state.accounts.find((slot) => slot.slotId === accountId) ?? null;
+  const ready = activeAccount?.status === "ready" || isReadyAuthorizationState(state.authorizationState);
   if (!tdlibConfigured()) {
     return {
       ...state,
       runtime: "not_configured",
-      ...configDiagnostics(),
+      ...configDiagnostics(accountId),
       message: notConfiguredMessage()
     };
   }
 
   return {
     ...state,
-    runtime: state.accounts.length > 0 || isReadyAuthorizationState(state.authorizationState) ? "ready" : "waiting_auth",
-    ...configDiagnostics(),
-    message: state.accounts.length > 0 || isReadyAuthorizationState(state.authorizationState)
+    account: activeAccount?.displayName ? activeAccount : state.account,
+    runtime: ready ? "ready" : "waiting_auth",
+    ...configDiagnostics(accountId),
+    message: ready
       ? "Telegram аккаунт авторизован."
       : "TDLib configuration is present. Runtime adapter is ready for TDLib client wiring."
   };
+  });
+}
+
+export async function createAccountSlot() {
+  return withStateLock(async () => {
+  const state = await readState();
+  const accountId = `account-${Date.now().toString(36)}`;
+  const nextState = upsertAccountSlot(
+    {
+      ...state,
+      activeAccountId: accountId,
+      qrLink: null,
+      phoneMasked: null,
+      authorizationState: "backend_ready"
+    },
+    accountId,
+    {
+      label: nextAccountLabel(state.accounts),
+      status: "waiting_auth",
+      authorizationState: "backend_ready"
+    }
+  );
+  const saved = await saveState({
+    ...nextState,
+    message: "Создан новый слот Telegram-аккаунта. Можно авторизовать QR или номером."
+  });
+  return { status: 201, body: { ...saved, method: "account_new", ...configDiagnostics(accountId) } };
+  });
+}
+
+export async function selectAccountSlot(payload) {
+  return withStateLock(async () => {
+  const state = await readState();
+  const accountId = accountIdFromPayload(payload, state);
+  const nextState = upsertAccountSlot(
+    {
+      ...state,
+      activeAccountId: accountId,
+      qrLink: null,
+      phoneMasked: null,
+      authorizationState: "backend_ready"
+    },
+    accountId,
+    {
+      status: state.accounts.find((slot) => slot.slotId === accountId)?.status ?? "waiting_auth"
+    }
+  );
+  const saved = await saveState({ ...nextState, message: "Активный Telegram-аккаунт переключен." });
+  return { status: 200, body: { ...saved, method: "account_select", ...configDiagnostics(accountId) } };
+  });
+}
+
+export async function removeAccountSlot(payload) {
+  return withStateLock(async () => {
+  const state = await readState();
+  const normalized = normalizeState(state);
+  const accountId = safeAccountId(payload?.accountId ?? normalized.activeAccountId ?? "main");
+  const remaining = normalized.accounts.filter((slot) => slot.slotId !== accountId);
+  if (remaining.length === normalized.accounts.length) {
+    return { status: 404, body: { ...normalized, method: "account_remove", message: "Такого слота нет." } };
+  }
+  if (remaining.length === 0) {
+    return { status: 400, body: { ...normalized, method: "account_remove", message: "Нельзя удалить единственный аккаунт." } };
+  }
+  // Actually wipe the TDLib session/database for this slot so it does not
+  // reappear on the next status sync.
+  try {
+    await resetTdlibAuthSession({ accountId, deleteDatabase: true });
+  } catch {
+    // Still remove the slot from local state even if TDLib is already stopped.
+  }
+  const wasActive = normalized.activeAccountId === accountId;
+  const nextActive = wasActive ? remaining[0].slotId : normalized.activeAccountId;
+  const saved = await saveState({
+    ...normalized,
+    accounts: remaining,
+    activeAccountId: nextActive,
+    qrLink: null,
+    phoneMasked: null,
+    message: "Слот Telegram-аккаунта удалён."
+  });
+  return { status: 200, body: { ...saved, method: "account_remove", ...configDiagnostics(nextActive) } };
+  });
 }
 
 export async function getConfig() {
+  const state = await readState();
+  const accountId = safeAccountId(state.activeAccountId);
   return {
     runtime: tdlibConfigured() ? "config_ready" : "not_configured",
-    ...configDiagnostics(),
+    ...configDiagnostics(accountId),
     message: tdlibConfigured()
       ? "Local TDLib config is present. Native TDLib adapter is the next required layer."
       : notConfiguredMessage()
   };
 }
 
-export async function getChats() {
+export async function getChats({ accountId: requestedAccountId } = {}) {
+  return withStateLock(async () => {
   const state = await syncTdlibState(await readState());
+  const accountId = safeAccountId(requestedAccountId ?? state.activeAccountId);
   if (!tdlibConfigured()) {
     return {
       status: 503,
@@ -177,17 +354,25 @@ export async function getChats() {
   }
 
   try {
-    const result = await getTdlibChats({ limit: 40 });
+    const result = await getTdlibChats({ accountId, limit: 40 });
+    const nextState = result.account
+      ? await saveState(upsertAccountSlot(state, accountId, {
+          ...result.account,
+          label: result.account.displayName,
+          status: "ready",
+          authorizationState: result.authorizationState?._
+        }))
+      : state;
     return {
       status: isReadyAuthorizationState(result.authorizationState?._) ? 200 : 401,
       body: {
-        ...state,
+        ...nextState,
         runtime: isReadyAuthorizationState(result.authorizationState?._) ? "ready" : "waiting_auth",
         authorizationState: result.authorizationState?._ ?? state.authorizationState,
-        account: result.account ?? state.accounts[0] ?? null,
+        account: result.account ?? nextState.account ?? null,
         chats: result.chats,
         chatsCount: result.chats.length,
-        adapter: getTdlibAdapterStatus(),
+        adapter: getTdlibAdapterStatus(accountId),
         message: result.message
       }
     };
@@ -198,15 +383,18 @@ export async function getChats() {
         ...state,
         chats: [],
         chatsCount: 0,
-        adapter: getTdlibAdapterStatus(),
+        adapter: getTdlibAdapterStatus(accountId),
         message: error instanceof Error ? error.message : "TDLib chat loading failed."
       }
     };
   }
+  });
 }
 
-export async function getMessages({ chatId }) {
+export async function getMessages({ accountId: requestedAccountId, chatId }) {
+  return withStateLock(async () => {
   const state = await syncTdlibState(await readState());
+  const accountId = safeAccountId(requestedAccountId ?? state.activeAccountId);
   if (!chatId) {
     return {
       status: 400,
@@ -232,7 +420,7 @@ export async function getMessages({ chatId }) {
   }
 
   try {
-    const result = await getTdlibMessages({ chatId, limit: 40 });
+    const result = await getTdlibMessages({ accountId, chatId, limit: 40 });
     return {
       status: isReadyAuthorizationState(result.authorizationState?._) ? 200 : 401,
       body: {
@@ -242,7 +430,7 @@ export async function getMessages({ chatId }) {
         messages: result.messages,
         messagesCount: result.messages.length,
         totalCount: result.totalCount,
-        adapter: getTdlibAdapterStatus(),
+        adapter: getTdlibAdapterStatus(accountId),
         message: result.message
       }
     };
@@ -253,14 +441,17 @@ export async function getMessages({ chatId }) {
         ...state,
         messages: [],
         messagesCount: 0,
-        adapter: getTdlibAdapterStatus(),
+        adapter: getTdlibAdapterStatus(accountId),
         message: error instanceof Error ? error.message : "TDLib message loading failed."
       }
     };
   }
+  });
 }
 
-export async function getPhoto({ fileId }) {
+export async function getPhoto({ accountId: requestedAccountId, fileId }) {
+  const state = await readState();
+  const accountId = safeAccountId(requestedAccountId ?? state.activeAccountId);
   if (!fileId) {
     return {
       status: 400,
@@ -270,7 +461,7 @@ export async function getPhoto({ fileId }) {
   }
 
   try {
-    return await getTdlibPhotoFile(fileId);
+    return await getTdlibPhotoFile(fileId, accountId);
   } catch (error) {
     return {
       status: 500,
@@ -280,8 +471,10 @@ export async function getPhoto({ fileId }) {
   }
 }
 
-export async function requestQrAuth() {
+export async function requestQrAuth(payload = {}) {
+  return withStateLock(async () => {
   const state = await readState();
+  const accountId = accountIdFromPayload(payload, state);
   if (!tdlibConfigured()) {
     return {
       status: 503,
@@ -296,7 +489,7 @@ export async function requestQrAuth() {
     };
   }
 
-  const adapterStatus = getTdlibAdapterStatus();
+  const adapterStatus = getTdlibAdapterStatus(accountId);
   if (
     state.qrLink &&
     adapterStatus.nativeBindingLoaded &&
@@ -315,22 +508,26 @@ export async function requestQrAuth() {
   }
 
   try {
-    const result = await requestTdlibQrAuth();
-    const nextState = await saveState({
+    const result = await requestTdlibQrAuth(accountId);
+    const nextState = await saveState(upsertAccountSlot({
       ...state,
+      activeAccountId: accountId,
       runtime: isReadyAuthorizationState(result.authorizationState?._) ? "ready" : "waiting_auth",
       authorizationState: result.authorizationState?._ ?? "wait_other_device_confirmation",
-      accounts: result.account ? [result.account] : state.accounts,
       qrLink: result.qrLink ?? null,
       message: result.message
-    });
+    }, accountId, {
+      status: isReadyAuthorizationState(result.authorizationState?._) ? "ready" : "waiting_auth",
+      authorizationState: result.authorizationState?._ ?? "wait_other_device_confirmation",
+      ...(result.account ?? {})
+    }));
 
     return {
       status: 202,
       body: {
         ...nextState,
         method: "qr",
-        adapter: getTdlibAdapterStatus()
+        adapter: getTdlibAdapterStatus(accountId)
       }
     };
   } catch (error) {
@@ -340,20 +537,23 @@ export async function requestQrAuth() {
         ...state,
         method: "qr",
         runtime: "error",
-        adapter: getTdlibAdapterStatus(),
+        adapter: getTdlibAdapterStatus(accountId),
         message: error instanceof Error ? error.message : "TDLib QR authorization failed."
       }
     };
   }
+  });
 }
 
 export async function requestPhoneAuth(payload) {
+  return withStateLock(async () => {
   const phoneNumber = payload?.phoneNumber;
   if (!phoneNumber) {
     return { status: 400, body: { message: "phoneNumber is required" } };
   }
 
   const state = await readState();
+  const accountId = accountIdFromPayload(payload, state);
   const phoneMasked = maskPhone(phoneNumber);
 
   if (!tdlibConfigured()) {
@@ -372,22 +572,27 @@ export async function requestPhoneAuth(payload) {
   }
 
   try {
-    const result = await requestTdlibPhoneAuth(phoneNumber, { resetCurrentFlow: true });
-    const nextState = await saveState({
+    const result = await requestTdlibPhoneAuth(phoneNumber, { accountId, resetCurrentFlow: true });
+    const nextState = await saveState(upsertAccountSlot({
       ...state,
+      activeAccountId: accountId,
       runtime: isReadyAuthorizationState(result.authorizationState?._) ? "ready" : "waiting_auth",
       authorizationState: result.authorizationState?._ ?? "wait_code",
-      accounts: result.account ? [result.account] : state.accounts,
       phoneMasked,
       message: result.message
-    });
+    }, accountId, {
+      phoneMasked,
+      status: isReadyAuthorizationState(result.authorizationState?._) ? "ready" : "waiting_auth",
+      authorizationState: result.authorizationState?._ ?? "wait_code",
+      ...(result.account ?? {})
+    }));
 
     return {
       status: 202,
       body: {
         ...nextState,
         method: "phone",
-        adapter: getTdlibAdapterStatus()
+        adapter: getTdlibAdapterStatus(accountId)
       }
     };
   } catch (error) {
@@ -398,20 +603,23 @@ export async function requestPhoneAuth(payload) {
         method: "phone",
         runtime: "error",
         phoneMasked,
-        adapter: getTdlibAdapterStatus(),
+        adapter: getTdlibAdapterStatus(accountId),
         message: error instanceof Error ? error.message : "TDLib phone authorization failed."
       }
     };
   }
+  });
 }
 
 export async function verifyCode(payload) {
+  return withStateLock(async () => {
   const code = payload?.code;
   if (!code) {
     return { status: 400, body: { message: "code is required" } };
   }
 
   const state = await readState();
+  const accountId = accountIdFromPayload(payload, state);
   if (!tdlibConfigured()) {
     return {
       status: 503,
@@ -426,21 +634,25 @@ export async function verifyCode(payload) {
   }
 
   try {
-    const result = await checkTdlibAuthenticationCode(code);
-    const nextState = await saveState({
+    const result = await checkTdlibAuthenticationCode(code, accountId);
+    const nextState = await saveState(upsertAccountSlot({
       ...state,
+      activeAccountId: accountId,
       runtime: isReadyAuthorizationState(result.authorizationState?._) ? "ready" : "waiting_auth",
       authorizationState: result.authorizationState?._ ?? "wait_code",
-      accounts: result.account ? [result.account] : state.accounts,
       qrLink: isReadyAuthorizationState(result.authorizationState?._) ? null : state.qrLink,
       message: result.message
-    });
+    }, accountId, {
+      status: isReadyAuthorizationState(result.authorizationState?._) ? "ready" : "waiting_auth",
+      authorizationState: result.authorizationState?._ ?? "wait_code",
+      ...(result.account ?? {})
+    }));
 
     return {
       status: 202,
       body: {
         ...nextState,
-        adapter: getTdlibAdapterStatus(),
+        adapter: getTdlibAdapterStatus(accountId),
         message: result.message
       }
     };
@@ -450,59 +662,136 @@ export async function verifyCode(payload) {
       body: {
         ...state,
         runtime: "error",
-        adapter: getTdlibAdapterStatus(),
+        adapter: getTdlibAdapterStatus(accountId),
         message: error instanceof Error ? error.message : "TDLib code verification failed."
       }
     };
   }
+  });
 }
 
-export async function logout() {
+export async function verify2fa(payload) {
+  return withStateLock(async () => {
+  const password = payload?.password;
+  if (!password) {
+    return { status: 400, body: { message: "password is required" } };
+  }
+
+  const state = await readState();
+  const accountId = accountIdFromPayload(payload, state);
+  if (!tdlibConfigured()) {
+    return {
+      status: 503,
+      body: {
+        ...state,
+        runtime: "not_configured",
+        tdlibConfigured: false,
+        missingConfig: missingTdlibConfig(),
+        message: notConfiguredMessage()
+      }
+    };
+  }
+
   try {
-    await logOutTdlib();
+    const result = await checkTdlibAuthenticationPassword(password, accountId);
+    const ready = isReadyAuthorizationState(result.authorizationState?._);
+    const nextState = await saveState(upsertAccountSlot({
+      ...state,
+      activeAccountId: accountId,
+      runtime: ready ? "ready" : "waiting_auth",
+      authorizationState: result.authorizationState?._ ?? "wait_password",
+      qrLink: ready ? null : state.qrLink,
+      message: result.message
+    }, accountId, {
+      status: ready ? "ready" : "waiting_auth",
+      authorizationState: result.authorizationState?._ ?? "wait_password",
+      ...(result.account ?? {})
+    }));
+
+    return {
+      status: 202,
+      body: {
+        ...nextState,
+        adapter: getTdlibAdapterStatus(accountId),
+        message: result.message
+      }
+    };
+  } catch (error) {
+    return {
+      status: 500,
+      body: {
+        ...state,
+        runtime: "error",
+        adapter: getTdlibAdapterStatus(accountId),
+        message: error instanceof Error ? error.message : "TDLib 2FA verification failed."
+      }
+    };
+  }
+  });
+}
+
+export async function logout(payload = {}) {
+  return withStateLock(async () => {
+  const currentState = await readState();
+  const accountId = accountIdFromPayload(payload, currentState);
+  try {
+    await logOutTdlib(accountId);
   } catch {
     // Continue clearing local runtime state even if TDLib is already stopped.
   }
 
-  const state = await saveState({
-    ...initialState,
+  const state = await saveState(upsertAccountSlot({
+    ...currentState,
     runtime: tdlibConfigured() ? "waiting_auth" : "not_configured",
     authorizationState: "backend_ready",
+    qrLink: null,
+    phoneMasked: null,
     message: tdlibConfigured() ? "Local runtime state cleared." : notConfiguredMessage()
-  });
+  }, accountId, { status: "waiting_auth", authorizationState: "backend_ready", displayName: null, username: null }));
 
   return { status: 200, body: state };
+  });
 }
 
-export async function resetAuth() {
+export async function resetAuth(payload = {}) {
+  return withStateLock(async () => {
+  const currentState = await readState();
+  const accountId = accountIdFromPayload(payload, currentState);
   try {
-    await resetTdlibAuthSession({ deleteDatabase: true });
+    await resetTdlibAuthSession({ accountId, deleteDatabase: true });
   } catch {
     // Local runtime state still needs to be cleared even if TDLib is already stopped.
   }
 
-  const state = await saveState({
-    ...initialState,
+  const state = await saveState(upsertAccountSlot({
+    ...currentState,
     runtime: tdlibConfigured() ? "waiting_auth" : "not_configured",
     authorizationState: tdlibConfigured() ? "backend_ready" : "not_configured",
+    qrLink: null,
+    phoneMasked: null,
     message: tdlibConfigured()
       ? "Авторизация сброшена. Можно запросить новый QR или код по номеру."
       : notConfiguredMessage()
-  });
+  }, accountId, { status: "waiting_auth", authorizationState: "backend_ready", displayName: null, username: null, phoneMasked: null }));
 
   return {
     status: 202,
     body: {
       ...state,
       method: "reset",
-      ...configDiagnostics()
+      ...configDiagnostics(accountId)
     }
   };
+  });
 }
 
 const outboxFile = path.join(stateDir, "outbox.json");
 
 async function appendOutbox(entry) {
+  // PHASE M (RISK-1): outbox.json has the same read-modify-write hazard as the
+  // state file, so its append runs under the same serialization lock. Callers
+  // (sendMessage) are NOT wrapped, so there is no nested-lock deadlock.
+  return withStateLock(async () => {
   let log = [];
   try {
     log = JSON.parse(await readFile(outboxFile, "utf8"));
@@ -513,6 +802,7 @@ async function appendOutbox(entry) {
   log.push({ ...entry, at: now() });
   await mkdir(stateDir, { recursive: true });
   await writeFile(outboxFile, `${JSON.stringify(log.slice(-500), null, 2)}\n`, "utf8");
+  });
 }
 
 // Operator-gated outbound send.
@@ -523,6 +813,8 @@ async function appendOutbox(entry) {
 // EPICGRAM_AI_SEND_MODE is honored and never weakened: any value other than an
 // explicit auto mode requires the operator approval flag to be present.
 export async function sendMessage(payload) {
+  const state = await readState();
+  const accountId = accountIdFromPayload(payload, state);
   const chatId = payload?.chatId;
   const text = String(payload?.text ?? "").trim();
   const operatorApproved = payload?.operatorApproved === true;
@@ -556,7 +848,7 @@ export async function sendMessage(payload) {
   }
 
   try {
-    const result = await sendTdlibMessage({ chatId, text });
+    const result = await sendTdlibMessage({ accountId, chatId, text });
     if (!result.ok) {
       await appendOutbox({ chatId: String(chatId), text, status: "failed", reason: result.message, sendMode });
       return { status: 409, body: { sent: false, sendMode, message: result.message } };

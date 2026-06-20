@@ -1,4 +1,5 @@
 import { mkdir, readFile, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import * as tdl from "tdl";
 import { getTdjson, getTdlibInfo } from "prebuilt-tdlib";
@@ -19,17 +20,34 @@ const TRANSIENT_AUTH_STATES = new Set([
 ]);
 
 let configured = false;
-let client = null;
-let lastAuthorizationState = null;
-let lastError = null;
+const clients = new Map();
+const pendingClients = new Map();
+const lastAuthorizationStates = new Map();
+const lastErrors = new Map();
 let tdjsonPath = null;
 
-function tdlibRoot() {
-  return path.resolve(process.cwd(), ".epicgram", "tdlib");
+function safeAccountId(accountId = "main") {
+  const raw = String(accountId || "main").trim();
+  if (raw === "undefined" || raw === "null") return "main";
+  return raw.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "main";
 }
 
-function getClientOptions() {
-  const root = tdlibRoot();
+function tdlibRoot(accountId = "main") {
+  if (process.env.EPICGRAM_TDLIB_ROOT) {
+    return path.join(path.resolve(process.env.EPICGRAM_TDLIB_ROOT), safeAccountId(accountId));
+  }
+
+  const accountDir = path.join("accounts", safeAccountId(accountId));
+  if (process.platform === "win32" && process.env.LOCALAPPDATA) {
+    return path.join(process.env.LOCALAPPDATA, "EPICGRAM", "tdlib", accountDir);
+  }
+
+  const stateHome = process.env.XDG_STATE_HOME || path.join(os.homedir(), ".local", "state");
+  return path.join(stateHome, "epicgram", "tdlib", accountDir);
+}
+
+function getClientOptions(accountId = "main") {
+  const root = tdlibRoot(accountId);
   return {
     apiId: Number(process.env.TELEGRAM_API_ID),
     apiHash: process.env.TELEGRAM_API_HASH,
@@ -47,53 +65,76 @@ function getClientOptions() {
   };
 }
 
-async function ensureClient() {
-  if (client) return client;
+async function ensureClient(accountId = "main") {
+  const id = safeAccountId(accountId);
+  const existingClient = clients.get(id);
+  if (existingClient) return existingClient;
 
-  try {
+  // PHASE M (RISK-2): in-flight guard. Two concurrent calls for the same
+  // accountId must create exactly one client. The first caller stores its
+  // creation promise in pendingClients; concurrent callers await that same
+  // promise instead of creating a duplicate (which would orphan a client and
+  // double the update/error listeners). The promise is removed when settled.
+  const pending = pendingClients.get(id);
+  if (pending) return pending;
+
+  const creation = (async () => {
     tdjsonPath = getTdjson();
     if (!configured) {
       tdl.configure({ tdjson: tdjsonPath, verbosityLevel: 1 });
       configured = true;
     }
 
-    await mkdir(path.join(tdlibRoot(), "database"), { recursive: true });
-    await mkdir(path.join(tdlibRoot(), "files"), { recursive: true });
+    await mkdir(path.join(tdlibRoot(id), "database"), { recursive: true });
+    await mkdir(path.join(tdlibRoot(id), "files"), { recursive: true });
 
-    client = tdl.createClient(getClientOptions());
+    const client = tdl.createClient(getClientOptions(id));
+    clients.set(id, client);
     client.on("update", (update) => {
       if (update?._ === "updateAuthorizationState") {
-        lastAuthorizationState = update.authorization_state;
+        lastAuthorizationStates.set(id, update.authorization_state);
       }
     });
     client.on("error", (error) => {
-      lastError = error instanceof Error ? error.message : String(error);
+      lastErrors.set(id, error instanceof Error ? error.message : String(error));
     });
     client.once("close", () => {
-      client = null;
-      lastAuthorizationState = { _: "authorizationStateClosed" };
+      clients.delete(id);
+      lastAuthorizationStates.set(id, { _: "authorizationStateClosed" });
     });
 
     return client;
+  })();
+
+  pendingClients.set(id, creation);
+  try {
+    return await creation;
   } catch (error) {
-    lastError = error instanceof Error ? error.message : String(error);
+    lastErrors.set(id, error instanceof Error ? error.message : String(error));
     throw error;
+  } finally {
+    pendingClients.delete(id);
   }
 }
 
-async function closeClient() {
+async function closeClient(accountId = "main") {
+  const id = safeAccountId(accountId);
+  const client = clients.get(id);
   if (!client) return;
   const closingClient = client;
-  client = null;
+  clients.delete(id);
   try {
     await closingClient.close();
   } finally {
-    lastAuthorizationState = { _: "authorizationStateClosed" };
+    lastAuthorizationStates.set(id, { _: "authorizationStateClosed" });
   }
 }
 
-function waitForAuthorizationState(predicate, timeoutMs = AUTH_WAIT_TIMEOUT_MS) {
+function waitForAuthorizationState(accountId, predicate, timeoutMs = AUTH_WAIT_TIMEOUT_MS) {
+  const id = safeAccountId(accountId);
   return new Promise((resolve) => {
+    const client = clients.get(id);
+    const lastAuthorizationState = lastAuthorizationStates.get(id);
     if (predicate(lastAuthorizationState)) {
       resolve(lastAuthorizationState);
       return;
@@ -103,7 +144,7 @@ function waitForAuthorizationState(predicate, timeoutMs = AUTH_WAIT_TIMEOUT_MS) 
     const onUpdate = (update) => {
       if (update?._ !== "updateAuthorizationState") return;
       const authorizationState = update.authorization_state;
-      lastAuthorizationState = authorizationState;
+      lastAuthorizationStates.set(id, authorizationState);
       if (!predicate(authorizationState)) return;
       clearTimeout(timeout);
       client?.off("update", onUpdate);
@@ -119,16 +160,16 @@ function waitForAuthorizationState(predicate, timeoutMs = AUTH_WAIT_TIMEOUT_MS) 
   });
 }
 
-async function getCurrentAuthorizationState(tdClient) {
+async function getCurrentAuthorizationState(accountId, tdClient) {
   const authorizationState = await tdClient.invoke({ _: "getAuthorizationState" });
-  lastAuthorizationState = authorizationState;
+  lastAuthorizationStates.set(safeAccountId(accountId), authorizationState);
   return authorizationState;
 }
 
-async function getStableAuthorizationState(tdClient) {
-  const authorizationState = await getCurrentAuthorizationState(tdClient);
+async function getStableAuthorizationState(accountId, tdClient) {
+  const authorizationState = await getCurrentAuthorizationState(accountId, tdClient);
   if (!TRANSIENT_AUTH_STATES.has(authorizationState?._)) return authorizationState;
-  return waitForAuthorizationState((state) => Boolean(state?._) && !TRANSIENT_AUTH_STATES.has(state._));
+  return waitForAuthorizationState(accountId, (state) => Boolean(state?._) && !TRANSIENT_AUTH_STATES.has(state._));
 }
 
 function formatAccount(user) {
@@ -207,11 +248,12 @@ function formatMessage(message) {
   };
 }
 
-async function getCurrentAccount(tdClient) {
+async function getCurrentAccount(accountId, tdClient) {
   try {
-    return formatAccount(await tdClient.invoke({ _: "getMe" }));
+    const account = formatAccount(await tdClient.invoke({ _: "getMe" }));
+    return account ? { ...account, slotId: safeAccountId(accountId) } : null;
   } catch (error) {
-    lastError = error instanceof Error ? error.message : String(error);
+    lastErrors.set(safeAccountId(accountId), error instanceof Error ? error.message : String(error));
     return null;
   }
 }
@@ -225,7 +267,23 @@ async function getPrivateUser(tdClient, chat) {
   }
 }
 
+async function loadChatList(tdClient, chatList, limit) {
+  // TDLib's getChats ONLY returns chats already in the in-memory list. Right
+  // after login that list is nearly empty (often just the service chat), so we
+  // must call loadChats first to pull dialogs from the server. loadChats throws
+  // error 404 once the list is fully loaded — that's the normal stop signal.
+  const perCall = Math.min(Math.max(limit, 20), 100);
+  for (let i = 0; i < 6; i += 1) {
+    try {
+      await tdClient.invoke({ _: "loadChats", chat_list: chatList, limit: perCall });
+    } catch {
+      break;
+    }
+  }
+}
+
 async function getChatsFromList(tdClient, chatList, list, limit) {
+  await loadChatList(tdClient, chatList, limit);
   const chats = await tdClient.invoke({
     _: "getChats",
     chat_list: chatList,
@@ -262,7 +320,11 @@ async function getCurrentChats(tdClient, limit = 60) {
   });
 }
 
-export function getTdlibAdapterStatus() {
+export function getTdlibAdapterStatus(accountId = "main") {
+  const id = safeAccountId(accountId);
+  const client = clients.get(id);
+  const authorizationState = lastAuthorizationStates.get(id);
+  const lastError = lastErrors.get(id) ?? null;
   let tdlibInfo = null;
   try {
     tdlibInfo = getTdlibInfo();
@@ -275,7 +337,8 @@ export function getTdlibAdapterStatus() {
     nativeBindingLoaded: Boolean(tdjsonPath || client),
     tdjsonPath,
     tdlibInfo,
-    authorizationState: lastAuthorizationState?._ ?? null,
+    accountId: id,
+    authorizationState: authorizationState?._ ?? null,
     lastError,
     requiredMethods: TD_METHODS,
     message: client
@@ -284,9 +347,10 @@ export function getTdlibAdapterStatus() {
   };
 }
 
-export async function getTdlibChats({ limit = 30 } = {}) {
-  const tdClient = await ensureClient();
-  const authorizationState = await getStableAuthorizationState(tdClient);
+export async function getTdlibChats({ accountId = "main", limit = 30 } = {}) {
+  const id = safeAccountId(accountId);
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
   if (!READY_STATES.has(authorizationState?._)) {
     return {
       authorizationState,
@@ -297,15 +361,16 @@ export async function getTdlibChats({ limit = 30 } = {}) {
 
   return {
     authorizationState,
-    account: await getCurrentAccount(tdClient),
+    account: await getCurrentAccount(id, tdClient),
     chats: await getCurrentChats(tdClient, limit),
     message: "Telegram chats loaded from TDLib."
   };
 }
 
-export async function getTdlibMessages({ chatId, limit = 40 } = {}) {
-  const tdClient = await ensureClient();
-  const authorizationState = await getStableAuthorizationState(tdClient);
+export async function getTdlibMessages({ accountId = "main", chatId, limit = 40 } = {}) {
+  const id = safeAccountId(accountId);
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
   if (!READY_STATES.has(authorizationState?._)) {
     return {
       authorizationState,
@@ -331,13 +396,14 @@ export async function getTdlibMessages({ chatId, limit = 40 } = {}) {
   };
 }
 
-export async function sendTdlibMessage({ chatId, text } = {}) {
+export async function sendTdlibMessage({ accountId = "main", chatId, text } = {}) {
+  const id = safeAccountId(accountId);
   const cleanText = String(text ?? "").trim();
   if (!chatId) throw new Error("chatId is required");
   if (!cleanText) throw new Error("text is required");
 
-  const tdClient = await ensureClient();
-  const authorizationState = await getStableAuthorizationState(tdClient);
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
   if (!READY_STATES.has(authorizationState?._)) {
     return {
       ok: false,
@@ -363,7 +429,8 @@ export async function sendTdlibMessage({ chatId, text } = {}) {
   };
 }
 
-export async function getTdlibPhotoFile(fileId) {
+export async function getTdlibPhotoFile(fileId, accountId = "main") {
+  const id = safeAccountId(accountId);
   const numericFileId = Number(fileId);
   if (!Number.isFinite(numericFileId)) {
     return {
@@ -374,8 +441,8 @@ export async function getTdlibPhotoFile(fileId) {
     };
   }
 
-  const tdClient = await ensureClient();
-  const authorizationState = await getStableAuthorizationState(tdClient);
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
   if (!READY_STATES.has(authorizationState?._)) {
     return {
       status: 401,
@@ -408,9 +475,10 @@ export async function getTdlibPhotoFile(fileId) {
   };
 }
 
-export async function requestTdlibQrAuth() {
-  const tdClient = await ensureClient();
-  const currentAuthorizationState = await getCurrentAuthorizationState(tdClient);
+export async function requestTdlibQrAuth(accountId = "main") {
+  const id = safeAccountId(accountId);
+  const tdClient = await ensureClient(id);
+  const currentAuthorizationState = await getCurrentAuthorizationState(id, tdClient);
 
   if (currentAuthorizationState?._ === "authorizationStateWaitOtherDeviceConfirmation") {
     return {
@@ -424,6 +492,7 @@ export async function requestTdlibQrAuth() {
 
   await tdClient.invoke({ _: TD_METHODS.qr, other_user_ids: [] });
   const authorizationState = await waitForAuthorizationState(
+    id,
     (state) => state?._ === "authorizationStateWaitOtherDeviceConfirmation"
   );
 
@@ -437,23 +506,24 @@ export async function requestTdlibQrAuth() {
 }
 
 export async function requestTdlibPhoneAuth(phoneNumber, options = {}) {
-  let tdClient = await ensureClient();
-  const currentAuthorizationState = await getCurrentAuthorizationState(tdClient);
+  const id = safeAccountId(options.accountId ?? "main");
+  let tdClient = await ensureClient(id);
+  const currentAuthorizationState = await getCurrentAuthorizationState(id, tdClient);
 
   if (READY_STATES.has(currentAuthorizationState?._)) {
     return {
       ok: true,
       method: TD_METHODS.phone,
       authorizationState: currentAuthorizationState,
-      account: await getCurrentAccount(tdClient),
+      account: await getCurrentAccount(id, tdClient),
       message: "Telegram account is already authorized."
     };
   }
 
   if (options.resetCurrentFlow || currentAuthorizationState?._ === "authorizationStateWaitOtherDeviceConfirmation") {
-    await resetTdlibAuthSession({ deleteDatabase: true });
-    tdClient = await ensureClient();
-    await getCurrentAuthorizationState(tdClient);
+    await resetTdlibAuthSession({ accountId: id, deleteDatabase: true });
+    tdClient = await ensureClient(id);
+    await getCurrentAuthorizationState(id, tdClient);
   }
 
   await tdClient.invoke({
@@ -469,6 +539,7 @@ export async function requestTdlibPhoneAuth(phoneNumber, options = {}) {
     }
   });
   const authorizationState = await waitForAuthorizationState(
+    id,
     (state) => state?._ === "authorizationStateWaitCode" || state?._ === "authorizationStateWaitPassword"
   );
 
@@ -476,15 +547,16 @@ export async function requestTdlibPhoneAuth(phoneNumber, options = {}) {
     ok: true,
     method: TD_METHODS.phone,
     authorizationState,
-    account: READY_STATES.has(authorizationState?._) ? await getCurrentAccount(tdClient) : null,
+    account: READY_STATES.has(authorizationState?._) ? await getCurrentAccount(id, tdClient) : null,
     message: "Telegram phone authorization requested. Check Telegram for the login code."
   };
 }
 
-export async function checkTdlibAuthenticationCode(code) {
-  const tdClient = await ensureClient();
+export async function checkTdlibAuthenticationCode(code, accountId = "main") {
+  const id = safeAccountId(accountId);
+  const tdClient = await ensureClient(id);
   await tdClient.invoke({ _: TD_METHODS.code, code });
-  const authorizationState = await waitForAuthorizationState((state) =>
+  const authorizationState = await waitForAuthorizationState(id, (state) =>
     ["authorizationStateReady", "authorizationStateWaitCode", "authorizationStateWaitPassword"].includes(state?._)
   );
 
@@ -492,14 +564,35 @@ export async function checkTdlibAuthenticationCode(code) {
     ok: true,
     method: TD_METHODS.code,
     authorizationState,
-    account: READY_STATES.has(authorizationState?._) ? await getCurrentAccount(tdClient) : null,
+    account: READY_STATES.has(authorizationState?._) ? await getCurrentAccount(id, tdClient) : null,
     message: READY_STATES.has(authorizationState?._)
       ? "Telegram account authorized."
       : "Telegram authentication code submitted."
   };
 }
 
-export async function logOutTdlib() {
+export async function checkTdlibAuthenticationPassword(password, accountId = "main") {
+  const id = safeAccountId(accountId);
+  const tdClient = await ensureClient(id);
+  await tdClient.invoke({ _: "checkAuthenticationPassword", password });
+  const authorizationState = await waitForAuthorizationState(id, (state) =>
+    ["authorizationStateReady", "authorizationStateWaitPassword"].includes(state?._)
+  );
+
+  return {
+    ok: true,
+    method: "checkAuthenticationPassword",
+    authorizationState,
+    account: READY_STATES.has(authorizationState?._) ? await getCurrentAccount(id, tdClient) : null,
+    message: READY_STATES.has(authorizationState?._)
+      ? "Telegram account authorized."
+      : "Two-factor password submitted."
+  };
+}
+
+export async function logOutTdlib(accountId = "main") {
+  const id = safeAccountId(accountId);
+  const client = clients.get(id);
   if (!client) {
     return {
       ok: true,
@@ -512,35 +605,40 @@ export async function logOutTdlib() {
   return {
     ok: true,
     method: TD_METHODS.logout,
-    authorizationState: lastAuthorizationState,
+    authorizationState: lastAuthorizationStates.get(id),
     message: "TDLib logout requested."
   };
 }
 
-export async function resetTdlibAuthSession({ deleteDatabase = false } = {}) {
-  await closeClient();
-  lastError = null;
-  tdjsonPath = null;
+export async function resetTdlibAuthSession({ accountId = "main", deleteDatabase = false } = {}) {
+  const id = safeAccountId(accountId);
+  await closeClient(id);
+  // PHASE M (RISK-4): purge every account-scoped Map so a removed/reset slot
+  // leaves no stale references behind (clients is cleared by closeClient).
+  lastErrors.delete(id);
+  lastAuthorizationStates.delete(id);
+  pendingClients.delete(id);
 
   if (deleteDatabase) {
-    await rm(tdlibRoot(), { recursive: true, force: true });
+    await rm(tdlibRoot(id), { recursive: true, force: true });
   }
 
   return {
     ok: true,
     deletedDatabase: deleteDatabase,
-    authorizationState: lastAuthorizationState,
+    authorizationState: lastAuthorizationStates.get(id),
     message: deleteDatabase ? "TDLib local auth database was reset." : "TDLib client was closed."
   };
 }
 
-export async function getTdlibSessionSnapshot() {
-  const tdClient = await ensureClient();
-  const authorizationState = await getStableAuthorizationState(tdClient);
+export async function getTdlibSessionSnapshot(accountId = "main") {
+  const id = safeAccountId(accountId);
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
 
   return {
     authorizationState,
-    account: READY_STATES.has(authorizationState?._) ? await getCurrentAccount(tdClient) : null,
-    adapter: getTdlibAdapterStatus()
+    account: READY_STATES.has(authorizationState?._) ? await getCurrentAccount(id, tdClient) : null,
+    adapter: getTdlibAdapterStatus(id)
   };
 }
