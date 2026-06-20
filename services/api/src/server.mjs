@@ -12,6 +12,7 @@ import {
   removeAccountSlot,
   getMessages,
   getPhoto,
+  getQrImage,
   logout,
   requestPhoneAuth,
   requestQrAuth,
@@ -140,6 +141,17 @@ const server = http.createServer(async (request, response) => {
         fileId: url.searchParams.get("fileId")
       });
       return sendBinary(response, result.status, result.body, result.contentType);
+    }
+    if (request.method === "GET" && url.pathname === "/telegram/auth/qr-image") {
+      // PHASE N.1: additive read-only route. Renders the current QR login link
+      // as PNG. no-store because QR login tokens rotate (do not cache).
+      const result = await getQrImage({ accountId: url.searchParams.get("accountId") });
+      response.writeHead(result.status, {
+        "content-type": result.contentType,
+        "access-control-allow-origin": "*",
+        "cache-control": "no-store"
+      });
+      return response.end(result.body);
     }
     if (request.method === "POST" && url.pathname === "/telegram/auth/qr") {
       const result = await requestQrAuth(await readJson(request));

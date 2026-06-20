@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import QRCode from "qrcode";
 import {
   checkTdlibAuthenticationCode,
   checkTdlibAuthenticationPassword,
@@ -466,6 +467,32 @@ export async function getPhoto({ accountId: requestedAccountId, fileId }) {
     return {
       status: 500,
       body: Buffer.from(JSON.stringify({ message: error instanceof Error ? error.message : "TDLib photo loading failed." })),
+      contentType: "application/json; charset=utf-8"
+    };
+  }
+}
+
+// PHASE N.1: render the already-issued QR login link as a PNG so a browser can
+// display it directly. READ-ONLY: it reads the existing state.qrLink (set by a
+// prior requestQrAuth) and never starts or mutates an auth flow, so it needs no
+// state lock. Returns 404 if no active QR link is present.
+export async function getQrImage() {
+  const state = await readState();
+  const qrLink = state.qrLink;
+  if (!qrLink) {
+    return {
+      status: 404,
+      body: Buffer.from(JSON.stringify({ message: "Нет активной QR-ссылки. Сначала вызовите POST /telegram/auth/qr." })),
+      contentType: "application/json; charset=utf-8"
+    };
+  }
+  try {
+    const png = await QRCode.toBuffer(qrLink, { type: "png", width: 320, margin: 2, errorCorrectionLevel: "M" });
+    return { status: 200, body: png, contentType: "image/png" };
+  } catch (error) {
+    return {
+      status: 500,
+      body: Buffer.from(JSON.stringify({ message: error instanceof Error ? error.message : "QR image generation failed." })),
       contentType: "application/json; charset=utf-8"
     };
   }
