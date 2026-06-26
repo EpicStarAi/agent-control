@@ -1,70 +1,97 @@
-# EPIC GRAM — Domain Deploy (P0)
+# EPIC GRAM — Domain Deploy (epic-gram.com) — DRY-RUN
 
-How to expose EPIC GRAM (Next `apps/web` + `services/api`) on the domain.
-**Do not edit the production Caddyfile automatically — apply manually after review.**
-All placeholders (`<...>`) must be filled with real values locally; never commit real secrets.
+Private-beta cutover plan for **epic-gram.com** (Cloudflare DNS + Caddy on the VPS).
+**DRY-RUN ONLY** — do not modify Cloudflare, do not edit the production Caddyfile, do not SSH,
+do not deploy, do not commit without owner approval. First cutover excludes Telegram and AI keys.
 
-## Option A — subdomain: `epicgram.deepinside.life`
-- Cleanest separation; own SSL cert; easy to roll back (remove the block).
+Origin (confirm before use): VPS **<VPS_PUBLIC_IPv4>** (Contabo). App = Next `apps/web` on `:3015`
+(`npm run start:host`). API = `services/api` on `:8788` (NOT exposed in first cutover).
 
-### DNS (Cloudflare)
-- A record: `epicgram` → `<VPS_IP>` (e.g. 194.163.140.26)
-- Proxy status: **Proxied (orange cloud)** for Cloudflare SSL + DDoS, or DNS-only if you terminate TLS at Caddy.
+## 1. DNS records (Cloudflare)
+First go DNS-only (grey cloud) so Caddy can issue Let's Encrypt certs directly; flip Proxy ON later.
 
-### Caddy (reverse proxy) — example block
+| Type | Name | Content | First | Later | TTL |
+|------|------|---------|-------|-------|-----|
+| A | `@` (epic-gram.com) | <VPS_PUBLIC_IPv4> | **DNS only** | Proxied | Auto |
+| A | `www` | <VPS_PUBLIC_IPv4> | **DNS only** | Proxied | Auto |
+| A | `app` | <VPS_PUBLIC_IPv4> | **DNS only** | Proxied | Auto |
+| A | `tma` | <VPS_PUBLIC_IPv4> | **DNS only** | Proxied | Auto |
+| A | `api` *(later phase)* | <VPS_PUBLIC_IPv4> | — (add later) | Proxied | Auto |
+
+(Alt: `www`, `app`, `tma` can be CNAME to `epic-gram.com` instead of A. A-records are simplest.)
+No `admin` subdomain — `/admin` stays under `app.epic-gram.com/admin`.
+
+## 2. Cloudflare SSL/TLS mode
+- **First (DNS-only):** Cloudflare is not in the path; **Caddy gets the cert** (Let's Encrypt, TLS-ALPN/HTTP-01). Nothing to set in CF.
+- **Later (Proxy ON):** set SSL/TLS mode to **Full (strict)** — CF to origin over Caddy's valid LE cert (end-to-end TLS). **Never use Flexible** (insecure, breaks redirects).
+
+## 3. Caddy block (for the VPS — apply manually after review)
 ```caddy
-epicgram.deepinside.life {
+# --- Landing (apex + www) ---
+epic-gram.com, www.epic-gram.com {
     encode zstd gzip
-
-    # Next.js web (apps/web) — running on the VPS (e.g. :3015 via `npm run start:host`)
-    handle {
-        reverse_proxy 127.0.0.1:3015
+    reverse_proxy 127.0.0.1:3015
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
     }
+}
 
-    # Backend API (services/api) under /api-be/* if you want it same-origin
-    handle_path /api-be/* {
-        reverse_proxy 127.0.0.1:8788
+# --- App (canonical Next web; includes /admin) ---
+app.epic-gram.com {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:3015
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
     }
+}
 
+# --- Telegram Mini App entry ---
+# MUST be embeddable inside Telegram -> do NOT send X-Frame-Options DENY.
+tma.epic-gram.com {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:3015
     header {
         Strict-Transport-Security "max-age=31536000"
         X-Content-Type-Options "nosniff"
         Referrer-Policy "strict-origin-when-cross-origin"
+        -X-Frame-Options
     }
 }
+
+# --- API (LATER phase, not in first cutover) ---
+# api.epic-gram.com {
+#     reverse_proxy 127.0.0.1:8788
+# }
 ```
+Note: if Next emits its own `X-Frame-Options`/CSP, ensure `tma.epic-gram.com` allows
+`frame-ancestors https://*.telegram.org` (or omits frame restrictions) so the Mini App loads.
 
-## Option B — path: `deepinside.life/epicgram`
-- Reuses existing site cert; trickier because Next needs `basePath`.
-- In `apps/web/next.config.mjs` set `basePath: "/epicgram"` (test build first).
-- Caddy:
-```caddy
-deepinside.life {
-    handle_path /epicgram/* {
-        reverse_proxy 127.0.0.1:3015
-    }
-    # ... existing site blocks ...
-}
-```
-- Trade-off: extra config + asset path changes. **Option A (subdomain) is recommended for P0.**
+## 4. Deploy order (execute later, with approval)
+1. **DNS:** add A records `@ www app tma` to <VPS_PUBLIC_IPv4>, **DNS-only**. Verify: `dig app.epic-gram.com +short`.
+2. **App on VPS:** pull repo, `npm ci`, `npm run build`, run `npm run start:host` (:3015) under a process manager (pm2/systemd). Health: `curl -I http://127.0.0.1:3015/`.
+3. **Caddy:** add the blocks above, `caddy validate`, `caddy reload`. Certs auto-issue (LE).
+4. **Verify HTTPS:** `https://app.epic-gram.com/`, `/landing`, `/terms`, `/privacy`, `/abuse` -> 200; `/admin` -> gate closed.
+5. **Later:** flip Cloudflare Proxy ON for the 4 records + SSL/TLS **Full (strict)**.
+6. **Later:** add `api.epic-gram.com` block + record; wire Telegram (BotFather Mini App URL = `https://tma.epic-gram.com`) and AI keys — separate approved phase.
 
-## SSL
-- Caddy auto-provisions Let&apos;s Encrypt certs (Option A) when DNS resolves to the VPS.
-- If Cloudflare proxied: use Full (strict) SSL mode and a Cloudflare Origin cert, or DNS-only so Caddy gets the cert.
-
-## Health check
-- After deploy: `curl -I https://epicgram.deepinside.life/` → 200.
-- API: `curl https://epicgram.deepinside.life/api-be/` (or the API health route).
-- Local stack control: `deepinside-platform\ops\deepinside.ps1 status`.
+## 5. Go / No-Go checklist (first cutover)
+- [ ] Origin IP confirmed (<VPS_PUBLIC_IPv4>) and VPS reachable.
+- [ ] DNS A records added (DNS-only) and propagated (`dig`).
+- [ ] App builds on VPS (`npm run build` green) and runs on :3015 (health 200).
+- [ ] Caddy blocks added, `caddy validate` OK, reload done.
+- [ ] LE certs issued for `epic-gram.com`, `www`, `app`, `tma`.
+- [ ] `https://app.epic-gram.com/` + `/landing /terms /privacy /abuse` -> 200.
+- [ ] `/admin` gate closed (401/503); `EPICGRAM_OPERATOR_PASSWORD_SCRYPT` set on VPS `.env.local` only if /admin needed.
+- [ ] `tma.epic-gram.com` loads and is framable by Telegram (no `X-Frame-Options: DENY`).
+- [ ] **No Telegram bot token / AI keys in this cutover.**
+- [ ] Rollback ready: remove Caddy blocks + `caddy reload`; revert DNS.
 
 ## Rollback
-- Remove the Caddy block (or revert the file) and `caddy reload`.
-- DNS: set the record back / remove it.
-- No data migration involved — web is stateless; API state is unchanged.
-
-## Pre-deploy checklist
-- [ ] `npm run build` green; `npm run start:host` serves on :3015.
-- [ ] Legal pages reachable: `/terms /privacy /abuse`.
-- [ ] `/admin` gate configured (EPICGRAM_OPERATOR_PASSWORD_SCRYPT set in server `.env.local`).
-- [ ] No secrets in repo; keys only in `.env.local`.
-- [ ] Owner approval for going live (MANUAL_APPROVAL_ONLY).
+Remove the Caddy blocks (or revert the file) -> `caddy reload`. DNS: delete/restore records.
+Stateless web -> no data migration. Production deepinside stack on the VPS is untouched.
