@@ -14,3 +14,7 @@ yarn-error.log*
 pnpm-debug.log*
 epicgram-*.png
 epicgram-*.log
+*.session
+*.log
+build-*.log
+.claude/settings.local.json

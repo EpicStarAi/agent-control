@@ -89,6 +89,20 @@ export default function EvaLandingPage() {
           </div>
         </section>
 
+        {/* 5.5 · 3D STUDIO — real Gaussian-Splat scene, opens in a new tab. Self-contained: CSS only, no external image/network on this page. */}
+        <section className="mb-5">
+          <H>Explore the studio in 3D</H>
+          <a href="https://mint.gg/project/ns7469enp7wywzrmwpbtb25wzn8919py" target="_blank" rel="noopener noreferrer" className="group block overflow-hidden rounded-2xl border border-white/10" style={{ background: "linear-gradient(135deg,#2a1040,#6d1a4a 60%,#10243a)" }}>
+            <div className="flex min-h-[180px] flex-col items-center justify-center gap-2 p-6 text-center">
+              <div className="text-3xl">🏙</div>
+              <div className="text-lg font-black text-white">DEEPINSIDE Radio Studio · 3D</div>
+              <div className="max-w-md text-[12px] text-white/70">Real Gaussian-Splat scene (Mint · WorldLabs). Step inside the neon studio.</div>
+              <span className="mt-1 inline-block rounded-full border border-white/25 px-4 py-1.5 text-[12px] font-semibold text-white transition group-hover:bg-white/10">▶ Open interactive 3D scene ↗</span>
+            </div>
+          </a>
+          <p className="mt-1 text-[10px] text-white/40">Opens mint.gg in a new tab · static preview, no embedded tracking on this page.</p>
+        </section>
+
         {/* 6 · ROADMAP */}
         <section className="mb-5">
           <H>Roadmap</H>

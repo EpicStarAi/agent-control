@@ -42,6 +42,13 @@ import { WorldEngineCenter } from "./WorldEngineCenter";
 import { EcosystemFinalization } from "./EcosystemFinalization";
 import { OmegaFinal } from "./OmegaFinal";
 import { EVALaunchPilot } from "./EVALaunchPilot";
+import { EpicGramPublisher } from "./EpicGramPublisher";
+import { EpicGramAgentBrain } from "./EpicGramAgentBrain";
+import { EpicGramAgentOS } from "./EpicGramAgentOS";
+import { GlobalAIOperatorSidebar } from "./GlobalAIOperatorSidebar";
+import { SelfHostedAIStack } from "./SelfHostedAIStack";
+import { WebAppCatalogPanel } from "./WebAppCatalogPanel";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 
 type Slot = {
   slotId?: string;
@@ -308,7 +315,24 @@ export function AgentRegistry() {
   const [ecosystemFinalOpen, setEcosystemFinalOpen] = useState(false);
   const [omegaOpen, setOmegaOpen] = useState(false);
   const [pilotOpen, setPilotOpen] = useState(false);
+  const [publisherOpen, setPublisherOpen] = useState(false);
+  const [brainOpen, setBrainOpen] = useState(false);
+  const [epicOsOpen, setEpicOsOpen] = useState(false);
+  const [osSection, setOsSection] = useState<string | undefined>(undefined);
+  const [stackOpen, setStackOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
   useEffect(() => { try { applyPrefs(); } catch {} }, []);
+  // T21: direct hash entry — /agents#<section> opens DEEPINSIDE OS on that section
+  useEffect(() => {
+    try {
+      const OS_KEYS = ["command", "operator", "livepilot", "livewizard", "runbook", "dryrun", "postlive", "liveprep", "targets", "ownedaccounts", "opanalytics"];
+      const h = typeof window !== "undefined" ? window.location.hash.replace("#", "") : "";
+      if (OS_KEYS.indexOf(h) >= 0) { setOsSection(h); setEpicOsOpen(true); }
+      const onNav = (e: any) => { const k = e && e.detail; if (OS_KEYS.indexOf(k) >= 0) { setOsSection(k); setEpicOsOpen(true); } };
+      window.addEventListener("deepinside:navigate", onNav);
+      return () => window.removeEventListener("deepinside:navigate", onNav);
+    } catch {}
+  }, []);
   const [opFilter, setOpFilter] = useState<"all" | "ACTIVE" | "IDLE" | "OFFLINE">("all");
   const [missions, setMissions] = useState<Mission[]>(SEED_MISSIONS);
   const [selMission, setSelMission] = useState("");
@@ -657,6 +681,7 @@ export function AgentRegistry() {
         <button onClick={() => setMfOrchOpen(true)} className="rounded-full border border-rose-500/40 bg-rose-600/20 px-4 py-2 text-sm font-semibold text-rose-200 hover:bg-rose-600/30">🎬 Оркестрация</button>
         <button onClick={() => setEconomyOpen(true)} className="rounded-full border border-amber-500/40 bg-amber-600/20 px-4 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-600/30">💰 Economy Engine</button>
         <button onClick={() => setWorldEngineOpen(true)} className="rounded-full border border-fuchsia-500/40 bg-fuchsia-600/20 px-4 py-2 text-sm font-semibold text-fuchsia-200 hover:bg-fuchsia-600/30">🌍 World Engine</button>
+        <a href="/world" className="rounded-full border border-cyan-400/50 bg-gradient-to-r from-cyan-600/25 to-indigo-600/25 px-4 py-2 text-sm font-black text-cyan-100 hover:from-cyan-600/40">🌐 WORLD OS</a>
         <button onClick={() => setActivationOpen(true)} className="rounded-full border border-red-500/40 bg-red-600/20 px-4 py-2 text-sm font-semibold text-red-200 hover:bg-red-600/30">🚀 Activation Engine</button>
         <button onClick={() => setStrategyOpen(true)} className="rounded-full border border-indigo-500/40 bg-indigo-600/20 px-4 py-2 text-sm font-semibold text-indigo-200 hover:bg-indigo-600/30">🎯 Mission Control</button>
         <button onClick={() => setKnowledgeOpen(true)} className="rounded-full border border-cyan-500/40 bg-cyan-600/20 px-4 py-2 text-sm font-semibold text-cyan-200 hover:bg-cyan-600/30">📚 Knowledge Engine</button>
@@ -673,6 +698,13 @@ export function AgentRegistry() {
         <button onClick={() => setEcosystemFinalOpen(true)} className="rounded-full border border-amber-400/50 bg-gradient-to-r from-amber-500/25 via-fuchsia-600/25 to-cyan-600/25 px-4 py-2 text-sm font-black text-amber-100 hover:from-amber-500/40">🌠 Ecosystem v1.0</button>
         <button onClick={() => setOmegaOpen(true)} className="rounded-full border border-fuchsia-400/50 bg-gradient-to-r from-fuchsia-600/30 via-violet-600/25 to-cyan-600/25 px-4 py-2 text-sm font-black text-fuchsia-100 hover:from-fuchsia-600/45">♾ Ω Final</button>
         <button onClick={() => setPilotOpen(true)} className="rounded-full border border-amber-400/50 bg-gradient-to-r from-amber-500/25 to-fuchsia-600/25 px-4 py-2 text-sm font-black text-amber-100 hover:from-amber-500/40">🚀 EVA Pilot</button>
+        <button onClick={() => setPublisherOpen(true)} className="rounded-full border border-fuchsia-400/50 bg-gradient-to-r from-fuchsia-600/30 to-emerald-600/25 px-4 py-2 text-sm font-black text-fuchsia-100 hover:from-fuchsia-600/45">📣 Publisher</button>
+        <button onClick={() => setBrainOpen(true)} className="rounded-full border border-indigo-400/50 bg-gradient-to-r from-indigo-600/30 to-fuchsia-600/25 px-4 py-2 text-sm font-black text-indigo-100 hover:from-indigo-600/45">🧠 Agent Brain</button>
+        <button onClick={() => { setOsSection(undefined); setEpicOsOpen(true); }} className="rounded-full border border-cyan-400/50 bg-gradient-to-r from-cyan-600/30 to-fuchsia-600/25 px-4 py-2 text-sm font-black text-cyan-100 hover:from-cyan-600/45">🛰 DEEPINSIDE OS</button>
+        <button onClick={() => { setOsSection("liveprep"); setEpicOsOpen(true); }} className="rounded-full border border-emerald-400/50 bg-gradient-to-r from-emerald-600/30 to-amber-600/25 px-4 py-2 text-sm font-black text-emerald-100 hover:from-emerald-600/45">🚦 Live Prep</button>
+        <button onClick={() => setStackOpen(true)} className="rounded-full border border-cyan-400/50 bg-gradient-to-r from-cyan-600/30 to-emerald-600/25 px-4 py-2 text-sm font-black text-cyan-100 hover:from-cyan-600/45">🧬 AI Stack</button>
+        <button onClick={() => setCatalogOpen(true)} className="rounded-full border border-sky-400/50 bg-gradient-to-r from-sky-600/30 to-indigo-600/25 px-4 py-2 text-sm font-black text-sky-100 hover:from-sky-600/45">🧠 AI COMMAND CENTER</button>
+        <LanguageSwitcher />
         <button onClick={() => setMediaOpen(true)} className="rounded-full border border-rose-500/40 bg-rose-600/20 px-4 py-2 text-sm font-semibold text-rose-200 hover:bg-rose-600/30">🏭 Media Factory</button>
         <button onClick={() => setOpsOpen(true)} className="rounded-full border border-teal-500/40 bg-teal-600/20 px-4 py-2 text-sm font-semibold text-teal-200 hover:bg-teal-600/30">🛰 Ops Center</button>
         <button onClick={() => setCooOpen(true)} className="rounded-full border border-emerald-500/40 bg-emerald-600/20 px-4 py-2 text-sm font-semibold text-emerald-200 hover:bg-emerald-600/30">🤖 AI COO</button>
@@ -1415,6 +1447,9 @@ export function AgentRegistry() {
       {ecosystemFinalOpen && <EcosystemFinalization onClose={() => setEcosystemFinalOpen(false)} onOpenAgent={(id) => { setEcosystemFinalOpen(false); setWorkspaceAgent(id); }} />}
       {omegaOpen && <OmegaFinal onClose={() => setOmegaOpen(false)} onOpenAgent={(id) => { setOmegaOpen(false); setWorkspaceAgent(id); }} />}
       {pilotOpen && <EVALaunchPilot onClose={() => setPilotOpen(false)} />}
+      {publisherOpen && <EpicGramPublisher onClose={() => setPublisherOpen(false)} />}
+      {brainOpen && <EpicGramAgentBrain onClose={() => setBrainOpen(false)} />}
+      {epicOsOpen && <EpicGramAgentOS onClose={() => setEpicOsOpen(false)} initialSection={osSection} />}
       {mediaOpen && <MediaFactory onClose={() => setMediaOpen(false)} />}
       {mediaOpsOpen && <MediaOps ctx={{ agents, missions }} onClose={() => setMediaOpsOpen(false)} onAction={(target) => { if (target.startsWith("agent:")) { setMediaOpsOpen(false); setWorkspaceAgent(target.slice(6)); } }} />}
       {opsOpen && (
@@ -1486,6 +1521,9 @@ export function AgentRegistry() {
           }}
         />
       )}
+      {stackOpen && <SelfHostedAIStack onClose={() => setStackOpen(false)} />}
+      {catalogOpen && <WebAppCatalogPanel onClose={() => setCatalogOpen(false)} />}
+      <GlobalAIOperatorSidebar />
     </div>
   );
 }
