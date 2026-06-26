@@ -1,9 +1,5 @@
 "use client";
 
-// DEEPINSIDE.LIFE — Unified Operations Center (Phase K1–K8). Category: SYSTEM · Status: ACTIVE
-// Additive overlay: company-OS style control center over existing data + local registries.
-// UI / localStorage only. No backend / TDLib / external API / actions. Nothing removed.
-
 import { useEffect, useMemo, useState } from "react";
 
 type Ctx = {
@@ -18,7 +14,6 @@ const NAV = [
   ["providers", "🧩 Providers"], ["billing", "💳 Billing"], ["monitoring", "📈 Monitoring"], ["security", "🛡 Security"], ["settings", "⚙ Settings"],
 ] as const;
 
-// ---- LOCAL REGISTRIES (mock, read-only) ----
 const GEELARK = [
   { id: "PHONE-01", region: "EU", status: "online", agent: "eva", apps: ["Telegram", "Instagram", "TikTok"] },
   { id: "PHONE-02", region: "US", status: "online", agent: "buchiha", apps: ["Telegram", "YouTube"] },
@@ -207,7 +202,7 @@ export function OperationsCenter({ ctx, onClose, onAction }: { ctx: Ctx; onClose
           <div>✓ Telegram actions отключены (read-only).</div><div>✓ Backend / TDLib / авторизация не затрагиваются.</div><div>✓ Маршруты не изменяются, новые внешние API не используются.</div><div>✓ Секреты/токены не хранятся в localStorage.</div><div>✓ Все данные — поверх существующей системы и локальных реестров.</div>
         </div></Card>
     );
-    // settings
+
     return (
       <Card><div className="mb-2 text-[10px] font-black uppercase tracking-wide text-tg-accent">Settings</div>
         <div className="text-sm text-tg-muted">Operations Center состояние хранится в <b className="text-white">epic_ops_center_v1</b>. Реестры провайдеров/Docker/MCP/Geelark — локальные (mock), безопасно редактируются в коде. Связанные центры: WORLD, Telegram Workspace, Discovery, AI COO, AI Guide.</div>

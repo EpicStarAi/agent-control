@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { scryptSync, timingSafeEqual } from "node:crypto";
 
-// Server-side operator gate for /admin. Verifies the submitted password against the
-// scrypt hash in EPICGRAM_OPERATOR_PASSWORD_SCRYPT (format: "scrypt:<salt>:<hashHex>",
-// produced by `npm run operator:hash`). No secret is stored in the repo; only the env hash.
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
@@ -24,7 +21,7 @@ export async function POST(req: NextRequest) {
   try {
     password = ((await req.json()) as { password?: string }).password ?? "";
   } catch {
-    /* no body */
+
   }
   if (!password) {
     return NextResponse.json({ ok: false, message: "password required" }, { status: 400 });

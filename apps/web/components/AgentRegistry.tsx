@@ -64,7 +64,7 @@ type Agent = {
   id: string;
   name: string;
   role: string;
-  status: string; // ACTIVE | IDLE | OFFLINE | TRAINING | PLANNED
+  status: string;
   readiness: number;
   deviceId?: string | null;
   voice?: string;
@@ -72,12 +72,12 @@ type Agent = {
   memory?: boolean;
   integrations?: string[];
   tags?: string[];
-  state?: string; // runtime: ACTIVE | IDLE | THINKING | WORKING | WAITING | OFFLINE | ERROR
+  state?: string;
   currentGoal?: string;
   currentTask?: string;
   lastAction?: string;
   owner?: string;
-  // Phase 7 — Agent Brain
+
   shortMem?: string[];
   longMem?: string[];
   knowledge?: string[];
@@ -85,7 +85,7 @@ type Agent = {
   nextGoal?: string;
   goalPriority?: string;
   goalDeadline?: string;
-  goalStatus?: string; // ACTIVE | PLANNED | COMPLETED | BLOCKED
+  goalStatus?: string;
   tasks?: BrainTask[];
 };
 type BrainTask = { id: string; title: string; description?: string; priority?: string; status: string; createdAt?: string; updatedAt?: string };
@@ -269,7 +269,7 @@ export function AgentRegistry() {
   const [counts, setCounts] = useState<Record<string, Counts>>({});
   const [agents, setAgents] = useState<Agent[]>(SEED_AGENTS);
   const [devices, setDevices] = useState<Device[]>(SEED_DEVICES);
-  const [bind, setBind] = useState<Record<string, string>>({}); // sessionId -> agentId
+  const [bind, setBind] = useState<Record<string, string>>({});
   const [sel, setSel] = useState("epicstar");
   const [tab, setTab] = useState<"director" | "command" | "operator" | "missions" | "execution" | "agents" | "devices" | "sessions">("director");
   const [strategy, setStrategy] = useState<StratGoal[]>(SEED_STRATEGY);
@@ -322,7 +322,7 @@ export function AgentRegistry() {
   const [stackOpen, setStackOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   useEffect(() => { try { applyPrefs(); } catch {} }, []);
-  // T21: direct hash entry — /agents#<section> opens DEEPINSIDE OS on that section
+
   useEffect(() => {
     try {
       const OS_KEYS = ["command", "operator", "livepilot", "livewizard", "runbook", "dryrun", "postlive", "liveprep", "targets", "ownedaccounts", "opanalytics"];
@@ -351,7 +351,7 @@ export function AgentRegistry() {
             return {
               ...seed,
               ...p,
-              // backfill Phase 7 brain fields if an older persisted record lacks them
+
               state: p.state ?? seed.state,
               currentGoal: p.currentGoal ?? seed.currentGoal,
               currentTask: p.currentTask ?? seed.currentTask,
@@ -368,7 +368,7 @@ export function AgentRegistry() {
               owner: p.owner ?? seed.owner
             };
           });
-          // keep user-created sub-agents not present in seed
+
           for (const p of persisted) if (!SEED_AGENTS.find((s) => s.id === p.id)) merged.push(p);
           setAgents(merged);
         }
@@ -445,7 +445,6 @@ export function AgentRegistry() {
     return () => clearInterval(t);
   }, []);
 
-  // reverse: agentId -> sessionId (first bound)
   const agentSession = useMemo(() => {
     const m: Record<string, Slot> = {};
     for (const [sessionId, agentId] of Object.entries(bind)) {
@@ -1508,15 +1507,11 @@ export function AgentRegistry() {
           onOpenAgent={(id) => { setWorldOpen(false); setWorkspaceAgent(id); }}
           onOpenHtml={() => { setWorldOpen(false); setHtmlCanvas(true); }}
           onOpenNode={(n) => {
-            // Telegram session → Telegram Workspace
             if (n.type === "session") { setWorldOpen(false); setTgWs({ slotId: n.ref }); return; }
-            // Channel / Group → Telegram Workspace focused on that section
             if (n.type === "channel") { setWorldOpen(false); setTgWs({ focusKind: "channel", focusId: n.ref }); return; }
             if (n.type === "group") { setWorldOpen(false); setTgWs({ focusKind: "group", focusId: n.ref }); return; }
             if (n.type === "dialog" || n.type === "bot" || n.type === "contact") { setWorldOpen(false); setTgWs({ focusKind: n.type === "bot" ? "bot" : undefined }); return; }
-            // Mission → owner Agent Workspace (Missions tab)
             if (n.type === "mission" && n.ref) { const ms = missions.find((m) => m.id === n.ref); if (ms?.agentId) { setWorldOpen(false); setWorkspaceAgent(ms.agentId); return; } }
-            // Infrastructure node / AI service → HTML architecture canvas (Infrastructure / Runtime / Service layer)
             setWorldOpen(false); setHtmlCanvas(true);
           }}
         />

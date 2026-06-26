@@ -46,14 +46,14 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!authed) return;
-    // backend status via the operator proxy
+
     fetch("/api/operator/status", { cache: "no-store" })
       .then((r) => setBackend(r.ok ? "ok" : "down"))
       .catch(() => setBackend("down"));
-    // telegram web app present?
+
     const w = window as unknown as { Telegram?: { WebApp?: unknown } };
     setTg(w.Telegram?.WebApp ? "ok" : "unknown");
-    // pwa installable?
+
     setPwa("serviceWorker" in navigator ? "ok" : "down");
   }, [authed]);
 
