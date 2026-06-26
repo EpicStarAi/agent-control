@@ -27,6 +27,36 @@
   `/api/admin/login`. Expected green (server components + one client page + one node route).
 - `git status --short` must show only the new safe files; no `.env`, session, logs, or local Claude settings.
 
+## Local smoke-test (2026-06-26)
+Started `npm run dev:host` (port 3015; `:3000` is held by `open-webui` Docker container so
+the default dev port is unusable in this environment) and probed routes.
+
+- Route status codes (all 200):
+
+  | Route      | Code |
+  |------------|------|
+  | `/`        | 200  |
+  | `/landing` | 200  |
+  | `/admin`   | 200  |
+  | `/terms`   | 200  |
+  | `/privacy` | 200  |
+  | `/abuse`   | 200  |
+
+- `POST /api/admin/login` with `{"password":"x"}` while
+  `EPICGRAM_OPERATOR_PASSWORD_SCRYPT` is unset →
+  **HTTP 503**, body
+  `{"ok":false,"configured":false,"message":"Admin gate not configured. Set EPICGRAM_OPERATOR_PASSWORD_SCRYPT in .env.local (npm run operator:hash)."}`
+  — gate is **closed by default** (no fallback that would let an arbitrary password through).
+- `/admin` pre-auth HTML inspection: operator-password form visible (`type="password"`,
+  `autoComplete="current-password"`), `Private beta` warning present, env-hash placeholder
+  (`scrypt hash`) referenced, **0** literal `password = "..."` assignments in HTML,
+  **0** post-auth markers leaked (dashboard / control panel / operator console / telegram
+  accounts / operator brain / owned target).
+- Post-smoke `npm run build` → `✓ Compiled successfully`.
+- Post-smoke `npm run lint --if-present` → **0 errors, 47 warnings**
+  (all pre-existing `react-hooks/exhaustive-deps` and `@next/next/no-img-element` in legacy
+  components, not introduced by P0).
+
 ## Files changed
 - NEW: `apps/web/app/admin/page.tsx`, `apps/web/app/api/admin/login/route.ts`,
   `apps/web/app/landing/page.tsx`, `docs/EPIC_GRAM_DOMAIN_DEPLOY.md`,
@@ -37,7 +67,12 @@
 - Commit hash: `<filled after local commit>` (message: "Close EPIC GRAM P0 admin and landing readiness").
 
 ## Push status
-- **WAITING FOR OWNER APPROVAL.** `git push` not executed. Local main is ahead of origin.
+- **WAITING FOR OWNER APPROVAL.** `git push` not executed. Local `main` is ahead of `origin/main`
+  (5 commits as of this report). Prepared command (NOT executed):
+
+  ```
+  git push origin main
+  ```
 
 ## Remaining owner actions
 1. Approve `git push origin main`.
