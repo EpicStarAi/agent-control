@@ -83,3 +83,53 @@ the default dev port is unusable in this environment) and probed routes.
 3. Rotate Moonshot/Kimi API key.
 4. Review legal pages (`/terms /privacy /abuse`) with a lawyer before public launch.
 5. Set `EPICGRAM_OPERATOR_PASSWORD_SCRYPT` in server `.env.local` (`npm run operator:hash`) to enable `/admin`.
+
+## Follow-up patch (2026-06-26) — root env loading for admin gate
+
+### Bug
+`package.json` has `"dev": "next dev apps/web"`. Next.js 14 loads `.env*` files
+from the directory passed as its argument — i.e. `apps/web/`. The canonical
+`.env.local` lives at the **workspace root** next to `.env.example`, so out of
+the box `process.env.EPICGRAM_OPERATOR_PASSWORD_SCRYPT` was `undefined` and
+`POST /api/admin/login` returned HTTP 503 `{ok:false, configured:false}` even
+after the operator hash was correctly written to `.env.local`. Same behaviour
+would have hit `npm run build` had any route relied on root env vars.
+
+### Fix
+`apps/web/next.config.mjs` now loads `.env.local` and `.env` from the workspace
+root, resolved from `import.meta.url` (independent of `process.cwd()`):
+
+```js
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { config as loadEnv } from "dotenv";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const workspaceRoot = path.resolve(__dirname, "..", "..");
+loadEnv({ path: path.join(workspaceRoot, ".env.local"), override: false });
+loadEnv({ path: path.join(workspaceRoot, ".env"),       override: false });
+```
+
+`override: false` keeps any pre-set `process.env` (CI, secrets manager, shell)
+authoritative. `dotenv` was promoted from transitive to an explicit `devDependency`.
+
+### Smoke (post-fix)
+- `GET /admin` → **200** with operator-password form.
+- `POST /api/admin/login {password:"wrong"}` → **401 `{ok:false}`** (was 503
+  before the fix — proves root env now loads).
+- `POST /api/admin/login {}` → **400 `password required`**.
+- `POST /api/admin/login {password:"admin"}` → **401** (no fallback).
+- `npm run build` → exit 0, all routes compiled.
+- `npm run lint --if-present` → exit 0, only pre-existing warnings
+  (`react-hooks/exhaustive-deps`, `@next/next/no-img-element`).
+
+No `apps/web/.env.local` is created. Root `.env.local` is the single source of
+truth and remains in `.gitignore`.
+
+### Helper
+`ops/set-operator-hash.ps1` — interactive PowerShell helper that reads the
+operator password via `Read-Host -AsSecureString`, runs `node
+scripts/create-operator-hash.mjs` with the password in a child-process env var
+only, and writes the resulting `EPICGRAM_OPERATOR_PASSWORD_SCRYPT=scrypt:…`
+line to root `.env.local`. The plaintext password is never echoed, never
+written to disk, and the env var is cleared in `finally`. Use this instead of
+inlining the password in a shell history.
