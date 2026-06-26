@@ -1,5 +1,5 @@
 # EPIC GRAM — P0 Closeout Report
-**Date:** 2026-06-26 · **Branch:** main (local, ahead of origin) · **Push:** NOT performed
+**Date:** 2026-06-26 · **Branch:** main · **Push:** PUSHED to origin (2026-06-26) — `d257724..8ed90e8`
 
 ## Admin route (#4) — DONE
 - `apps/web/app/admin/page.tsx` — `/admin` route. Operator gate (password) → status dashboard.
@@ -64,18 +64,21 @@ the default dev port is unusable in this environment) and probed routes.
 - `.env.example`: no change needed (`EPICGRAM_OPERATOR_PASSWORD_SCRYPT` placeholder already present).
 
 ## Commit
-- Commit hash: `<filled after local commit>` (message: "Close EPIC GRAM P0 admin and landing readiness").
+- Commit hash: `19e294c` (message: "Close EPIC GRAM P0 admin and landing readiness").
+- Closeout smoke commit: `8ed90e8` (message: "P0 closeout: local smoke-test results").
 
 ## Push status
-- **WAITING FOR OWNER APPROVAL.** `git push` not executed. Local `main` is ahead of `origin/main`
-  (5 commits as of this report). Prepared command (NOT executed):
-
-  ```
-  git push origin main
-  ```
+- **PUSHED** to `origin/main` on 2026-06-26 (owner approved).
+- Range pushed: `d257724..8ed90e8` (5 commits):
+  - `4c8629c` PHASE P0: EPIC GRAM agent OS + operator sidebar + infra/media/operator API routes + world view (WIP snapshot)
+  - `1c60fc9` P0: CI skeleton + legal pages + RUNBOOK + release checklist + freeze Vite legacy
+  - `98de484` P0: Telegram Web App init (Mini App SDK + safe no-op outside Telegram)
+  - `19e294c` Close EPIC GRAM P0 admin and landing readiness
+  - `8ed90e8` P0 closeout: local smoke-test results
+- Local `main` is now up-to-date with `origin/main` (ahead = 0).
 
 ## Remaining owner actions
-1. Approve `git push origin main`.
+1. ~~Approve `git push origin main`.~~ **Done** (2026-06-26).
 2. Rotate Telegram bot token (@BotFather `/revoke`).
 3. Rotate Moonshot/Kimi API key.
 4. Review legal pages (`/terms /privacy /abuse`) with a lawyer before public launch.
