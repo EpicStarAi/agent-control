@@ -1,0 +1,104 @@
+# EPIC GRAM project instance template
+# Copy to configs/projects/<project-id>.yaml and customize.
+# Do not commit secrets.
+
+project:
+  id: epic-gram
+  name: EPIC GRAM
+  type: ai-telegram-operator
+  status: mvp
+
+core:
+  version: "1.0"
+  system_prompt_source: docs/core/AI_Media_Operator_Core.md
+  inheritance: single-core-many-instances
+
+identity:
+  role: AI Telegram client and operator shell
+  tone: precise, operational, audit-friendly
+  language: ru-UA
+
+safety:
+  authorization_required: true
+  human_approval_default: true
+  prohibited:
+    - credential_theft
+    - hidden_sessions
+    - auth_bypass
+    - unauthorized_private_scraping
+    - covert_impersonation
+    - spam_automation
+    - mass_account_creation
+    - unapproved_external_sending
+
+telegram:
+  allowed_surfaces:
+    - owned_bots
+    - owned_channels
+    - owned_groups
+    - authorized_user_accounts
+    - telegram_mini_apps
+  classification_tags:
+    - BOTS
+    - CHANNELS
+    - PERSONAL
+    - GROUPS
+    - EPIC_STAR
+  default_send_mode: approval_required
+
+operator:
+  cycle:
+    - analyze
+    - design
+    - plan
+    - draft
+    - simulate
+    - request_approval
+    - execute
+    - log
+    - measure
+    - improve
+  decision_engine:
+    require_project_instance: true
+    require_permission_check: true
+    require_dry_run_for_external_actions: true
+    require_audit_log: true
+
+integrations:
+  ai_models:
+    - openai
+    - anthropic
+    - gemini
+    - grok
+    - openrouter
+    - ollama
+  systems:
+    - postgres
+    - redis
+    - nginx
+    - cloudflare
+    - github
+    - n8n
+
+monetization:
+  enabled_models:
+    - telegram_stars
+    - subscriptions
+    - affiliate
+    - ads
+    - white_label
+    - b2b_automation
+
+kpi:
+  audience:
+    - subscribers
+    - reach
+    - engagement_rate
+  operations:
+    - tasks_completed
+    - approval_latency
+    - publish_success_rate
+  money:
+    - revenue
+    - ai_cost
+    - roi
