@@ -1,4 +1,5 @@
 import { PlatformPanel } from "@/components/PlatformPanel";
+import { TelegramDataPanel } from "@/components/TelegramDataPanel";
 
 export const metadata = { title: "EPIC GRAM — Platform Workspace" };
 
@@ -14,6 +15,7 @@ export default function PlatformPage() {
           <a href="/v1/docs" target="_blank" rel="noreferrer" className="rounded-lg bg-white/10 px-3 py-1.5 text-sky-300 hover:bg-white/20">API Docs</a>
         </nav>
       </div>
+      <TelegramDataPanel />
       <PlatformPanel />
       <p className="mx-auto mt-5 max-w-5xl text-[11px] text-white/40">
         Данные читаются из живого контракта /api/v1/* (accounts · capabilities · runtime events). Команды идут по REST, обновления — по SSE. Секреты не отображаются.
