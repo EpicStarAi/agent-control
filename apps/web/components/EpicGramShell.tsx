@@ -415,9 +415,23 @@ export function EpicGramShell({ section }: Props) {
     });
   }
 
-  function handleRedButton() {
-    setRedButtonNotice("Красная кнопка нажата. Протокол тревоги не запускался — это только локальная индикация.");
+  async function handleRedButton() {
     if (soundEnabled) playOperatorBeep();
+    setRedButtonNotice("SAFE MODE: активирую аварийную блокировку оператора…");
+    try {
+      const r = await fetch("/api/operator/production/lock", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ operator: "human", reason: "red_button" })
+      }).then((x) => x.json()).catch(() => null);
+      if (r && (r.killSwitch === true || r.runtimeMode === "LOCKED" || r.ok === true)) {
+        setRedButtonNotice("🔒 SAFE MODE ACTIVE — оператор LOCKED. Write/автопилот выключены, отправки заблокированы. Просмотр чатов остаётся. Разблокировка: Agent OS → Production Gate → Unlock (фраза «UNLOCK OPERATOR»).");
+      } else {
+        setRedButtonNotice("SAFE MODE недоступен (backend не ответил). Отправки в любом случае требуют подтверждения человека.");
+      }
+    } catch {
+      setRedButtonNotice("SAFE MODE недоступен (backend не ответил). Отправки в любом случае требуют подтверждения человека.");
+    }
   }
 
   useEffect(() => {
@@ -1709,6 +1723,26 @@ function SettingsWorkspace({
         <button onClick={onClearClient} className="mt-4 w-full rounded-xl border border-tg-line px-4 py-3 text-sm font-semibold text-tg-muted hover:bg-tg-hover hover:text-white">
           Очистить кэш клиента и перезагрузить
         </button>
+      </section>
+
+      <section className="rounded-2xl bg-tg-panel p-4 shadow-telegram">
+        <div className="mb-3 flex items-center gap-2 font-semibold text-tg-accent">
+          <ShieldCheck className="h-5 w-5" />
+          AI Operator · Second Pilot · безопасность
+        </div>
+        <div className="overflow-hidden rounded-xl bg-tg-bg">
+          <InfoRow label="AI Operator" value="EPICSTAR · MANUAL_APPROVAL_ONLY" />
+          <InfoRow label="Режим отправки" value={aiStatus?.sendMode === "operator_approval_required" ? "только после подтверждения" : "не настроен"} />
+          <InfoRow label="Approval Gate" value="ON — человек подтверждает" />
+          <InfoRow label="Auto-send / bulk" value="OFF" />
+          <InfoRow label="Kill Switch" value="Agent OS → Production Gate (🔒 Emergency Lock)" />
+          <InfoRow label="Права (матрица)" value="глобальные caps · per-object — план P1" />
+          <InfoRow label="Audit Log" value="Agent OS → Audit Log" />
+          <InfoRow label="Устройство / User-Agent" value={typeof navigator !== "undefined" ? navigator.userAgent : "—"} />
+        </div>
+        <p className="mt-3 text-sm leading-6 text-tg-muted">
+          Second Pilot и аварийная блокировка (SAFE MODE) управляются в разделе Agent OS → Production Gate. По умолчанию отправка идёт только после подтверждения человека.
+        </p>
       </section>
     </div>
   );
