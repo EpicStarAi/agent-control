@@ -215,6 +215,7 @@ const localItems: LocalItem[] = [
 
 const routeItems = [
   { href: "/client", label: "Рабочая область", icon: MessageCircle },
+  { href: "/platform", label: "Платформа", icon: Smartphone },
   { href: "/chats", label: "Чаты", icon: Users },
   { href: "/accounts", label: "Аккаунты", icon: User },
   { href: "/agents", label: "AI-агенты", icon: Cpu },
