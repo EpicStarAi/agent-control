@@ -217,6 +217,7 @@ const routeItems = [
   { href: "/client", label: "Рабочая область", icon: MessageCircle },
   { href: "/platform", label: "Платформа", icon: Smartphone },
   { href: "/council", label: "Совет", icon: Sparkles },
+  { href: "/missions", label: "Миссии", icon: Inbox },
   { href: "/chats", label: "Чаты", icon: Users },
   { href: "/accounts", label: "Аккаунты", icon: User },
   { href: "/agents", label: "AI-агенты", icon: Cpu },
