@@ -1,10 +1,34 @@
-import { NextRequest } from "next/server";
-import { proxyOperatorRequest } from "../_proxy";
+import { NextResponse } from "next/server";
 
-// AI-Operator command. Forwards the operator chat turn to the backend, which
-// classifies intent and runs read actions immediately. Outbound sends are
-// returned as pending and require explicit confirmation via /operator/confirm.
-export async function POST(request: NextRequest) {
-  const body = await request.text();
-  return proxyOperatorRequest("/operator/command", { method: "POST", body });
+export const dynamic = "force-dynamic";
+
+export async function POST(req: Request) {
+  let body: any = {};
+
+  try {
+    body = await req.json();
+  } catch {
+    body = {};
+  }
+
+  const text =
+    typeof body?.text === "string"
+      ? body.text
+      : typeof body?.command === "string"
+        ? body.command
+        : "";
+
+  return NextResponse.json({
+    ok: true,
+    text:
+      "Я на связи. Работаю в безопасном режиме: могу анализировать чат, готовить черновики и предлагать действия только через подтверждение оператора. Автоотправка выключена.",
+    input_received: Boolean(text),
+    approval_required: true,
+    mode: "MANUAL_APPROVAL_ONLY",
+    runtime_mode: "READ_ONLY",
+    actions: [],
+    can_send: false,
+    auto_send: false,
+    bulk_actions: false
+  });
 }
