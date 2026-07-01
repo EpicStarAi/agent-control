@@ -642,3 +642,109 @@ export async function getTdlibSessionSnapshot(accountId = "main") {
     adapter: getTdlibAdapterStatus(id)
   };
 }
+
+// P17.2/P17.4: read-only account detail — profile (getMe), storage
+// (getStorageStatisticsFast), active devices (getActiveSessions) and dialog
+// counters. Never writes; safe to call from an info panel.
+function formatSession(session) {
+  return {
+    id: session?.id != null ? String(session.id) : null,
+    current: Boolean(session?.is_current),
+    deviceModel: session?.device_model ?? null,
+    platform: session?.platform ?? null,
+    systemVersion: session?.system_version ?? null,
+    appName: session?.application_name ?? null,
+    appVersion: session?.application_version ?? null,
+    official: Boolean(session?.is_official_application),
+    country: session?.country ?? null,
+    region: session?.region ?? null,
+    ip: session?.ip ?? null,
+    lastActive: session?.last_active_date ? new Date(session.last_active_date * 1000).toISOString() : null,
+    loginDate: session?.log_in_date ? new Date(session.log_in_date * 1000).toISOString() : null
+  };
+}
+
+function meUsername(me) {
+  const active = me?.usernames?.active_usernames?.[0] ?? me?.usernames?.editable_username ?? me?.username;
+  return active ? `@${active}` : null;
+}
+
+export async function getTdlibAccountDetail(accountId = "main") {
+  const id = safeAccountId(accountId);
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
+  const ready = READY_STATES.has(authorizationState?._);
+
+  const detail = {
+    slotId: id,
+    session: {
+      ready,
+      authorizationState: authorizationState?._ ?? null,
+      deviceModel: "EPICGRAM Local Client",
+      systemVersion: `${process.platform} ${process.arch}`,
+      appVersion: "0.1.0",
+      createdAt: null,
+      lastActive: new Date().toISOString()
+    },
+    account: null,
+    storage: null,
+    statistics: null,
+    devices: []
+  };
+
+  if (!ready) return detail;
+
+  try {
+    const me = await tdClient.invoke({ _: "getMe" });
+    let language = null;
+    try {
+      const opt = await tdClient.invoke({ _: "getOption", name: "language_pack_id" });
+      language = opt?.value ?? null;
+    } catch { /* option not available */ }
+    detail.account = {
+      id: String(me.id),
+      username: meUsername(me),
+      firstName: me.first_name ?? null,
+      lastName: me.last_name ?? null,
+      phone: me.phone_number ? `+${String(me.phone_number).slice(0, 4)}***${String(me.phone_number).slice(-2)}` : null,
+      premium: Boolean(me.is_premium),
+      verified: Boolean(me.is_verified),
+      scam: Boolean(me.is_scam),
+      fake: Boolean(me.is_fake),
+      language,
+      dc: null
+    };
+  } catch { /* getMe failed */ }
+
+  try {
+    const s = await tdClient.invoke({ _: "getStorageStatisticsFast" });
+    detail.storage = {
+      database: Number(s?.database_size ?? 0),
+      media: Number(s?.files_size ?? 0),
+      documents: 0,
+      cache: Number(s?.log_size ?? 0),
+      filesCount: Number(s?.file_count ?? 0)
+    };
+  } catch { /* storage stats failed */ }
+
+  try {
+    const sessions = await tdClient.invoke({ _: "getActiveSessions" });
+    detail.devices = (sessions?.sessions ?? []).map(formatSession);
+  } catch { /* sessions failed */ }
+
+  try {
+    const chats = await getCurrentChats(tdClient, 200);
+    const count = (predicate) => chats.filter(predicate).length;
+    detail.statistics = {
+      dialogs: chats.length,
+      privateChats: count((c) => c.category === "private"),
+      groups: count((c) => c.category === "group"),
+      supergroups: 0,
+      channels: count((c) => c.category === "channel" || c.isChannel),
+      bots: count((c) => c.category === "bot" || c.isBot),
+      unread: chats.reduce((sum, c) => sum + (c.unreadCount ?? 0), 0)
+    };
+  } catch { /* chat counters failed */ }
+
+  return detail;
+}

@@ -576,6 +576,16 @@ const server = http.createServer(async (request, response) => {
       return send(response, 200, out);
     }
 
+    // P17.2/P17.4: versioned read-only account API. One shared contract for the
+    // web client today and future Android / iOS / cloud / WebApp clients.
+    // /v1/telegram/account -> info | storage | devices | statistics
+    if (request.method === "GET" && url.pathname.startsWith("/v1/telegram/account")) {
+      const slice = url.pathname.slice("/v1/telegram/account".length).replace(/^\/+/, "") || "info";
+      const { getAccountDetail } = await import("./telegram-runtime.mjs");
+      const result = await getAccountDetail({ accountId: url.searchParams.get("accountId"), slice });
+      return send(response, result.status, result.body);
+    }
+
     return send(response, 404, { message: "Not found" });
   } catch (error) {
     return send(response, 500, {

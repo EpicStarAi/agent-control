@@ -316,6 +316,33 @@ export async function selectAccountSlot(payload) {
   });
 }
 
+// P17.2/P17.4: versioned read-only account detail. No state mutation, so it runs
+// lock-free (like getPhoto) to avoid stalling the status/chat poll. `slice`
+// selects info | storage | devices | statistics from one composite fetch.
+export async function getAccountDetail({ accountId, slice = "info" } = {}) {
+  const state = await readState();
+  const id = safeAccountId(accountId ?? state.activeAccountId);
+  if (!tdlibConfigured()) {
+    return {
+      status: 503,
+      body: { slotId: id, tdlibConfigured: false, missingConfig: missingTdlibConfig(), message: notConfiguredMessage() }
+    };
+  }
+  try {
+    const { getTdlibAccountDetail } = await import("./tdlib-adapter.mjs");
+    const detail = await getTdlibAccountDetail(id);
+    const slices = {
+      info: detail,
+      storage: { slotId: id, storage: detail.storage },
+      devices: { slotId: id, devices: detail.devices },
+      statistics: { slotId: id, statistics: detail.statistics }
+    };
+    return { status: 200, body: slices[slice] ?? detail };
+  } catch (error) {
+    return { status: 500, body: { slotId: id, message: error instanceof Error ? error.message : "account detail failed" } };
+  }
+}
+
 export async function removeAccountSlot(payload) {
   return withStateLock(async () => {
   const state = await readState();
