@@ -18,3 +18,5 @@ epicgram-*.log
 *.log
 build-*.log
 .claude/settings.local.json
+
+.mission-data.json

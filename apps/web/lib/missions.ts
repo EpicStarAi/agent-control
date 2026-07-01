@@ -1,12 +1,16 @@
-// P24 Mission Center — static, read-only seed data. No backend, no sends.
-// The client is the control room; missions are the shared task/lifecycle view
-// for the AI operators. Everything here is display-only and simulated.
+// P24 / P24.1 — Mission Center canonical model + seed.
+// Client-safe (pure data, no node deps). The server store (lib/missionStore.ts)
+// seeds from these constants. Everything here is simulated/read-only in spirit:
+// no Telegram, no external calls, Approval Gate is MANUAL_APPROVAL_ONLY.
 
 export type MissionStatus =
   | "draft" | "queued" | "in_progress" | "waiting_approval"
   | "approved" | "executed" | "failed" | "archived";
 
 export type LifecycleTone = "idle" | "go" | "warn" | "ok" | "bad";
+export type Priority = "low" | "medium" | "high";
+export type RiskLevel = "none" | "low" | "medium" | "high";
+export type ApprovalState = "not_required" | "pending" | "approved" | "rejected";
 
 export const LIFECYCLE: { id: MissionStatus; label: string; tone: LifecycleTone }[] = [
   { id: "draft", label: "Draft", tone: "idle" },
@@ -18,122 +22,132 @@ export const LIFECYCLE: { id: MissionStatus; label: string; tone: LifecycleTone 
   { id: "failed", label: "Failed", tone: "bad" },
   { id: "archived", label: "Archived", tone: "idle" }
 ];
+export const MISSION_STATUSES: MissionStatus[] = LIFECYCLE.map((l) => l.id);
 
 export function statusMeta(s: MissionStatus) {
   return LIFECYCLE.find((l) => l.id === s) ?? LIFECYCLE[0];
 }
 
-export type Priority = "low" | "medium" | "high";
-
 export type Mission = {
   id: string;
   title: string;
-  summary: string;
-  owner: string;          // operator name
+  description: string;
+  ownerOperator: string;
   priority: Priority;
   status: MissionStatus;
-  adapters: string[];     // linked channels/adapters
-  lastActivity: string;   // human-readable
+  linkedAdapters: string[];
   approvalRequired: boolean;
-  audit: string[];        // audit notes (safe metadata only)
+  createdAt: string;
+  updatedAt: string;
+  auditNotes: string[];
 };
 
-// Seed maps to the real EPIC GRAM workstreams (safe, no secrets).
+export type OperatorEvent = {
+  id: string;
+  missionId: string | null;
+  sourceOperator: string;
+  eventType: "suggested" | "approval_required" | "waiting" | "risk_checked" | "logged" | "status_changed";
+  message: string;
+  riskLevel: RiskLevel;
+  approvalState: ApprovalState;
+  timestamp: string;
+};
+
+const T0 = "2026-06-20T09:00:00.000Z";
+
 export const MISSIONS: Mission[] = [
   {
     id: "m-client-launch",
     title: "EPIC GRAM AI CLIENT — launch",
-    summary: "Собрать клиент-операционку: платформенное ядро, экраны, навигация.",
-    owner: "System",
+    description: "Собрать клиент-операционку: платформенное ядро, экраны, навигация.",
+    ownerOperator: "System",
     priority: "high",
     status: "in_progress",
-    adapters: ["Web", "Desktop"],
-    lastActivity: "P22A · Telegram Data API · зелёный build",
+    linkedAdapters: ["Web", "Desktop"],
     approvalRequired: false,
-    audit: ["P16→P22A выполнены", "каждый шаг: build → commit", "деплой — отдельный approve-шаг"]
+    createdAt: T0,
+    updatedAt: T0,
+    auditNotes: ["P16→P22A выполнены", "каждый шаг: build → commit", "деплой — отдельный approve-шаг"]
   },
   {
     id: "m-tg-stabilization",
     title: "Telegram Workspace — стабилизация",
-    summary: "Мультиаккаунт, мгновенное переключение, живые диалоги/устройства из TDLib.",
-    owner: "NOVIKOVA 💋",
+    description: "Мультиаккаунт, мгновенное переключение, живые диалоги/устройства из TDLib.",
+    ownerOperator: "NOVIKOVA 💋",
     priority: "high",
     status: "executed",
-    adapters: ["Telegram"],
-    lastActivity: "60 диалогов · 22 канала · 13 групп подтянуты",
+    linkedAdapters: ["Telegram"],
     approvalRequired: false,
-    audit: ["P16 auth-guard", "P17 instant switch", "P21/P22A data view"]
+    createdAt: T0,
+    updatedAt: T0,
+    auditNotes: ["60 диалогов · 22 канала · 13 групп", "P16 auth-guard", "P17 instant switch"]
   },
   {
     id: "m-operator-council",
     title: "Operator Council — реализация",
-    summary: "Внутренний штаб операторов: роли, Event Bus, Approval Gate, Audit.",
-    owner: "System",
+    description: "Внутренний штаб операторов: роли, Event Bus, Approval Gate, Audit.",
+    ownerOperator: "System",
     priority: "medium",
     status: "executed",
-    adapters: ["Client"],
-    lastActivity: "коммит 91f9866 · /council 200",
+    linkedAdapters: ["Client"],
     approvalRequired: false,
-    audit: ["ядро — в клиенте", "Telegram — внешний адаптер", "read-only shell"]
+    createdAt: T0,
+    updatedAt: T0,
+    auditNotes: ["коммит 91f9866 · /council 200", "ядро — в клиенте", "read-only shell"]
   },
   {
     id: "m-vpn-hmn",
     title: "VPN / HideMyName — workstream",
-    summary: "Поддержка подключения VPN, оплата Stars, устранение блокировок.",
-    owner: "Support",
+    description: "Поддержка подключения VPN, оплата Stars, устранение блокировок.",
+    ownerOperator: "Support",
     priority: "medium",
     status: "in_progress",
-    adapters: ["VPN", "Telegram"],
-    lastActivity: "черновик ответа на запрос подключения готов",
+    linkedAdapters: ["VPN", "Telegram"],
     approvalRequired: true,
-    audit: ["ответы клиентам — через approval", "паролей/ключей не просить"]
+    createdAt: T0,
+    updatedAt: T0,
+    auditNotes: ["черновик ответа готов", "ответы клиентам — через approval", "паролей/ключей не просить"]
   },
   {
     id: "m-publisher",
     title: "Publisher / content pipeline",
-    summary: "Черновик → preview → approve-gate → ручное подтверждение публикации.",
-    owner: "Publisher",
+    description: "Черновик → preview → approve-gate → ручное подтверждение публикации.",
+    ownerOperator: "Publisher",
     priority: "high",
     status: "waiting_approval",
-    adapters: ["Telegram канал"],
-    lastActivity: "1 черновик поста ждёт подтверждения оператора",
+    linkedAdapters: ["Telegram канал"],
     approvalRequired: true,
-    audit: ["auto-post OFF", "bulk OFF", "публикация только после confirm"]
+    createdAt: T0,
+    updatedAt: T0,
+    auditNotes: ["1 черновик ждёт подтверждения", "auto-post OFF", "bulk OFF"]
   },
   {
     id: "m-digital-human",
     title: "Digital Human / Live (Wan) — north star",
-    summary: "Real-time аватар: мозг + голос + лицо. Mini App (WebRTC) / /live.",
-    owner: "BUCH ☠",
+    description: "Real-time аватар: мозг + голос + лицо. Mini App (WebRTC) / /live.",
+    ownerOperator: "BUCH ☠",
     priority: "low",
     status: "draft",
-    adapters: ["Mini App", "RTMP/live"],
-    lastActivity: "WATCH: следим за Wan / HeyGen; строим после ядра",
+    linkedAdapters: ["Mini App", "RTMP/live"],
     approvalRequired: true,
-    audit: ["живой видео-звонок через TDLib невозможен", "цель ~P26"]
+    createdAt: T0,
+    updatedAt: T0,
+    auditNotes: ["WATCH: Wan / HeyGen", "живой видео-звонок через TDLib невозможен", "цель ~P26"]
   }
 ];
 
-export type Activity = {
-  id: string;
-  at: string;               // human time
-  operator: string;
-  kind: "suggested" | "approval_required" | "waiting" | "risk_checked" | "logged";
-  text: string;
-};
-
-export const ACTIVITY: Activity[] = [
-  { id: "a1", at: "сейчас", operator: "NOVIKOVA 💋", kind: "suggested", text: "Предложила черновик ответа на VPN-запрос" },
-  { id: "a2", at: "1 мин", operator: "BUCH ☠", kind: "approval_required", text: "Пост для канала ждёт подтверждения оператора" },
-  { id: "a3", at: "3 мин", operator: "Publisher", kind: "waiting", text: "Очередь публикации: 1 черновик на approve" },
-  { id: "a4", at: "6 мин", operator: "Auditor", kind: "risk_checked", text: "Проверил контакт: risk LOW (10)" },
-  { id: "a5", at: "8 мин", operator: "Analyst", kind: "suggested", text: "Свёл метрики каналов за неделю" },
-  { id: "a6", at: "10 мин", operator: "System", kind: "logged", text: "runtime.health · SSE connected" }
+export const OPERATOR_EVENTS: OperatorEvent[] = [
+  { id: "e1", missionId: "m-vpn-hmn", sourceOperator: "NOVIKOVA 💋", eventType: "suggested", message: "Предложила черновик ответа на VPN-запрос", riskLevel: "none", approvalState: "pending", timestamp: T0 },
+  { id: "e2", missionId: "m-publisher", sourceOperator: "BUCH ☠", eventType: "approval_required", message: "Пост для канала ждёт подтверждения оператора", riskLevel: "none", approvalState: "pending", timestamp: T0 },
+  { id: "e3", missionId: "m-publisher", sourceOperator: "Publisher", eventType: "waiting", message: "Очередь публикации: 1 черновик на approve", riskLevel: "none", approvalState: "pending", timestamp: T0 },
+  { id: "e4", missionId: null, sourceOperator: "Auditor", eventType: "risk_checked", message: "Проверил контакт: risk LOW (10)", riskLevel: "low", approvalState: "not_required", timestamp: T0 },
+  { id: "e5", missionId: null, sourceOperator: "Analyst", eventType: "suggested", message: "Свёл метрики каналов за неделю", riskLevel: "none", approvalState: "not_required", timestamp: T0 },
+  { id: "e6", missionId: null, sourceOperator: "System", eventType: "logged", message: "runtime.health · SSE connected", riskLevel: "none", approvalState: "not_required", timestamp: T0 }
 ];
 
-export function activityTone(k: Activity["kind"]): LifecycleTone {
-  if (k === "approval_required" || k === "waiting") return "warn";
-  if (k === "risk_checked") return "ok";
-  if (k === "suggested") return "go";
+export function eventTone(e: Pick<OperatorEvent, "eventType">): LifecycleTone {
+  if (e.eventType === "approval_required" || e.eventType === "waiting") return "warn";
+  if (e.eventType === "risk_checked") return "ok";
+  if (e.eventType === "suggested") return "go";
   return "idle";
 }
