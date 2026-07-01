@@ -105,6 +105,30 @@ paths:
       responses:
         "200": { description: Unlocked }
         "404": { description: No such slot }
+  /telegram/dialogs:
+    get:
+      tags: [telegram]
+      summary: Read-only account-aware dialogs (real via TDLib) with typed counts
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      responses:
+        "200": { description: "{ slotId, ready, source, counts, dialogs[] }" }
+  /telegram/saved:
+    get:
+      tags: [telegram]
+      summary: Saved Messages (honest empty state until backed by TDLib)
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      responses:
+        "200": { description: "{ available, items[], message }" }
+  /telegram/drafts:
+    get:
+      tags: [telegram]
+      summary: Drafts (honest empty state until backed by TDLib)
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      responses:
+        "200": { description: "{ available, items[], message }" }
   /telegram/account/info:
     get:
       tags: [accounts]

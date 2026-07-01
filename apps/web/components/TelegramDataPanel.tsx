@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-// P21: Telegram Data View — read-only visual layer that makes /platform look like
-// the start of a Telegram client (folders + dialogs), on top of existing data.
-// Reads ONLY existing endpoints: /api/v1/accounts/current (active account) and
-// /api/telegram/chats (real dialogs). No sending, scraping, mass actions or
-// bypass. Saved/Drafts have no backend endpoint yet → honest "unavailable".
+// P21 + P22A: Telegram Data View — read-only visual layer (folders + dialogs).
+// Prefers the versioned /api/v1/telegram/dialogs contract, falls back to the
+// legacy /api/telegram/chats. Saved/Drafts read from versioned endpoints and
+// render honest empty states when the backend has no data. No sending, scraping,
+// mass actions or bypass. Secrets are never shown; phones stay API-masked.
 
 type Chat = {
   id?: string;
@@ -18,7 +18,9 @@ type Chat = {
   username?: string | null;
   lastMessage?: { content?: string } | null;
 };
+type DialogsResp = { dialogs?: Chat[]; ready?: boolean; source?: string; counts?: Record<string, number>; message?: string };
 type ChatsResp = { chats?: Chat[]; runtime?: string; message?: string; tdlibConfigured?: boolean };
+type ListResp = { available?: boolean; items?: Array<{ id?: string; title?: string; preview?: string }>; message?: string };
 type Current = {
   activeAccountId?: string;
   account?: {
@@ -42,7 +44,10 @@ const FOLDERS = [
 ] as const;
 type FolderId = (typeof FOLDERS)[number]["id"];
 
-const CHATS_SOURCE = "/api/telegram/chats";
+const DIALOGS_SOURCE = "/api/v1/telegram/dialogs";
+const CHATS_FALLBACK = "/api/telegram/chats";
+const SAVED_SOURCE = "/api/v1/telegram/saved";
+const DRAFTS_SOURCE = "/api/v1/telegram/drafts";
 const ACCOUNT_SOURCE = "/api/v1/accounts/current";
 
 function avatarColor(seed: string) {
@@ -59,6 +64,9 @@ function isPersonal(c: Chat) { return c.category === "private" || c.category ===
 export function TelegramDataPanel() {
   const [current, setCurrent] = useState<Current["account"] | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
+  const [source, setSource] = useState<string>("");
+  const [saved, setSaved] = useState<ListResp | null>(null);
+  const [drafts, setDrafts] = useState<ListResp | null>(null);
   const [folder, setFolder] = useState<FolderId>("all");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -75,21 +83,45 @@ export function TelegramDataPanel() {
       const slot = acc.account ?? null;
       setCurrent(slot);
       const slotId = slot?.slotId ?? acc.activeAccountId ?? "";
-      const res = await fetch(`${CHATS_SOURCE}?accountId=${encodeURIComponent(slotId)}`, { cache: "no-store" });
-      const data = (await res.json()) as ChatsResp;
-      if (res.status === 503 || data.tdlibConfigured === false) {
-        setNotReady(true);
-        setChats([]);
-        setError("");
-      } else if (!res.ok) {
-        setNotReady(false);
-        setChats([]);
-        setError("Данные Telegram недоступны.");
-      } else {
-        setNotReady(false);
-        setChats(Array.isArray(data.chats) ? data.chats : []);
-        setError("");
+      const q = `?accountId=${encodeURIComponent(slotId)}`;
+
+      // Prefer versioned dialogs; fall back to legacy chats.
+      let list: Chat[] = [];
+      let src = "";
+      let ready = true;
+      let unavailable = false;
+      try {
+        const r = await fetch(`${DIALOGS_SOURCE}${q}`, { cache: "no-store" });
+        const d = (await r.json()) as DialogsResp;
+        if (r.ok && Array.isArray(d.dialogs)) {
+          list = d.dialogs;
+          src = DIALOGS_SOURCE;
+          ready = d.ready !== false;
+          if (d.ready === false) unavailable = true;
+        } else {
+          throw new Error("v1 dialogs unavailable");
+        }
+      } catch {
+        const r2 = await fetch(`${CHATS_FALLBACK}${q}`, { cache: "no-store" });
+        const d2 = (await r2.json()) as ChatsResp;
+        src = `${CHATS_FALLBACK} (fallback)`;
+        if (r2.status === 503 || d2.tdlibConfigured === false) { unavailable = true; ready = false; }
+        else if (!r2.ok) { setError("Данные Telegram недоступны."); }
+        else list = Array.isArray(d2.chats) ? d2.chats : [];
       }
+      setChats(list);
+      setSource(src);
+      setNotReady(unavailable || !ready);
+      if (list.length > 0 || unavailable) setError("");
+
+      // Saved + drafts (versioned; honest empty when unavailable).
+      const [sv, df] = await Promise.all([
+        fetch(`${SAVED_SOURCE}${q}`, { cache: "no-store" }).then((r) => r.json()).catch(() => null),
+        fetch(`${DRAFTS_SOURCE}${q}`, { cache: "no-store" }).then((r) => r.json()).catch(() => null)
+      ]);
+      setSaved(sv as ListResp | null);
+      setDrafts(df as ListResp | null);
+
       setLastRefreshed(new Date().toLocaleTimeString());
     } catch {
       setError("Бэкенд недоступен.");
@@ -106,9 +138,9 @@ export function TelegramDataPanel() {
     chats: chats.filter(isPersonal).length,
     channels: chats.filter(isChannel).length,
     groups: chats.filter(isGroup).length,
-    saved: 0,
-    drafts: 0
-  }), [chats]);
+    saved: saved?.items?.length ?? 0,
+    drafts: drafts?.items?.length ?? 0
+  }), [chats, saved, drafts]);
 
   const visible = useMemo(() => {
     if (folder === "channels") return chats.filter(isChannel);
@@ -118,9 +150,12 @@ export function TelegramDataPanel() {
     return [];
   }, [chats, folder]);
 
-  const notImplemented = folder === "saved" || folder === "drafts";
+  const isList = folder === "saved" || folder === "drafts";
+  const listData = folder === "saved" ? saved : folder === "drafts" ? drafts : null;
+  const listItems = listData?.items ?? [];
   const accName = current?.displayName ?? current?.label ?? current?.slotId ?? "—";
   const ready = current?.status === "ready" || current?.authorizationState === "authorizationStateReady";
+  const sourceLabel = isList ? (folder === "saved" ? SAVED_SOURCE : DRAFTS_SOURCE) : (source || "—");
 
   return (
     <section className="mx-auto mb-4 max-w-5xl rounded-2xl border border-white/10 bg-white/5">
@@ -157,15 +192,34 @@ export function TelegramDataPanel() {
         <div className="max-h-[560px] min-h-[220px] overflow-auto p-2">
           {loading && <div className="p-4 text-sm text-white/50">Загрузка Telegram Data…</div>}
           {!loading && error && <div className="m-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</div>}
-          {!loading && !error && notReady && (
+          {!loading && !error && notReady && !isList && (
             <div className="m-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">Telegram не авторизован для активного слота — данные недоступны.</div>
           )}
-          {!loading && !error && !notReady && notImplemented && (
-            <div className="m-2 rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
-              «{folder === "saved" ? "Saved Messages" : "Черновики"}» — бэкенд-эндпоинт ещё не реализован. Появится в следующем этапе (read-only). Данные не подделываются.
-            </div>
+
+          {/* Saved / Drafts */}
+          {!loading && !error && isList && (
+            listItems.length > 0 ? (
+              <div className="space-y-1">
+                {listItems.map((it, i) => (
+                  <div key={it.id ?? i} className="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/5">
+                    <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-bold text-white ${avatarColor(it.title ?? String(i))}`}>{(it.title ?? "•").slice(0, 1).toUpperCase()}</div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold text-white">{it.title ?? "—"}</div>
+                      <div className="truncate text-[12px] text-white/45">{it.preview ?? ""}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="m-2 rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-white/60">
+                {folder === "saved" ? "Saved messages unavailable or empty" : "No drafts available"}
+                <div className="mt-1 text-[11px] text-white/35">{listData?.message ?? "бэкенд-эндпоинт вернул пустое состояние (данные не подделываются)"}</div>
+              </div>
+            )
           )}
-          {!loading && !error && !notReady && !notImplemented && (
+
+          {/* Dialogs */}
+          {!loading && !error && !notReady && !isList && (
             <>
               {visible.length === 0 && <div className="p-4 text-sm text-white/40">Пусто в этой папке.</div>}
               <div className="space-y-1">
@@ -189,7 +243,8 @@ export function TelegramDataPanel() {
               </div>
             </>
           )}
-          <div className="mt-2 px-2 text-[10px] text-white/30">источник: {folder === "saved" || folder === "drafts" ? "— (не реализовано)" : CHATS_SOURCE} · только чтение</div>
+
+          <div className="mt-2 px-2 text-[10px] text-white/30">источник: {sourceLabel} · только чтение</div>
         </div>
       </div>
     </section>

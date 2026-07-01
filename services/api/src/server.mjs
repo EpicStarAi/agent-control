@@ -589,6 +589,23 @@ const server = http.createServer(async (request, response) => {
       const result = await getAccountDetail({ accountId: url.searchParams.get("accountId"), slice });
       return send(response, result.status, result.body);
     }
+    // P22A: versioned read-only Telegram data (dialogs real via TDLib; saved/drafts
+    // honest empty until backed). Canonical + runtime-namespace alias.
+    if (request.method === "GET" && (url.pathname === "/v1/telegram/dialogs" || url.pathname === "/v1/runtime/telegram/dialogs")) {
+      const { getDialogs } = await import("./telegram-runtime.mjs");
+      const r = await getDialogs({ accountId: url.searchParams.get("accountId") });
+      return send(response, r.status, r.body);
+    }
+    if (request.method === "GET" && (url.pathname === "/v1/telegram/saved" || url.pathname === "/v1/runtime/telegram/saved")) {
+      const { getSaved } = await import("./telegram-runtime.mjs");
+      const r = await getSaved({ accountId: url.searchParams.get("accountId") });
+      return send(response, r.status, r.body);
+    }
+    if (request.method === "GET" && (url.pathname === "/v1/telegram/drafts" || url.pathname === "/v1/runtime/telegram/drafts")) {
+      const { getDrafts } = await import("./telegram-runtime.mjs");
+      const r = await getDrafts({ accountId: url.searchParams.get("accountId") });
+      return send(response, r.status, r.body);
+    }
 
     // P18: versioned system + API docs (OpenAPI 3.1 is the source of truth for
     // every client). Additive, read-only.

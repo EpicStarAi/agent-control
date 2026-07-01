@@ -389,6 +389,62 @@ export async function lockAccountSlot({ accountId, locked = true } = {}) {
   });
 }
 
+// P22A: versioned read-only Telegram data. `dialogs` reuses getChats (real
+// TDLib). `saved`/`drafts` return honest structured empty states until backed by
+// TDLib — never faked. All read-only; no send/scrape/mass/bypass.
+export async function getDialogs({ accountId } = {}) {
+  const r = await getChats({ accountId });
+  const chats = Array.isArray(r.body?.chats) ? r.body.chats : [];
+  const isCh = (c) => c.category === "channel" || c.isChannel;
+  const isGr = (c) => c.category === "group";
+  const isBot = (c) => c.category === "bot" || c.isBot;
+  const isPer = (c) => c.category === "private" || c.category === "bot";
+  const counts = {
+    all: chats.length,
+    chats: chats.filter(isPer).length,
+    channels: chats.filter(isCh).length,
+    groups: chats.filter(isGr).length,
+    bots: chats.filter(isBot).length,
+    saved: 0,
+    drafts: 0
+  };
+  return {
+    status: r.status,
+    body: {
+      slotId: safeAccountId(accountId ?? r.body?.activeAccountId),
+      ready: r.status === 200,
+      source: "tdlib",
+      counts,
+      dialogs: chats,
+      message: r.body?.message ?? null
+    }
+  };
+}
+
+export async function getSaved({ accountId } = {}) {
+  return {
+    status: 200,
+    body: {
+      slotId: safeAccountId(accountId),
+      available: false,
+      items: [],
+      message: "Saved Messages read endpoint пока не реализован (TDLib self-chat) — честная заглушка, данные не подделываются."
+    }
+  };
+}
+
+export async function getDrafts({ accountId } = {}) {
+  return {
+    status: 200,
+    body: {
+      slotId: safeAccountId(accountId),
+      available: false,
+      items: [],
+      message: "Drafts read endpoint пока не реализован — честная заглушка, данные не подделываются."
+    }
+  };
+}
+
 export async function removeAccountSlot(payload) {
   return withStateLock(async () => {
   const state = await readState();
