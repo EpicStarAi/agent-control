@@ -586,6 +586,38 @@ const server = http.createServer(async (request, response) => {
       return send(response, result.status, result.body);
     }
 
+    // P18: versioned system + API docs (OpenAPI 3.1 is the source of truth for
+    // every client). Additive, read-only.
+    if (request.method === "GET" && url.pathname === "/v1/system/health") {
+      return send(response, 200, { ok: true, service: "epicgram-api", version: "v1", time: new Date().toISOString() });
+    }
+    if (request.method === "GET" && (url.pathname === "/v1/openapi.yaml" || url.pathname === "/v1/openapi")) {
+      const { readFile } = await import("node:fs/promises");
+      const spec = await readFile(new URL("../openapi.yaml", import.meta.url), "utf8");
+      response.writeHead(200, {
+        "content-type": "application/yaml; charset=utf-8",
+        "access-control-allow-origin": "*",
+        "cache-control": "no-store"
+      });
+      return response.end(spec);
+    }
+    if (request.method === "GET" && url.pathname === "/v1/docs") {
+      const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"/>`
+        + `<meta name="viewport" content="width=device-width, initial-scale=1"/>`
+        + `<title>EPIC GRAM Platform API — v1</title>`
+        + `<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css"/>`
+        + `<style>body{margin:0;background:#0b0b12}</style></head><body><div id="swagger"></div>`
+        + `<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>`
+        + `<script>window.onload=function(){window.ui=SwaggerUIBundle({url:"/v1/openapi.yaml",dom_id:"#swagger"});};</script>`
+        + `</body></html>`;
+      response.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "access-control-allow-origin": "*",
+        "cache-control": "no-store"
+      });
+      return response.end(html);
+    }
+
     return send(response, 404, { message: "Not found" });
   } catch (error) {
     return send(response, 500, {
