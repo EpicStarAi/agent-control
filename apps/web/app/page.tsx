@@ -1,5 +1,6 @@
-import { EpicGramShell } from "@/components/EpicGramShell";
+import { PortalLanding } from "@/components/PortalLanding";
 
-export default function DashboardPage() {
-  return <EpicGramShell section="dashboard" />;
+// Корень epic-gram.com — публичный портал/лендинг (P19). Web Client перенесён на /client.
+export default function HomePage() {
+  return <PortalLanding />;
 }
