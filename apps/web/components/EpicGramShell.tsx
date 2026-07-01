@@ -720,7 +720,16 @@ export function EpicGramShell({ section }: Props) {
     }
   }
 
+  function activeSlotIsReady() {
+    const slot = telegramStatus?.accounts?.find((a) => a.slotId === activeAccountId);
+    return Boolean(slot && (slot.status === "ready" || slot.authorizationState === "authorizationStateReady"));
+  }
+
   async function requestQrAuth() {
+    if (activeSlotIsReady()) {
+      setAuthMessage("Этот аккаунт уже авторизован. Откройте рабочую область или нажмите «Добавить аккаунт», чтобы войти в новый.");
+      return;
+    }
     setAuthFlowActive(true);
     const response = await fetch("/api/telegram/auth/qr", {
       method: "POST",
@@ -733,6 +742,10 @@ export function EpicGramShell({ section }: Props) {
   }
 
   async function requestPhoneAuth() {
+    if (activeSlotIsReady()) {
+      setAuthMessage("Этот аккаунт уже авторизован. Откройте рабочую область или нажмите «Добавить аккаунт», чтобы войти в новый.");
+      return;
+    }
     setAuthFlowActive(true);
     setQrLink("");
     setQrDataUrl("");
