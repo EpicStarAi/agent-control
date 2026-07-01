@@ -44,6 +44,20 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Capabilities" }
+  /runtime/events:
+    get:
+      tags: [events]
+      summary: SSE Event Bus (read-only push). Streams runtime events; no commands over SSE.
+      responses:
+        "200":
+          description: text/event-stream of runtime events
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: >
+                  SSE stream of Event envelopes { id, ts, runtime, type, accountId, data }.
+                  Types: session.changed, account.switched, auth.state_changed, message.new, runtime.health.
   /telegram/account/info:
     get:
       tags: [accounts]

@@ -1,6 +1,8 @@
-# Event Bus (design — P19)
+# Event Bus
 
 REST is fine for request/response, but clients and the AI operator need **push**. The Event Bus streams runtime changes so Web/Desktop/Android/AI-operator react instantly instead of polling.
+
+**Status (P19.1): SSE is LIVE** at `GET /api/v1/runtime/events` (capability `events.sse=true`). Read-only transport — no commands over SSE; commands stay on REST. Implemented now: `runtime.health`, `session.changed`, `account.switched`, `auth.state_changed`, `message.new`. WebSocket + the remaining catalog events are future increments. Module: `services/api/src/event-bus.mjs`.
 
 ## Transport
 - **SSE** (`GET /api/v1/runtime/events`) — primary. Simple over the existing Node HTTP server, one-way server→client, auto-reconnect. `text/event-stream`, heartbeat every ~15s.

@@ -611,10 +611,27 @@ const server = http.createServer(async (request, response) => {
           auth: { qr: true, phone: true, twoFa: true },
           telegram: { dialogs: true, messages: true, send: true, devices: true, storageStats: true, folders: false, voiceCalls: false, stories: false },
           ai: { operator: true, suggest: true, memory: true, publisher: true, workflows: false },
-          events: { sse: false, websocket: false },
+          events: { sse: true, websocket: false },
           plugins: false
         }
       });
+    }
+    // P19.1: SSE Event Bus. READ-ONLY push transport — no commands flow over
+    // SSE (commands stay on REST). Streams runtime events to every client.
+    if (request.method === "GET" && url.pathname === "/v1/runtime/events") {
+      const { subscribe, publish, ensureHeartbeat } = await import("./event-bus.mjs");
+      response.writeHead(200, {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-store",
+        "connection": "keep-alive",
+        "access-control-allow-origin": "*",
+        "x-accel-buffering": "no"
+      });
+      response.write("retry: 5000\n\n");
+      subscribe(response);
+      ensureHeartbeat();
+      publish({ type: "runtime.health", runtime: "telegram", data: { ok: true, hello: true } });
+      return;
     }
     if (request.method === "GET" && (url.pathname === "/v1/openapi.yaml" || url.pathname === "/v1/openapi")) {
       const { readFile } = await import("node:fs/promises");

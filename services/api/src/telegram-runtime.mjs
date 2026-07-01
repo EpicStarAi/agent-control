@@ -207,6 +207,12 @@ async function syncTdlibState(state) {
   try {
     const snapshot = await getTdlibSessionSnapshot(accountId);
     const authorizationState = snapshot.authorizationState?._ ?? state.authorizationState;
+    if (authorizationState && authorizationState !== state.authorizationState) {
+      try {
+        const { publish } = await import("./event-bus.mjs");
+        publish({ type: "auth.state_changed", runtime: "telegram", accountId, data: { authorizationState } });
+      } catch { /* event bus is optional */ }
+    }
     const nextState = upsertAccountSlot(state, accountId, {
       ...(snapshot.account ?? {}),
       label: snapshot.account?.displayName ?? state.accounts.find((slot) => slot.slotId === accountId)?.label ?? "Аккаунт",
@@ -312,6 +318,11 @@ export async function selectAccountSlot(payload) {
     }
   );
   const saved = await saveState({ ...nextState, message: "Активный Telegram-аккаунт переключен." });
+  try {
+    const { publish } = await import("./event-bus.mjs");
+    publish({ type: "account.switched", runtime: "telegram", accountId, data: { activeAccountId: accountId } });
+    publish({ type: "session.changed", runtime: "telegram", accountId, data: { activeAccountId: accountId } });
+  } catch { /* event bus is optional */ }
   return { status: 200, body: { ...saved, method: "account_select", ...configDiagnostics(accountId) } };
   });
 }

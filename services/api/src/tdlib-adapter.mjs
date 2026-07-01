@@ -93,6 +93,21 @@ async function ensureClient(accountId = "main") {
     client.on("update", (update) => {
       if (update?._ === "updateAuthorizationState") {
         lastAuthorizationStates.set(id, update.authorization_state);
+      } else if (update?._ === "updateNewMessage") {
+        // P19.1: push new-message events to the SSE bus. Best-effort, never throws.
+        const m = update.message;
+        import("./event-bus.mjs")
+          .then(({ publish }) => publish({
+            type: "message.new",
+            runtime: "telegram",
+            accountId: id,
+            data: {
+              chatId: m?.chat_id != null ? String(m.chat_id) : null,
+              messageId: m?.id != null ? String(m.id) : null,
+              isOutgoing: Boolean(m?.is_outgoing)
+            }
+          }))
+          .catch(() => {});
       }
     });
     client.on("error", (error) => {
