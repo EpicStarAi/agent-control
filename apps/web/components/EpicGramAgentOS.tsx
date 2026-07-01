@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from "react";
 import { t, useLocale } from "@/lib/i18n";
+import { OperatorActionPlan } from "@/components/OperatorActionPlan";
 
 // ---- existing keys (read-only) ----
 const K_BRAIN = "epicgram.agentBrain.v1";
@@ -1504,6 +1505,9 @@ export function EpicGramAgentOS({ onClose, initialSection }: { onClose: () => vo
         </div>
         <div className="mt-1 text-[9px] text-tg-muted">Enable требует фразу «ENABLE MANUAL LIVE» + пройденный Run Check. По умолчанию режим SIMULATION_ONLY: Confirm Send делает mock, не реальную отправку.</div>
       </div>
+
+      {/* P18 Action Plan · Approval Flow (head-start) */}
+      <OperatorActionPlan accountId={accId} project={agent} logAudit={logAudit} />
 
       {/* Audit */}
       <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
