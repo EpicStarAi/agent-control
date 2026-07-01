@@ -633,6 +633,30 @@ const server = http.createServer(async (request, response) => {
       publish({ type: "runtime.health", runtime: "telegram", data: { ok: true, hello: true } });
       return;
     }
+    // P19.2: Identity/Accounts facade — one account model for every client.
+    // Thin aliases to the slot registry; commands over REST, events over SSE.
+    if (request.method === "GET" && url.pathname === "/v1/accounts") {
+      const { listAccounts } = await import("./telegram-runtime.mjs");
+      const r = await listAccounts();
+      return send(response, r.status, r.body);
+    }
+    if (request.method === "GET" && url.pathname === "/v1/accounts/current") {
+      const { getCurrentAccount } = await import("./telegram-runtime.mjs");
+      const r = await getCurrentAccount();
+      return send(response, r.status, r.body);
+    }
+    if (request.method === "POST" && /^\/v1\/accounts\/[^/]+\/(switch|logout|lock|unlock)$/.test(url.pathname)) {
+      await readJson(request).catch(() => ({}));
+      const parts = url.pathname.split("/");
+      const accountId = decodeURIComponent(parts[3]);
+      const action = parts[4];
+      const rt = await import("./telegram-runtime.mjs");
+      let r;
+      if (action === "switch") r = await rt.selectAccountSlot({ accountId });
+      else if (action === "logout") r = await rt.logout({ accountId });
+      else r = await rt.lockAccountSlot({ accountId, locked: action === "lock" });
+      return send(response, r.status, r.body);
+    }
     if (request.method === "GET" && (url.pathname === "/v1/openapi.yaml" || url.pathname === "/v1/openapi")) {
       const { readFile } = await import("node:fs/promises");
       const spec = await readFile(new URL("../openapi.yaml", import.meta.url), "utf8");

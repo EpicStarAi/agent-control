@@ -58,6 +58,53 @@ paths:
                 description: >
                   SSE stream of Event envelopes { id, ts, runtime, type, accountId, data }.
                   Types: session.changed, account.switched, auth.state_changed, message.new, runtime.health.
+  /accounts:
+    get:
+      tags: [accounts]
+      summary: List account slots + active slot
+      responses:
+        "200": { description: Accounts list }
+  /accounts/current:
+    get:
+      tags: [accounts]
+      summary: The active account slot
+      responses:
+        "200": { description: Active account }
+  /accounts/{id}/switch:
+    post:
+      tags: [accounts]
+      summary: Switch active slot (instant, no re-auth). Emits account.switched + session.changed.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Switched }
+        "404": { description: No such slot }
+  /accounts/{id}/logout:
+    post:
+      tags: [accounts]
+      summary: Log out a slot
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Logged out }
+  /accounts/{id}/lock:
+    post:
+      tags: [accounts]
+      summary: Lock a slot (flag + account.locked event)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Locked }
+        "404": { description: No such slot }
+  /accounts/{id}/unlock:
+    post:
+      tags: [accounts]
+      summary: Unlock a slot (flag + account.unlocked event)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Unlocked }
+        "404": { description: No such slot }
   /telegram/account/info:
     get:
       tags: [accounts]

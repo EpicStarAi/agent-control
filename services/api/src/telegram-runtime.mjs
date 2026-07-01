@@ -63,6 +63,7 @@ function normalizeAccountSlot(slot, fallbackId = "main", index = 0) {
     phoneMasked: slot?.phoneMasked ?? null,
     status: slot?.status ?? (slot?.displayName ? "ready" : "waiting_auth"),
     authorizationState: slot?.authorizationState ?? null,
+    locked: Boolean(slot?.locked),
     active: false
   };
 }
@@ -296,6 +297,10 @@ export async function createAccountSlot() {
     ...nextState,
     message: "Создан новый слот Telegram-аккаунта. Можно авторизовать QR или номером."
   });
+  try {
+    const { publish } = await import("./event-bus.mjs");
+    publish({ type: "account.created", runtime: "telegram", accountId, data: { activeAccountId: accountId } });
+  } catch { /* event bus is optional */ }
   return { status: 201, body: { ...saved, method: "account_new", ...configDiagnostics(accountId) } };
   });
 }
@@ -354,6 +359,36 @@ export async function getAccountDetail({ accountId, slice = "info" } = {}) {
   }
 }
 
+// P19.2: Identity/Accounts facade. Thin, read-mostly helpers over the slot
+// registry so every client (Web/Desktop/Android) shares one account model.
+// `lock` is a slot flag + event (account.locked/unlocked); send-enforcement on a
+// locked slot is a later increment.
+export async function listAccounts() {
+  const state = normalizeState(await readState());
+  return { status: 200, body: { accounts: state.accounts, activeAccountId: state.activeAccountId, active: state.account ?? null } };
+}
+
+export async function getCurrentAccount() {
+  const state = normalizeState(await readState());
+  const active = state.accounts.find((slot) => slot.slotId === state.activeAccountId) ?? null;
+  return { status: 200, body: { activeAccountId: state.activeAccountId, account: active } };
+}
+
+export async function lockAccountSlot({ accountId, locked = true } = {}) {
+  return withStateLock(async () => {
+    const state = await readState();
+    const id = safeAccountId(accountId ?? state.activeAccountId);
+    const exists = normalizeState(state).accounts.some((slot) => slot.slotId === id);
+    if (!exists) return { status: 404, body: { slotId: id, message: "Такого слота нет." } };
+    const saved = await saveState(upsertAccountSlot(state, id, { locked: Boolean(locked) }));
+    try {
+      const { publish } = await import("./event-bus.mjs");
+      publish({ type: locked ? "account.locked" : "account.unlocked", runtime: "telegram", accountId: id, data: { locked: Boolean(locked) } });
+    } catch { /* event bus is optional */ }
+    return { status: 200, body: { ...saved, method: locked ? "account_lock" : "account_unlock", slotId: id } };
+  });
+}
+
 export async function removeAccountSlot(payload) {
   return withStateLock(async () => {
   const state = await readState();
@@ -383,6 +418,10 @@ export async function removeAccountSlot(payload) {
     phoneMasked: null,
     message: "Слот Telegram-аккаунта удалён."
   });
+  try {
+    const { publish } = await import("./event-bus.mjs");
+    publish({ type: "account.removed", runtime: "telegram", accountId, data: { activeAccountId: nextActive } });
+  } catch { /* event bus is optional */ }
   return { status: 200, body: { ...saved, method: "account_remove", ...configDiagnostics(nextActive) } };
   });
 }

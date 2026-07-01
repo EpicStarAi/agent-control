@@ -23,7 +23,7 @@ GET  /v1/telegram/account/storage
 GET  /v1/telegram/account/devices     getActiveSessions
 GET  /v1/telegram/account/statistics
 ```
-Planned `accounts` domain (facade over existing handlers):
+`accounts` domain — **live (P19.2)** (list · current · switch · logout · lock · unlock; backup/export/delete planned). Emits `account.created/updated/switched/removed/locked/unlocked` on the Event Bus:
 ```
 GET  /v1/accounts                 list slots
 GET  /v1/accounts/{slot}          one slot detail
