@@ -579,8 +579,12 @@ const server = http.createServer(async (request, response) => {
     // P17.2/P17.4: versioned read-only account API. One shared contract for the
     // web client today and future Android / iOS / cloud / WebApp clients.
     // /v1/telegram/account -> info | storage | devices | statistics
-    if (request.method === "GET" && url.pathname.startsWith("/v1/telegram/account")) {
-      const slice = url.pathname.slice("/v1/telegram/account".length).replace(/^\/+/, "") || "info";
+    // P19: runtime namespace. Telegram is one runtime among future browser /
+    // discord / whatsapp / ai runtimes. Canonical path: /v1/runtime/telegram/*.
+    // /v1/telegram/* is kept as a pre-freeze alias so no client breaks.
+    if (request.method === "GET" && (url.pathname.startsWith("/v1/telegram/account") || url.pathname.startsWith("/v1/runtime/telegram/account"))) {
+      const base = url.pathname.startsWith("/v1/runtime/telegram/account") ? "/v1/runtime/telegram/account" : "/v1/telegram/account";
+      const slice = url.pathname.slice(base.length).replace(/^\/+/, "") || "info";
       const { getAccountDetail } = await import("./telegram-runtime.mjs");
       const result = await getAccountDetail({ accountId: url.searchParams.get("accountId"), slice });
       return send(response, result.status, result.body);
@@ -590,6 +594,27 @@ const server = http.createServer(async (request, response) => {
     // every client). Additive, read-only.
     if (request.method === "GET" && url.pathname === "/v1/system/health") {
       return send(response, 200, { ok: true, service: "epicgram-api", version: "v1", time: new Date().toISOString() });
+    }
+    // P19: Capability API. Clients adapt the UI by declared capability, not by
+    // device type (no `if (android)` / `if (desktop)`). Additive, read-only.
+    if (request.method === "GET" && url.pathname === "/v1/system/capabilities") {
+      let aiReady = false;
+      try { aiReady = getAiStatus()?.runtime === "ready"; } catch { aiReady = false; }
+      return send(response, 200, {
+        platform: "epic-gram",
+        apiVersion: "v1",
+        runtimes: { telegram: true, browser: false, discord: false, whatsapp: false, signal: false, localAi: aiReady, cloudAi: aiReady },
+        capabilities: {
+          accounts: true,
+          multiAccount: true,
+          instantSwitch: true,
+          auth: { qr: true, phone: true, twoFa: true },
+          telegram: { dialogs: true, messages: true, send: true, devices: true, storageStats: true, folders: false, voiceCalls: false, stories: false },
+          ai: { operator: true, suggest: true, memory: true, publisher: true, workflows: false },
+          events: { sse: false, websocket: false },
+          plugins: false
+        }
+      });
     }
     if (request.method === "GET" && (url.pathname === "/v1/openapi.yaml" || url.pathname === "/v1/openapi")) {
       const { readFile } = await import("node:fs/promises");

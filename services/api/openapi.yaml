@@ -34,6 +34,16 @@ paths:
                   service: { type: string }
                   version: { type: string }
                   time: { type: string, format: date-time }
+  /system/capabilities:
+    get:
+      tags: [system]
+      summary: Platform + runtime capabilities. Clients adapt UI by capability, not device type.
+      responses:
+        "200":
+          description: Capability descriptor
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Capabilities" }
   /telegram/account/info:
     get:
       tags: [accounts]
@@ -176,3 +186,15 @@ components:
         devices:
           type: array
           items: { $ref: "#/components/schemas/Device" }
+    Capabilities:
+      type: object
+      properties:
+        platform: { type: string }
+        apiVersion: { type: string }
+        runtimes:
+          type: object
+          additionalProperties: { type: boolean }
+          description: Which runtimes are available (telegram, browser, discord, whatsapp, localAi, cloudAi ...).
+        capabilities:
+          type: object
+          description: Feature flags the UI adapts to (accounts, multiAccount, instantSwitch, auth, telegram, ai, events, plugins ...).
