@@ -518,6 +518,22 @@ export function EpicGramShell({ section }: Props) {
     };
   }, []);
 
+  // P17.5: instant account switch via Ctrl/Cmd+1..9 (active-slot swap only, no re-auth).
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (event.key < "1" || event.key > "9") return;
+      const slot = (telegramStatus?.accounts ?? [])[Number(event.key) - 1];
+      if (!slot?.slotId || slot.slotId === activeAccountId) return;
+      event.preventDefault();
+      selectTelegramAccount(slot.slotId).catch(() => undefined);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [telegramStatus, activeAccountId]);
+
   useEffect(() => {
     if (!telegramReady) {
       setTelegramChats([]);
