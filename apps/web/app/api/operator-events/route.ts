@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getEvents, addEvent } from "@/lib/missionStore";
+import { broadcast } from "@/lib/operatorBus";
 import type { OperatorEvent } from "@/lib/missions";
 
 // P24.1: operator events. GET is read-only. POST appends a SIMULATED event to the
@@ -14,5 +15,6 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as Partial<OperatorEvent>;
   const result = addEvent(body ?? {});
+  if (result.ok && result.event) broadcast("operator.event.created", result.event);
   return NextResponse.json(result, { status: result.ok ? 200 : 400 });
 }

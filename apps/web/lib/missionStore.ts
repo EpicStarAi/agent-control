@@ -52,7 +52,7 @@ function nextId(prefix: string): string {
 }
 
 // Simulated status change. No external action — only local state + audit event.
-export function setStatus(id: string, status: MissionStatus, note?: string): { ok: boolean; mission?: Mission; message?: string } {
+export function setStatus(id: string, status: MissionStatus, note?: string): { ok: boolean; mission?: Mission; event?: OperatorEvent; message?: string } {
   if (!MISSION_STATUSES.includes(status)) return { ok: false, message: "unknown status" };
   const s = read();
   const m = s.missions.find((x) => x.id === id);
@@ -73,7 +73,7 @@ export function setStatus(id: string, status: MissionStatus, note?: string): { o
   };
   s.events.push(evt);
   write(s);
-  return { ok: true, mission: m };
+  return { ok: true, mission: m, event: evt };
 }
 
 // Append a simulated operator event. No external effects.
