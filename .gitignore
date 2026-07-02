@@ -26,3 +26,5 @@ build-*.log
 .wallet-data.json
 
 .auth-data.json
+
+.profile-data.json
