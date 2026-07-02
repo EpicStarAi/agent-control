@@ -73,6 +73,28 @@
   .amb b{color:var(--cyan);font-weight:700}
   .chat-item .ci-sub{transition:color .3s}
   .chat-item.live .ci-sub{color:var(--grn)}
+  .rail{overflow-y:auto}
+  #nav{display:flex;flex-direction:column;padding:6px 0}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:11px 16px;cursor:pointer;font-size:14px;font-weight:600;color:#cfe6f7;border-left:3px solid transparent}
+  .nav-item .ni{width:20px;text-align:center}
+  .nav-item:hover{background:rgba(34,227,255,.06)}
+  .nav-item.active{background:rgba(34,227,255,.10);border-left-color:var(--cyan);color:#fff}
+  .badge2{margin-left:auto;background:#ffd34d;color:#04121a;font-size:11px;font-weight:800;border-radius:999px;padding:1px 8px}
+  .view{display:none;flex:1;min-height:0;flex-direction:column}
+  .view.on{display:flex}
+  .panel{flex:1;overflow-y:auto;padding:18px 20px}
+  .panel h3{font-size:16px;margin:0 0 4px}
+  .panel .sub{color:#8fb3cf;font-size:13px;margin-bottom:14px}
+  .pcard{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:rgba(10,15,30,.55);font-size:13.5px}
+  .pcard .pt{font-weight:800;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+  .pcard .pmeta{color:#9fc0da;font-size:12.5px}
+  .planned{color:#7fa6c4;border:1px dashed rgba(255,255,255,.16);border-radius:12px;padding:22px 18px;text-align:center;font-size:13px}
+  #saBoard .sa{display:flex;align-items:center;gap:8px;padding:7px 16px;font-size:12.5px;color:#cfe6f7;border-bottom:1px solid rgba(255,255,255,.04)}
+  #saBoard .sa .sd{width:9px;height:9px;border-radius:50%;flex:none}
+  #saBoard .sa .sv{margin-left:auto;font-size:11px;color:#8fb3cf}
+  .sd.g{background:#39ff14;box-shadow:0 0 8px #39ff14}.sd.w{background:#ffd34d;box-shadow:0 0 8px #ffd34d}.sd.r{background:#ff5470;box-shadow:0 0 8px #ff5470}.sd.b{background:#22e3ff;box-shadow:0 0 8px #22e3ff}
+  .saAsk{margin:12px 16px;padding:10px;border:1px solid rgba(255,211,77,.5);background:rgba(255,211,77,.08);color:#ffd34d;font-weight:700;border-radius:10px;cursor:pointer;font-size:13px}
+  .saAsk:hover{background:rgba(255,211,77,.16)}
   .main{display:flex;flex-direction:column;min-height:0;background:linear-gradient(180deg,#070b17,#0a1020)}
   .mhead{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
   .mhead .nm{font-weight:800}.mhead .st{font-size:12px;color:var(--grn)}
@@ -192,37 +214,41 @@
   <div id="client">
     <aside class="rail">
       <div class="rhead"><span class="sk">💀</span> EPIC<span class="gradtext">GRAM</span></div>
-      <div class="chat-item active"><div class="av op">AI</div><div class="ci-main"><div class="ci-name">AI Operator <span class="online"></span></div><div class="ci-sub">печатает…</div></div></div>
-      <div class="chat-item"><div class="av">СО</div><div class="ci-main"><div class="ci-name">Совет операторов</div><div class="ci-sub">6 операторов · онлайн</div></div></div>
-      <div class="chat-item"><div class="av">MC</div><div class="ci-main"><div class="ci-name">Mission Center</div><div class="ci-sub">6 миссий · 1 ждёт approve</div></div></div>
-      <div class="chat-item"><div class="av">VPN</div><div class="ci-main"><div class="ci-name">HideMyName VPN</div><div class="ci-sub">рабочий контур</div></div></div>
-      <div class="chat-item"><div class="av">AL</div><div class="ci-main"><div class="ci-name">Audit Log</div><div class="ci-sub">живой поток событий</div></div></div>
+      <nav id="nav">
+        <div class="nav-item active" data-view="operator"><span class="ni">💬</span>AI Operator <span class="online" style="margin-left:auto"></span></div>
+        <div class="nav-item" data-view="missions"><span class="ni">📋</span>Mission Center</div>
+        <div class="nav-item" data-view="approvals"><span class="ni">✅</span>Approvals <span class="badge2" id="navApr">1</span></div>
+        <div class="nav-item" data-view="accounts"><span class="ni">👥</span>Accounts</div>
+        <div class="nav-item" data-view="channels"><span class="ni">📢</span>Channels</div>
+        <div class="nav-item" data-view="publisher"><span class="ni">📤</span>AI Publisher</div>
+        <div class="nav-item" data-view="analytics"><span class="ni">📈</span>Analytics</div>
+        <div class="nav-item" data-view="agents"><span class="ni">🤖</span>AI Agents</div>
+        <div class="nav-item" data-view="security"><span class="ni">🛡</span>Security</div>
+        <div class="nav-item" data-view="network"><span class="ni">🌐</span>Network</div>
+        <div class="nav-item" data-view="runtime"><span class="ni">⚙</span>Runtime</div>
+        <div class="nav-item" data-view="knowledge"><span class="ni">📚</span>Knowledge</div>
+      </nav>
     </aside>
     <section class="main">
-      <div class="mhead"><div class="av op">AI</div><div><div class="nm">AI Operator</div><div class="st">● онлайн · MANUAL_APPROVAL_ONLY</div></div></div>
-      <div class="msgs" id="msgs"></div>
-      <div class="quick" id="quick"></div>
-      <form class="composer" id="composer" autocomplete="off">
-        <input class="cinp" id="cinp" placeholder="Спроси оператора: что умеешь, как работает approval, безопасно ли…">
-        <button class="csend" id="csend" type="submit">➤</button>
-      </form>
+      <div class="mhead"><div class="av op" id="mhIcon">AI</div><div><div class="nm" id="mhTitle">AI Operator</div><div class="st" id="mhSub">● онлайн · MANUAL_APPROVAL_ONLY</div></div></div>
+      <div class="view on" id="view-operator">
+        <div class="msgs" id="msgs"></div>
+        <div class="quick" id="quick"></div>
+        <form class="composer" id="composer" autocomplete="off">
+          <input class="cinp" id="cinp" placeholder="Спроси оператора: что умеешь, что требует внимания…">
+          <button class="csend" id="csend" type="submit">➤</button>
+        </form>
+      </div>
+      <div class="view" id="view-panel"><div class="panel" id="panelBody"></div></div>
     </section>
     <aside class="sys">
-      <h4>Операторы</h4>
-      <div class="sysrow"><span class="l"><span class="dot2"></span>Operator-Core</span><span class="v g">ready</span></div>
-      <div class="sysrow"><span class="l"><span class="dot2"></span>Guardian</span><span class="v g">ready</span></div>
-      <div class="sysrow"><span class="l"><span class="dot2"></span>Publisher</span><span class="v g">ready</span></div>
-      <div class="sysrow"><span class="l"><span class="dot2"></span>Analytics</span><span class="v g">ready</span></div>
-      <div class="sysrow"><span class="l"><span class="dot2"></span>Live-Ops</span><span class="v g">ready</span></div>
-      <h4>Система</h4>
-      <div class="sysrow"><span class="l">Telegram Runtime</span><span class="v g">connected</span></div>
-      <div class="sysrow"><span class="l">Database</span><span class="v c">Postgres</span></div>
-      <div class="sysrow"><span class="l">Approval Gate</span><span class="v w">manual</span></div>
-      <div class="sysrow"><span class="l">SSE / Audit</span><span class="v g">live</span></div>
+      <h4>Situation Awareness</h4>
+      <div id="saBoard"></div>
       <h4>Очередь</h4>
       <div class="sysrow"><span class="l">Approvals</span><span class="v w" id="sysApprovals">1 waiting</span></div>
       <div class="sysrow"><span class="l">Missions</span><span class="v c" id="sysMissions">6 active</span></div>
       <div class="sysrow"><span class="l">Executed (sim)</span><span class="v g" id="sysExecuted">0</span></div>
+      <button class="saAsk" id="saAsk">⚠ Что требует внимания?</button>
     </aside>
   </div>
 </div>
@@ -348,7 +374,7 @@
   let sysApprovals=1, sysMissions=6, sysExecuted=0;
   function updateSys(){ const a=$('sysApprovals'),m=$('sysMissions'),e=$('sysExecuted');
     if(a){ a.textContent=sysApprovals+' waiting'; a.className='v '+(sysApprovals>0?'w':'g'); }
-    if(m) m.textContent=sysMissions+' active'; if(e) e.textContent=String(sysExecuted); }
+    if(m) m.textContent=sysMissions+' active'; if(e) e.textContent=String(sysExecuted); try{renderSA();}catch(_){} }
   function opCard(title, lines, voice){
     const li=lines.map(x=>'<li>'+(x.chk?'<span class="chk">✓</span>':'')+x.t+'</li>').join('');
     opMsg('<div class="opcard"><div class="h">💀 AI Operator <span class="r">🟢 ready</span></div><div style="font-weight:700;margin-bottom:6px">'+title+'</div><ul>'+li+'</ul></div>', voice); }
@@ -382,6 +408,7 @@
 
   const QUICK=[
     {q:'⚡ Создать миссию', a:runMissionFlow},
+    {q:'⚠ Что требует внимания?', a:()=>attention()},
     {q:'/approval', a:()=>createApprovalCard({title:'Смена профиля рабочего аккаунта', module:'Account Manager', action:'account.update', risk:'medium'})},
     {q:'/missions', a:()=>opCard('Mission Center', [ {t:'Draft → In Progress → <b>Waiting Approval</b> → Executed'},
       {chk:1,t:sysMissions+' активных миссий'},{chk:1,t:sysApprovals+' ждёт подтверждения'} ], 'Mission Center. '+sysMissions+' активных миссий.')},
@@ -426,8 +453,95 @@
     const inp=$('cinp'); const q=(inp.value||'').trim(); if(!q) return; inp.value='';
     meMsg(q.replace(/&/g,'&amp;').replace(/</g,'&lt;'));
     if(isCreateIntent(q)){ setTimeout(()=>typing(()=>runMissionFlow(),700),200); return; }
+    if(/внимани|что.*происходит|статус\s*систем|состояни|что.*сейчас/i.test(q)){ setTimeout(()=>typing(()=>attention(),700),200); return; }
     const ans=answerFAQ(q); setTimeout(()=>typing(()=>opMsg(ans,ans),800),220);
   }); }
+
+  // ===== P27.1 Unified Shell: навигация по модулям + Situation Awareness =====
+  const MODVIEW={
+    operator:{icon:'AI',title:'AI Operator',sub:'● онлайн · MANUAL_APPROVAL_ONLY'},
+    missions:{icon:'📋',title:'Mission Center',sub:'жизненный цикл задач'},
+    approvals:{icon:'✅',title:'Approval Center',sub:'MANUAL_APPROVAL_ONLY'},
+    accounts:{icon:'👥',title:'Account Center',sub:'аккаунты · сессии · риск'},
+    channels:{icon:'📢',title:'Channel Center',sub:'каналы · папки · модерация'},
+    publisher:{icon:'📤',title:'AI Publisher',sub:'контент · очередь'},
+    analytics:{icon:'📈',title:'AI Analytics',sub:'метрики платформы'},
+    agents:{icon:'🤖',title:'AI Agents Registry',sub:'операторы-агенты'},
+    security:{icon:'🛡',title:'AI Security',sub:'risk engine · audit'},
+    network:{icon:'🌐',title:'Network Center',sub:'VPN · proxy · geo'},
+    runtime:{icon:'⚙',title:'Telegram Runtime',sub:'TDLib · sessions'},
+    knowledge:{icon:'📚',title:'Knowledge Hub',sub:'RAG'} };
+
+  // ---- Situation Awareness state ----
+  const SA=[
+    {dot:'g',label:'Accounts online',val:()=>'18'},
+    {dot:'w',label:'Approvals waiting',val:()=>sysApprovals},
+    {dot:'b',label:'Missions active',val:()=>sysMissions},
+    {dot:'g',label:'Publisher',val:()=>'idle'},
+    {dot:'g',label:'VPN',val:()=>'OK'},
+    {dot:'w',label:'Proxy',val:()=>'1 degraded'},
+    {dot:'r',label:'Channel #promo',val:()=>'rate-limited'},
+    {dot:'g',label:'Audit',val:()=>'synced'} ];
+  function renderSA(){ const b=$('saBoard'); if(!b) return;
+    b.innerHTML=SA.map(s=>'<div class="sa"><span class="sd '+s.dot+'"></span>'+s.label+'<span class="sv">'+s.val()+'</span></div>').join('');
+    const nb=$('navApr'); if(nb){ nb.textContent=sysApprovals; nb.style.display=sysApprovals>0?'':'none'; } }
+  function attention(){
+    const items=[];
+    if(sysApprovals>0) items.push({t:'<b>'+sysApprovals+'</b> заявк'+(sysApprovals==1?'а ждёт':'и ждут')+' подтверждения → Approval Center'});
+    items.push({t:'1 прокси работает <b>нестабильно</b> → Network'});
+    items.push({t:'канал <b>#promo</b> достиг лимита публикаций (rate-limited)'});
+    items.push({chk:1,t:'Аккаунты, VPN и Audit — в норме'});
+    opCard('Что требует внимания сейчас', items,
+      'Сейчас требуют внимания: '+sysApprovals+' заявки на подтверждение, один прокси нестабилен, и у канала промо достигнут лимит публикаций. Остальное в норме.'); }
+
+  // ---- module panels ----
+  const MISSIONS=[ ['m-launch','Запуск клиента','executed'],['m-tg','Стабилизация Telegram','executed'],
+    ['m-council','Совет операторов','in_progress'],['m-vpn','VPN workstream','in_progress'],
+    ['m-pub','Publisher pipeline','waiting_approval'],['m-human','Digital Human (Wan)','draft'] ];
+  const APITEMS=[ {id:'ap-teaser',title:'Публикация тизера @deepinside',module:'AI Publisher',risk:'low',status:'waiting_approval'},
+    {id:'ap-rename',title:'Смена профиля аккаунта',module:'Account Manager',risk:'medium',status:'approved'},
+    {id:'ap-ads',title:'Telegram Ads кампания',module:'AI Growth',risk:'high',status:'rejected'} ];
+  function stCol(s){ return s==='executed'||s==='approved'?'g':s==='waiting_approval'?'w':s==='rejected'||s==='failed'?'r':'b'; }
+  function renderPanel(name){
+    if(name==='missions') return '<h3>📋 Mission Center</h3><div class="sub">Draft → In Progress → Waiting Approval → Executed · '+sysMissions+' активных</div>'+
+      MISSIONS.map(m=>'<div class="pcard"><div class="pt"><span class="sd '+stCol(m[2])+'" style="width:9px;height:9px;border-radius:50%"></span>'+m[1]+'</div><div class="pmeta">'+m[0]+' · '+m[2]+'</div></div>').join('');
+    if(name==='approvals') return '<h3>✅ Approval Center</h3><div class="sub">'+sysApprovals+' waiting · MANUAL_APPROVAL_ONLY</div>'+
+      APITEMS.map(a=>'<div class="pcard" id="P_'+a.id+'"><div class="pt">'+a.title+'</div><div class="pmeta">'+a.module+' · риск '+a.risk+' · <b style="color:var(--'+({g:'grn',w:'cyan',r:'mag'}[stCol(a.status)]||'cyan')+')">'+a.status+'</b></div>'+
+        (a.status==='waiting_approval'?'<div class="approw"><button class="mini app" data-ap="'+a.id+'">✓ Approve</button><button class="mini rej" data-rj="'+a.id+'">Reject</button></div>':'')+'</div>').join('');
+    if(name==='accounts') return '<h3>👥 Account Center</h3><div class="sub">аккаунты · сессии · прокси · риск</div>'+
+      '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>@buch_main</div><div class="pmeta">session OK · VPN HideMyName · risk LOW · 12 каналов</div></div>'+
+      '<div class="pcard"><div class="pt"><span class="sd w" style="width:9px;height:9px;border-radius:50%"></span>@buchiha_ops</div><div class="pmeta">proxy <b>degraded</b> · session OK · risk MED · 6 каналов</div></div>'+
+      '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>@epic_publisher</div><div class="pmeta">MTProxy OK · session OK · risk LOW</div></div>';
+    if(name==='network') return '<h3>🌐 Network Center</h3><div class="sub">VPN · MTProxy · SOCKS5 · geo</div>'+
+      '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>HideMyName VPN</div><div class="pmeta">OK · latency 42ms</div></div>'+
+      '<div class="pcard"><div class="pt"><span class="sd w" style="width:9px;height:9px;border-radius:50%"></span>Proxy #3</div><div class="pmeta"><b>degraded</b> · latency 380ms · рекомендуется ротация</div></div>'+
+      '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>MTProxy pool</div><div class="pmeta">4/4 online</div></div>';
+    if(name==='security') return '<h3>🛡 AI Security</h3><div class="sub">Risk Engine · Guardian · Audit</div>'+
+      '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>Guardian</div><div class="pmeta">риск-скан: чисто · 0 флагов</div></div>'+
+      '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>Risk Engine</div><div class="pmeta">лимиты и антиспам активны</div></div>'+
+      '<div class="pcard"><div class="pt"><span class="sd r" style="width:9px;height:9px;border-radius:50%"></span>Rate limit</div><div class="pmeta">канал #promo достиг лимита публикаций</div></div>';
+    if(name==='agents') return '<h3>🤖 AI Agents Registry</h3><div class="sub">операторы-агенты · можно запускать отдельно</div>'+
+      ['Operator-Core','Guardian','Publisher','Analytics','Growth','Security','Vision','Voice','Knowledge','Router','Scheduler'].map(a=>'<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>'+a+'</div><div class="pmeta">🟢 ready</div></div>').join('');
+    if(name==='analytics') return '<h3>📈 AI Analytics</h3><div class="sub">метрики платформы</div>'+
+      '<div class="pcard"><div class="pt">Охват / сутки</div><div class="pmeta">+3.4% ↑ · 22 канала</div></div>'+
+      '<div class="pcard"><div class="pt">Публикации</div><div class="pmeta">за неделю: 74 · approve-rate 96%</div></div>'+
+      '<div class="pcard"><div class="pt">Монетизация</div><div class="pmeta">Stars · Premium · TON — сводка по запросу</div></div>';
+    if(name==='channels') return '<h3>📢 Channel Center</h3><div class="sub">каналы · папки · модерация</div>'+
+      '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>@deepinside</div><div class="pmeta">активен · 3 поста в очереди</div></div>'+
+      '<div class="pcard"><div class="pt"><span class="sd r" style="width:9px;height:9px;border-radius:50%"></span>#promo</div><div class="pmeta"><b>rate-limited</b> · публикации приостановлены</div></div>';
+    const P={publisher:'Ideas · Generator · Planner · Queue · Approval · Publish',runtime:'TDLib · Accounts · Sessions · Auth · Folders · Chats',knowledge:'RAG · Telegram · TDLib · Bot API · TON · Project Docs'};
+    return '<h3>'+MODVIEW[name].icon+' '+MODVIEW[name].title+'</h3><div class="sub">'+MODVIEW[name].sub+'</div><div class="planned">Модуль в дорожной карте P27.<br><span style="color:#9fc0da">'+(P[name]||'')+'</span><br><br>Слот готов — подключается после Unified Shell.</div>';
+  }
+  function wirePanel(name){ if(name!=='approvals') return;
+    $('panelBody').querySelectorAll('[data-ap]').forEach(b=>b.onclick=()=>{ const it=APITEMS.find(x=>x.id===b.dataset.ap); if(it&&it.status==='waiting_approval'){ it.status='approved'; sysApprovals=Math.max(0,sysApprovals-1); sysExecuted++; sysMissions++; updateSys(); toast('одобрено · симуляция'); $('panelBody').innerHTML=renderPanel('approvals'); wirePanel('approvals'); } });
+    $('panelBody').querySelectorAll('[data-rj]').forEach(b=>b.onclick=()=>{ const it=APITEMS.find(x=>x.id===b.dataset.rj); if(it&&it.status==='waiting_approval'){ it.status='rejected'; sysApprovals=Math.max(0,sysApprovals-1); updateSys(); toast('отклонено'); $('panelBody').innerHTML=renderPanel('approvals'); wirePanel('approvals'); } }); }
+  function setView(name){ const m=MODVIEW[name]||MODVIEW.operator;
+    $('mhIcon').textContent=m.icon; $('mhTitle').textContent=m.title; $('mhSub').textContent=m.sub;
+    document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===name));
+    const op=(name==='operator'); $('view-operator').classList.toggle('on',op); $('view-panel').classList.toggle('on',!op);
+    if(!op){ $('panelBody').innerHTML=renderPanel(name); wirePanel(name); } }
+  document.querySelectorAll('.nav-item').forEach(n=>n.onclick=()=>setView(n.dataset.view));
+  const saBtn=$('saAsk'); if(saBtn) saBtn.onclick=()=>{ setView('operator'); setTimeout(()=>typing(()=>attention(),700),150); };
 
   // preload voices
   try{ speechSynthesis.onvoiceschanged=()=>{}; }catch(e){}
