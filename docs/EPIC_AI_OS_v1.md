@@ -28,6 +28,16 @@ Identity → Workspace → Organization → Projects → Memory → Economy → 
 - **Digital Twin** — each Organization has a twin that knows sales · costs · staff · KPI · clients · docs · memory · connections. AI talks to the Twin, not a raw DB. Enables NL business questions: "почему прибыль упала на этой неделе?", "какие каналы дают лучший ROI?", "за что мы переплачиваем в AI?", "какие публикации дали больше лидов?", "какие проекты требуют внимания сегодня?" — answered across memory+economy+analytics+comms+projects at once.
 - North-star: not "AI умеет работать с Telegram" but "AI понимает весь бизнес как единую цифровую систему" — an **operating system for running a digital business**.
 
+## Universal Connect Layer (fixed 2026-07-02, backend built — commit 08229fb)
+Connect Service generalized to a **Universal Connect Layer**: every external service is an adapter. Telegram is not the center — it is the first implemented adapter (TDLib ✅), the rest are 🔌. Two content-facing classes + a service bucket:
+- **Communication Providers** — Telegram · WhatsApp · Discord · Email · Slack · Teams (operator talks through these).
+- **Media Providers** — YouTube · TikTok · Instagram · Facebook · X · Threads · Twitch · LinkedIn · Pinterest · Reddit (Media Hub publishes + analyzes through these).
+- **Service Providers** — GitHub · Notion · Google Drive · Google Calendar · CRM · TON Wallet · VPN · RSS · VK.
+
+Real backend (session→workspace scoped, DB+fallback, NO tokens/keys stored — only an opaque `session_ref`): `apps/web/lib/connections*.ts` + `app/api/connections` GET(catalog+status) / POST(connect). Router sees only a `Provider {class,id}`; "publish" fans out across chosen providers; adding a channel = new adapter, zero architecture change.
+
+Derived objects: **Social Identity** — all of a person's socials under one Identity (BUCH → TG·IG·TikTok·YT·FB·Threads·Discord). **Media project** — one project spans many platforms (THE ШАРФ → TG·TikTok·IG·YT·FB·Twitch·Spotify·Apple Podcasts). **Media Analytics** (not "Telegram Analytics") — followers·growth·revenue·leads·CPA·ROI·engagement·cost-per-video·cost-per-subscriber across ALL platforms at once ("TikTok fastest-growing", "YouTube = 67% revenue", "Telegram best LTV"). **Media Hub** — videos·images·thumbnails·subtitles·scripts·voiceovers·sources·brand-packs.
+
 ## Concept hierarchy (earlier direction, superseded by the stack above)
 ```
 Identity → Organization → Department → Operator → Mission → Execution → Audit
