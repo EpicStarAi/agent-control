@@ -318,6 +318,39 @@ export function normalizeRelationship(workspaceId: string, i: Partial<CharacterR
     relationType: (RELATION_TYPES as string[]).includes(String(i.relationType)) ? (String(i.relationType) as RelationType) : "unknown",
     description: clip(i.description, 300), strength, createdAt: i.createdAt || now, updatedAt: now };
 }
+
+// P29.2 Character Profile — the character's passport (NOT project economy). Lets the
+// AI understand each hero: goals, profession, interests, voice, memory, skills, limits.
+// 1:1 with a Character (upsert by workspace+character), MOCK-SAFE, ws-scoped.
+export interface CharacterProfile {
+  id: string; characterId: string; workspaceId: string;
+  goals: string; profession: string; interests: string; speechStyle: string;
+  memory: string; skills: string; constraints: string; toneOfVoice: string;
+  createdAt: string; updatedAt: string;
+}
+export function normalizeCharacterProfile(workspaceId: string, characterId: string, i: Partial<CharacterProfile>): CharacterProfile {
+  const now = new Date().toISOString();
+  return { id: i.id || nid("cprof"), characterId, workspaceId,
+    goals: clip(i.goals, 600), profession: clip(i.profession, 200), interests: clip(i.interests, 400),
+    speechStyle: clip(i.speechStyle, 400), memory: clip(i.memory, 800), skills: clip(i.skills, 400),
+    constraints: clip(i.constraints, 400), toneOfVoice: clip(i.toneOfVoice, 200),
+    createdAt: i.createdAt || now, updatedAt: now };
+}
+// Compose a prompt-ready context block from a Character + its Profile. Used by
+// content generation (P29.4) so renders/dialogue stay in-character. Read-only.
+export function buildCharacterContext(character: Pick<Character, "name" | "role" | "archetype">, profile: Partial<CharacterProfile> | null): string {
+  const parts = [
+    `Character: ${character.name} (role: ${character.role}${character.archetype ? `, archetype: ${character.archetype}` : ""}).`,
+    profile?.profession ? `Profession: ${profile.profession}.` : "",
+    profile?.goals ? `Goals: ${profile.goals}.` : "",
+    profile?.interests ? `Interests: ${profile.interests}.` : "",
+    profile?.toneOfVoice ? `Tone of voice: ${profile.toneOfVoice}.` : "",
+    profile?.speechStyle ? `Speech style: ${profile.speechStyle}.` : "",
+    profile?.skills ? `Skills: ${profile.skills}.` : "",
+    profile?.constraints ? `Constraints: ${profile.constraints}.` : "",
+  ].filter(Boolean);
+  return parts.join(" ");
+}
 // Merge passport + one template card into a render prompt with identity lock + safety.
 export function buildTemplatePrompt(passport: Partial<AvatarPassport> | null, card: TemplateCard): string {
   const identity = (passport?.identityNotes || "reference avatar").trim();

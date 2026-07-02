@@ -1,7 +1,7 @@
 import { normalizeAvatar, normalizePassport, normalizeJob, normalizeAsset, normalizeIdentitySource,
-  normalizeProject, normalizeCharacter, normalizeRelationship,
+  normalizeProject, normalizeCharacter, normalizeRelationship, normalizeCharacterProfile,
   type Avatar, type AvatarPassport, type RenderJob, type AvatarAsset, type AvatarIdentitySource,
-  type Project, type Character, type CharacterRelationship } from "@/lib/avatarStudio";
+  type Project, type Character, type CharacterRelationship, type CharacterProfile } from "@/lib/avatarStudio";
 
 // P27.1 Postgres adapter. CREATE TABLE/INDEX IF NOT EXISTS only. No DROP/DELETE.
 // Shares the global pg pool. Stores no secrets.
@@ -94,6 +94,13 @@ async function ensureInit(p: PgPool): Promise<void> {
       consent_status text DEFAULT 'unknown',
       created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())`);
     await p.query(`CREATE INDEX IF NOT EXISTS avatar_identity_sources_ws ON avatar_identity_sources(workspace_id, avatar_id)`);
+    // P29.2 Character Profile (passport of a character; 1:1 with a character).
+    await p.query(`CREATE TABLE IF NOT EXISTS character_profiles (
+      id text PRIMARY KEY, character_id text NOT NULL, workspace_id text NOT NULL,
+      goals text, profession text, interests text, speech_style text,
+      memory text, skills text, constraints text, tone_of_voice text,
+      created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())`);
+    await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS character_profiles_uq ON character_profiles(workspace_id, character_id)`);
   })();
   return g.__epicAvatarInit;
 }
@@ -266,3 +273,18 @@ export async function createIdentitySource(ws: string, avatarId: string, input: 
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
     [n.id, avatarId, ws, n.type, n.label, n.fileUrl, n.status, n.consentStatus, n.createdAt, n.updatedAt]);
   return idsrcRow(r.rows[0]); }
+
+// P29.2 character profiles.
+function cprofRow(r: any): CharacterProfile { return { id: r.id, characterId: r.character_id, workspaceId: r.workspace_id,
+  goals: r.goals ?? "", profession: r.profession ?? "", interests: r.interests ?? "", speechStyle: r.speech_style ?? "",
+  memory: r.memory ?? "", skills: r.skills ?? "", constraints: r.constraints ?? "", toneOfVoice: r.tone_of_voice ?? "",
+  createdAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString() }; }
+export async function getCharacterProfile(ws: string, characterId: string): Promise<CharacterProfile | null> {
+  const p = await db(); const r = (await p.query(`SELECT * FROM character_profiles WHERE workspace_id=$1 AND character_id=$2`, [ws, characterId])).rows[0]; return r ? cprofRow(r) : null; }
+export async function upsertCharacterProfile(ws: string, characterId: string, input: Partial<CharacterProfile>): Promise<CharacterProfile> {
+  const p = await db(); const n = normalizeCharacterProfile(ws, characterId, input);
+  const r = await p.query(`INSERT INTO character_profiles(id,character_id,workspace_id,goals,profession,interests,speech_style,memory,skills,constraints,tone_of_voice,created_at,updated_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+    ON CONFLICT (workspace_id,character_id) DO UPDATE SET goals=$4,profession=$5,interests=$6,speech_style=$7,memory=$8,skills=$9,constraints=$10,tone_of_voice=$11,updated_at=$13 RETURNING *`,
+    [n.id, characterId, ws, n.goals, n.profession, n.interests, n.speechStyle, n.memory, n.skills, n.constraints, n.toneOfVoice, n.createdAt, n.updatedAt]);
+  return cprofRow(r.rows[0]); }

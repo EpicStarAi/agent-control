@@ -46,6 +46,8 @@ export default function AvatarStudioPage() {
   const [projName, setProjName] = useState(""); const [projType, setProjType] = useState("universe");
   const [charName, setCharName] = useState(""); const [charRole, setCharRole] = useState("main"); const [charArch, setCharArch] = useState("");
   const [relSrc, setRelSrc] = useState(""); const [relTgt, setRelTgt] = useState(""); const [relType, setRelType] = useState("friend");
+  const [selChar, setSelChar] = useState("");
+  const [prof, setProf] = useState<Record<string, string>>({ goals: "", profession: "", interests: "", speechStyle: "", memory: "", skills: "", constraints: "", toneOfVoice: "" });
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -150,6 +152,17 @@ export default function AvatarStudioPage() {
   async function delRelationship(id: string) {
     await fetch(`/api/avatar-studio/relationships?id=${encodeURIComponent(id)}`, { method: "DELETE" }); load();
   }
+  async function selectChar(id: string) {
+    setSelChar(id);
+    const r = await fetch(`/api/avatar-studio/characters/${id}/profile`).then(x => x.json()).catch(() => ({}));
+    const p = r.profile || {};
+    setProf({ goals: p.goals || "", profession: p.profession || "", interests: p.interests || "", speechStyle: p.speechStyle || "", memory: p.memory || "", skills: p.skills || "", constraints: p.constraints || "", toneOfVoice: p.toneOfVoice || "" });
+  }
+  async function saveProfile() {
+    if (!selChar) return; setBusy(true);
+    await fetch(`/api/avatar-studio/characters/${selChar}/profile`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(prof) });
+    setBusy(false);
+  }
   async function runQueue() { setBusy(true); await fetch("/api/avatar-studio/render-jobs/run-once", { method: "POST" }); setBusy(false); load(); }
   async function checkGrok() { setGrokStatus("…"); const r = await fetch("/api/avatar-studio/grok/check", { method: "POST" }).then(x => x.json()).catch(() => ({ status: "error" })); setGrokStatus((r.status || "?") + (r.detail ? " · " + r.detail : "")); }
   async function runGrok() { setBusy(true); const r = await fetch("/api/avatar-studio/render-jobs/run-grok-once", { method: "POST" }).then(x => x.json()).catch(() => ({})); setBusy(false); if (r.error) setGrokStatus(r.status + " · " + r.error); load(); }
@@ -252,9 +265,9 @@ export default function AvatarStudioPage() {
           <div className="text-[12px] text-slate-400 mb-1">Cast{activeProject ? " (проект)" : ""} — {castChars.length}</div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {castChars.map(c => (
-              <div key={c.id} className="rounded-lg border border-white/10 bg-white/5 p-2 text-[11px]">
+              <div key={c.id} className={"rounded-lg border p-2 text-[11px] " + (selChar === c.id ? "border-cyan-400 bg-cyan-400/10" : "border-white/10 bg-white/5")}>
                 <div className="flex items-center gap-1 mb-1">
-                  <span className="font-semibold truncate flex-1">{c.name}</span>
+                  <span className="font-semibold truncate flex-1 cursor-pointer" onClick={() => selectChar(c.id)} title="открыть паспорт">{c.name}</span>
                   <button className="text-rose-400" onClick={() => delCharacter(c.id)}>✕</button>
                 </div>
                 <select className={"rounded px-1 py-0.5 text-[10px] " + roleColor(c.role)} value={c.role} onChange={e => patchCharacter(c.id, { role: e.target.value })}>
@@ -267,6 +280,24 @@ export default function AvatarStudioPage() {
             {!castChars.length && <div className="text-[11px] text-slate-500">Персонажей нет — создай Character (можно связать с текущим выбранным аватаром).</div>}
           </div>
         </div>
+        {selChar && (
+          <div className="mt-3 rounded-lg border border-cyan-400/30 bg-black/20 p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="font-bold text-[13px]">🪪 Character Profile · {charById[selChar]?.name || ""}</div>
+              <span className="text-[11px] text-slate-500">паспорт персонажа — чтобы AI понимал героя</span>
+              <button className="ml-auto text-[11px] text-slate-400" onClick={() => setSelChar("")}>закрыть</button>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {([["goals", "Цели"], ["profession", "Профессия"], ["interests", "Интересы"], ["toneOfVoice", "Tone of voice"], ["speechStyle", "Стиль речи"], ["skills", "Навыки"], ["constraints", "Ограничения"], ["memory", "Память / бэкграунд"]] as [string, string][]).map(([k, label]) => (
+                <div key={k}>
+                  <div className="text-[11px] text-slate-400 mb-0.5">{label}</div>
+                  <textarea className={inp} rows={2} value={prof[k]} onChange={e => setProf({ ...prof, [k]: e.target.value })} />
+                </div>
+              ))}
+            </div>
+            <button className={btn + " bg-sky-500 text-black mt-2"} disabled={busy} onClick={saveProfile}>Сохранить паспорт</button>
+          </div>
+        )}
       </div>
 
       <div className="grid md:grid-cols-3 gap-4">

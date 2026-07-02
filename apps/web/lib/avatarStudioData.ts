@@ -1,6 +1,6 @@
 import * as db from "@/lib/avatarStudioDb";
 import * as store from "@/lib/avatarStudioStore";
-import type { Avatar, AvatarPassport, RenderJob, AvatarAsset, AvatarIdentitySource, Project, Character, CharacterRelationship } from "@/lib/avatarStudio";
+import type { Avatar, AvatarPassport, RenderJob, AvatarAsset, AvatarIdentitySource, Project, Character, CharacterRelationship, CharacterProfile } from "@/lib/avatarStudio";
 import { getProvider, DEFAULT_PROVIDER } from "@/lib/renderProviders";
 
 // P27.1 facade: Postgres when available, else fs. Carries source: "db"|"fallback".
@@ -25,6 +25,9 @@ export const deleteCharacter = (ws: string, id: string) => pick(() => db.deleteC
 export const listRelationships = (ws: string, characterId?: string) => pick(() => db.listRelationships(ws, characterId), () => store.listRelationships(ws, characterId));
 export const createRelationship = (ws: string, i: Partial<CharacterRelationship>) => pick(() => db.createRelationship(ws, i), () => store.createRelationship(ws, i));
 export const deleteRelationship = (ws: string, id: string) => pick(() => db.deleteRelationship(ws, id), () => store.deleteRelationship(ws, id));
+// P29.2 character profiles.
+export const getCharacterProfile = (ws: string, cid: string) => pick(() => db.getCharacterProfile(ws, cid), () => store.getCharacterProfile(ws, cid));
+export const upsertCharacterProfile = (ws: string, cid: string, i: Partial<CharacterProfile>) => pick(() => db.upsertCharacterProfile(ws, cid, i), () => store.upsertCharacterProfile(ws, cid, i));
 export const getPassport = (ws: string, aid: string) => pick(() => db.getPassport(ws, aid), () => store.getPassport(ws, aid));
 export const upsertPassport = (ws: string, aid: string, i: Partial<AvatarPassport>) => pick(() => db.upsertPassport(ws, aid, i), () => store.upsertPassport(ws, aid, i));
 export const listJobs = (ws: string) => pick(() => db.listJobs(ws), () => store.listJobs(ws));

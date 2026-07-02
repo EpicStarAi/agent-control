@@ -1,18 +1,19 @@
 import fs from "node:fs";
 import path from "node:path";
 import { normalizeAvatar, normalizePassport, normalizeJob, normalizeAsset, normalizeIdentitySource,
-  normalizeProject, normalizeCharacter, normalizeRelationship,
+  normalizeProject, normalizeCharacter, normalizeRelationship, normalizeCharacterProfile,
   type Avatar, type AvatarPassport, type RenderJob, type AvatarAsset, type AvatarIdentitySource,
-  type Project, type Character, type CharacterRelationship } from "@/lib/avatarStudio";
+  type Project, type Character, type CharacterRelationship, type CharacterProfile } from "@/lib/avatarStudio";
 
 // P27.1 fs fallback (keyed by workspace_id). Same shape as the DB adapter.
 const FILE = path.join(process.cwd(), ".avatar-studio-data.json");
 type WS = { avatars: Avatar[]; passports: AvatarPassport[]; jobs: RenderJob[]; assets: AvatarAsset[];
-  identitySources?: AvatarIdentitySource[]; projects?: Project[]; characters?: Character[]; relationships?: CharacterRelationship[] };
+  identitySources?: AvatarIdentitySource[]; projects?: Project[]; characters?: Character[];
+  relationships?: CharacterRelationship[]; characterProfiles?: CharacterProfile[] };
 type DB = { ws: Record<string, WS> };
 function load(): DB { try { if (fs.existsSync(FILE)) return JSON.parse(fs.readFileSync(FILE, "utf8")); } catch {} return { ws: {} }; }
 function save(db: DB) { try { fs.writeFileSync(FILE, JSON.stringify(db, null, 2)); } catch {} }
-function bucket(db: DB, ws: string): WS { return (db.ws[ws] ||= { avatars: [], passports: [], jobs: [], assets: [], identitySources: [], projects: [], characters: [], relationships: [] }); }
+function bucket(db: DB, ws: string): WS { return (db.ws[ws] ||= { avatars: [], passports: [], jobs: [], assets: [], identitySources: [], projects: [], characters: [], relationships: [], characterProfiles: [] }); }
 const desc = <T extends { updatedAt: string }>(a: T[]) => a.slice().sort((x, y) => (x.updatedAt < y.updatedAt ? 1 : -1));
 
 export async function listAvatars(ws: string): Promise<Avatar[]> { return desc(bucket(load(), ws).avatars); }
@@ -98,3 +99,11 @@ export async function listIdentitySources(ws: string, avatarId: string): Promise
 export async function createIdentitySource(ws: string, avatarId: string, input: Partial<AvatarIdentitySource> & { consentConfirmed?: boolean }): Promise<AvatarIdentitySource> {
   const db = load(); const b = bucket(db, ws); (b.identitySources ||= []);
   const n = normalizeIdentitySource(ws, avatarId, input); b.identitySources.push(n); save(db); return n; }
+// P29.2 character profiles.
+export async function getCharacterProfile(ws: string, characterId: string): Promise<CharacterProfile | null> {
+  return (bucket(load(), ws).characterProfiles || []).find(p => p.characterId === characterId) ?? null; }
+export async function upsertCharacterProfile(ws: string, characterId: string, input: Partial<CharacterProfile>): Promise<CharacterProfile> {
+  const db = load(); const b = bucket(db, ws); (b.characterProfiles ||= []); const n = normalizeCharacterProfile(ws, characterId, input);
+  const i = b.characterProfiles.findIndex(p => p.characterId === characterId);
+  if (i >= 0) { n.id = b.characterProfiles[i].id; n.createdAt = b.characterProfiles[i].createdAt; b.characterProfiles[i] = n; } else b.characterProfiles.push(n);
+  save(db); return n; }
