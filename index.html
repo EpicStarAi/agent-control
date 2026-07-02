@@ -591,7 +591,7 @@
     files:()=>opCard('Файлы',[{chk:1,t:'Загруженные и созданные файлы проекта'},{t:'photo.png · video.mp4 · report.pdf'},{t:'Брось файл на панель под вводом — оператор поймёт тип сам.'}],'Файлы проекта. Брось любой — я пойму тип.'),
     knowledge:()=>opCard('База знаний · RAG',[{chk:1,t:'Правила проекта, документы, факты'},{chk:1,t:'Операторы отвечают, опираясь на неё'},{t:'Добавить документ — через 📄 → «добавить в RAG».'}],'База знаний. Операторы опираются на неё.'),
     team:()=>opCard('AI Команда',[{t:'<b>Router AI</b> — дирижёр, выбирает исполнителя под задачу'},{chk:1,t:'Research · Copywriter · Vision · Voice · Publisher · Analytics · Guardian'},{t:'Ты видишь одного оператора — команда работает под капотом.'}],'AI команда. Router AI дирижирует, ты видишь одного оператора.'),
-    memory:()=>opCard('Рабочая память',[{t:'Последние решения · контакты · документы'},{t:'Активные задачи · знания проекта · закладки · медиа'},{chk:1,t:'Это память оператора, а не просто история сообщений.'}],'Рабочая память оператора: решения, задачи, знания.'),
+    memory:()=>opCard('AI Memory · оператор помнит',[{t:'<b>Владелец:</b> BUCH · VPN · HideMyName · DEEP INSIDE · Grok/ChatGPT/Claude · RU-интерфейс'},{t:'<b>Проект:</b> EPIC💀GRAM — документы · код · roadmap · таски · релизы · финансы'},{t:'<b>Организация:</b> сотрудники · проекты · клиенты · договоры · контент · история'},{chk:1,t:'Модули подключаются к <b>Identity + Workspace</b>, не к «пользователю».'},{t:'Поэтому оператор отвечает в контексте всей OS, а не в вакууме, как обычный чат.'}],'Оператор помнит владельца, проект и организацию. Модули подключаются к Identity и Workspace, поэтому ответы идут в контексте всей системы.'),
     settings:()=>opCard('Настройки оператора',[{t:'Язык · Русский'},{t:'Router AI · авто-выбор модели: вкл'},{t:'Режим · MANUAL_APPROVAL_ONLY (заблокирован)'}],'Настройки. Авто-выбор модели включён, режим только с подтверждением.'),
   };
   function wireOpside(){
@@ -777,7 +777,9 @@
       '<div class="pcard"><div class="pt">8D-музыка</div><div class="pmeta">переключается кнопкой внизу справа</div></div>'+
       '<div class="pcard"><div class="pt">Тема</div><div class="pmeta">Neon Dark (активно)</div></div>'+
       '<div class="pcard"><div class="pt">Режим подтверждений</div><div class="pmeta"><b style="color:var(--grn)">MANUAL_APPROVAL_ONLY</b> · заблокирован</div></div>';
-    if(name==='home') return '<h3>🏠 Главная</h3><div class="sub">EPIC💀GRAM AI Operating System · один оператор · Telegram — модуль</div>'+
+    if(name==='home') return '<h3>🏠 Главная</h3><div class="sub">EPIC💀GRAM AI Operating System · Identity владеет Workspace · Telegram — модуль</div>'+
+      '<div class="pcard"><div class="pt">🪪 AI Identity · цифровой паспорт</div><div class="pmeta">Владелец <b>EPIC⭐STAR</b> · компания EPIC💀GRAM · роль Owner · подписка demo · лимит 500 USDT<br>Кошелёк · Настройки · AI Memory · Knowledge · Projects · History — привязаны к Identity, не к «пользователю».</div></div>'+
+      '<div class="pcard"><div class="pt">Путь входа</div><div class="pmeta">'+['Referral','Workspace','<b style="color:var(--cyan)">AI Identity ●</b>','Telegram','Wallet','AI Services','Production'].join(' → ')+'<br>Сейчас ты владелец организации. Telegram и остальное подключаются дальше как модули.</div></div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>Система в норме</div><div class="pmeta">18 аккаунтов онлайн · '+sysMissions+' активных миссий · '+sysApprovals+' ждёт подтверждения</div></div>'+
       kpiGroup('Сводка', [['Задачи','128'],['Approve-rate','96%'],['Доход','+15.3'],['ROI','×3.1']])+
       '<div style="font-weight:800;margin:12px 0 6px;color:#cfe6f7">Что требует внимания</div>'+
