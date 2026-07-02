@@ -233,24 +233,24 @@
     <aside class="rail">
       <div class="rhead"><span class="sk">💀</span> EPIC<span class="gradtext">GRAM</span></div>
       <nav id="nav">
-        <div class="nav-item active" data-view="operator"><span class="ni">💬</span>AI Operator <span class="online" style="margin-left:auto"></span></div>
-        <div class="nav-item" data-view="workspace"><span class="ni">🖥</span>Telegram Workspace</div>
-        <div class="nav-item" data-view="missions"><span class="ni">📋</span>Mission Center</div>
-        <div class="nav-item" data-view="approvals"><span class="ni">✅</span>Approvals <span class="badge2" id="navApr">1</span></div>
-        <div class="nav-item" data-view="economy"><span class="ni">💳</span>Economy · Wallet</div>
-        <div class="nav-item" data-view="accounts"><span class="ni">👥</span>Accounts</div>
-        <div class="nav-item" data-view="channels"><span class="ni">📢</span>Channels</div>
-        <div class="nav-item" data-view="publisher"><span class="ni">📤</span>AI Publisher</div>
-        <div class="nav-item" data-view="analytics"><span class="ni">📈</span>Analytics</div>
-        <div class="nav-item" data-view="agents"><span class="ni">🤖</span>AI Agents</div>
-        <div class="nav-item" data-view="security"><span class="ni">🛡</span>Security</div>
-        <div class="nav-item" data-view="network"><span class="ni">🌐</span>Network</div>
-        <div class="nav-item" data-view="runtime"><span class="ni">⚙</span>Runtime</div>
-        <div class="nav-item" data-view="knowledge"><span class="ni">📚</span>Knowledge</div>
+        <div class="nav-item active" data-view="operator"><span class="ni">💬</span>AI-Оператор <span class="online" style="margin-left:auto"></span></div>
+        <div class="nav-item" data-view="workspace"><span class="ni">🖥</span>Рабочий стол</div>
+        <div class="nav-item" data-view="missions"><span class="ni">📋</span>Центр миссий</div>
+        <div class="nav-item" data-view="approvals"><span class="ni">✅</span>Подтверждения <span class="badge2" id="navApr">1</span></div>
+        <div class="nav-item" data-view="economy"><span class="ni">💳</span>Экономика · Кошелёк</div>
+        <div class="nav-item" data-view="accounts"><span class="ni">👥</span>Аккаунты</div>
+        <div class="nav-item" data-view="channels"><span class="ni">📢</span>Каналы</div>
+        <div class="nav-item" data-view="publisher"><span class="ni">📤</span>AI-Публикатор</div>
+        <div class="nav-item" data-view="analytics"><span class="ni">📈</span>Аналитика</div>
+        <div class="nav-item" data-view="agents"><span class="ni">🤖</span>AI-Агенты</div>
+        <div class="nav-item" data-view="security"><span class="ni">🛡</span>Безопасность</div>
+        <div class="nav-item" data-view="network"><span class="ni">🌐</span>Сеть</div>
+        <div class="nav-item" data-view="runtime"><span class="ni">⚙</span>Среда · Runtime</div>
+        <div class="nav-item" data-view="knowledge"><span class="ni">📚</span>База знаний</div>
       </nav>
     </aside>
     <section class="main">
-      <div class="mhead"><div class="av op" id="mhIcon">AI</div><div><div class="nm" id="mhTitle">AI Operator</div><div class="st" id="mhSub">● онлайн · MANUAL_APPROVAL_ONLY</div></div></div>
+      <div class="mhead"><div class="av op" id="mhIcon">AI</div><div><div class="nm" id="mhTitle">AI-Оператор</div><div class="st" id="mhSub">● онлайн · ТОЛЬКО РУЧНОЕ ПОДТВЕРЖДЕНИЕ</div></div></div>
       <div class="view on" id="view-operator">
         <div class="msgs" id="msgs"></div>
         <div class="quick" id="quick"></div>
@@ -262,20 +262,20 @@
       <div class="view" id="view-panel"><div class="panel" id="panelBody"></div></div>
     </section>
     <aside class="sys">
-      <h4>Situation Awareness</h4>
+      <h4>Обзор состояния</h4>
       <div id="saBoard"></div>
       <h4>Очередь</h4>
-      <div class="sysrow"><span class="l">Approvals</span><span class="v w" id="sysApprovals">1 waiting</span></div>
-      <div class="sysrow"><span class="l">Missions</span><span class="v c" id="sysMissions">6 active</span></div>
-      <div class="sysrow"><span class="l">Executed (sim)</span><span class="v g" id="sysExecuted">0</span></div>
+      <div class="sysrow"><span class="l">Заявки</span><span class="v w" id="sysApprovals">1 в ожидании</span></div>
+      <div class="sysrow"><span class="l">Миссии</span><span class="v c" id="sysMissions">6 активно</span></div>
+      <div class="sysrow"><span class="l">Выполнено (сим)</span><span class="v g" id="sysExecuted">0</span></div>
       <h4>Экономика</h4>
-      <div class="sysrow"><span class="l">Wallet</span><span class="v g">🟢 connected</span></div>
+      <div class="sysrow"><span class="l">Кошелёк</span><span class="v g">🟢 подключён</span></div>
       <div class="sysrow"><span class="l">TON</span><span class="v c">42.5</span></div>
       <div class="sysrow"><span class="l">USDT</span><span class="v c">130.0</span></div>
       <div class="sysrow"><span class="l">Stars</span><span class="v c">850</span></div>
-      <div class="sysrow"><span class="l">Today's spend</span><span class="v w">2.7 USDT</span></div>
-      <div class="sysrow"><span class="l">Pending payments</span><span class="v w" id="ecoPending">2</span></div>
-      <div class="sysrow"><span class="l">Revenue today</span><span class="v g">15.3 USDT</span></div>
+      <div class="sysrow"><span class="l">Расход сегодня</span><span class="v w">2.7 USDT</span></div>
+      <div class="sysrow"><span class="l">Ожидают оплаты</span><span class="v w" id="ecoPending">2</span></div>
+      <div class="sysrow"><span class="l">Доход сегодня</span><span class="v g">15.3 USDT</span></div>
       <button class="saAsk" id="saAsk">⚠ Что требует внимания?</button>
     </aside>
   </div>
@@ -401,8 +401,8 @@
   // ---- Command Center: система-панель + управляющий цикл ----
   let sysApprovals=1, sysMissions=6, sysExecuted=0;
   function updateSys(){ const a=$('sysApprovals'),m=$('sysMissions'),e=$('sysExecuted');
-    if(a){ a.textContent=sysApprovals+' waiting'; a.className='v '+(sysApprovals>0?'w':'g'); }
-    if(m) m.textContent=sysMissions+' active'; if(e) e.textContent=String(sysExecuted); try{renderSA();}catch(_){} }
+    if(a){ a.textContent=sysApprovals+' в ожидании'; a.className='v '+(sysApprovals>0?'w':'g'); }
+    if(m) m.textContent=sysMissions+' активно'; if(e) e.textContent=String(sysExecuted); try{renderSA();}catch(_){} }
   function opCard(title, lines, voice){
     const li=lines.map(x=>'<li>'+(x.chk?'<span class="chk">✓</span>':'')+x.t+'</li>').join('');
     opMsg('<div class="opcard"><div class="h">💀 AI Operator <span class="r">🟢 ready</span></div><div style="font-weight:700;margin-bottom:6px">'+title+'</div><ul>'+li+'</ul></div>', voice); }
@@ -487,31 +487,31 @@
 
   // ===== P27.1 Unified Shell: навигация по модулям + Situation Awareness =====
   const MODVIEW={
-    operator:{icon:'AI',title:'AI Operator',sub:'● онлайн · MANUAL_APPROVAL_ONLY'},
-    workspace:{icon:'🖥',title:'Telegram Workspace',sub:'чаты · каналы · папки · TDLib · AI'},
-    missions:{icon:'📋',title:'Mission Center',sub:'жизненный цикл задач'},
-    approvals:{icon:'✅',title:'Approval Center',sub:'MANUAL_APPROVAL_ONLY'},
-    economy:{icon:'💳',title:'Economy · Wallet',sub:'TON Connect · payments · limits'},
-    accounts:{icon:'👥',title:'Account Center',sub:'аккаунты · сессии · риск'},
-    channels:{icon:'📢',title:'Channel Center',sub:'каналы · папки · модерация'},
-    publisher:{icon:'📤',title:'AI Publisher',sub:'контент · очередь'},
-    analytics:{icon:'📈',title:'AI Analytics',sub:'метрики платформы'},
-    agents:{icon:'🤖',title:'AI Agents Registry',sub:'операторы-агенты'},
-    security:{icon:'🛡',title:'AI Security',sub:'risk engine · audit'},
-    network:{icon:'🌐',title:'Network Center',sub:'VPN · proxy · geo'},
-    runtime:{icon:'⚙',title:'Telegram Runtime',sub:'TDLib · sessions'},
-    knowledge:{icon:'📚',title:'Knowledge Hub',sub:'RAG'} };
+    operator:{icon:'AI',title:'AI-Оператор',sub:'● онлайн · ТОЛЬКО РУЧНОЕ ПОДТВЕРЖДЕНИЕ'},
+    workspace:{icon:'🖥',title:'Рабочий стол',sub:'чаты · каналы · папки · TDLib · AI'},
+    missions:{icon:'📋',title:'Центр миссий',sub:'жизненный цикл задач'},
+    approvals:{icon:'✅',title:'Центр подтверждений',sub:'только ручное подтверждение'},
+    economy:{icon:'💳',title:'Экономика · Кошелёк',sub:'TON Connect · платежи · лимиты'},
+    accounts:{icon:'👥',title:'Аккаунты',sub:'аккаунты · сессии · риск'},
+    channels:{icon:'📢',title:'Каналы',sub:'каналы · папки · модерация'},
+    publisher:{icon:'📤',title:'AI-Публикатор',sub:'контент · очередь'},
+    analytics:{icon:'📈',title:'Аналитика',sub:'метрики платформы'},
+    agents:{icon:'🤖',title:'Реестр AI-агентов',sub:'операторы-агенты'},
+    security:{icon:'🛡',title:'Безопасность',sub:'risk engine · аудит'},
+    network:{icon:'🌐',title:'Сеть',sub:'VPN · прокси · гео'},
+    runtime:{icon:'⚙',title:'Telegram Runtime',sub:'TDLib · сессии'},
+    knowledge:{icon:'📚',title:'База знаний',sub:'RAG'} };
 
   // ---- Situation Awareness state ----
   const SA=[
-    {dot:'g',label:'Accounts online',val:()=>'18'},
-    {dot:'w',label:'Approvals waiting',val:()=>sysApprovals},
-    {dot:'b',label:'Missions active',val:()=>sysMissions},
-    {dot:'g',label:'Publisher',val:()=>'idle'},
-    {dot:'g',label:'VPN',val:()=>'OK'},
-    {dot:'w',label:'Proxy',val:()=>'1 degraded'},
-    {dot:'r',label:'Channel #promo',val:()=>'rate-limited'},
-    {dot:'g',label:'Audit',val:()=>'synced'} ];
+    {dot:'g',label:'Аккаунты онлайн',val:()=>'18'},
+    {dot:'w',label:'Заявки в ожидании',val:()=>sysApprovals},
+    {dot:'b',label:'Активные миссии',val:()=>sysMissions},
+    {dot:'g',label:'Публикатор',val:()=>'простой'},
+    {dot:'g',label:'VPN',val:()=>'ОК'},
+    {dot:'w',label:'Прокси',val:()=>'1 нестабилен'},
+    {dot:'r',label:'Канал #promo',val:()=>'лимит'},
+    {dot:'g',label:'Аудит',val:()=>'синхр.'} ];
   function renderSA(){ const b=$('saBoard'); if(!b) return;
     b.innerHTML=SA.map(s=>'<div class="sa"><span class="sd '+s.dot+'"></span>'+s.label+'<span class="sv">'+s.val()+'</span></div>').join('');
     const nb=$('navApr'); if(nb){ nb.textContent=sysApprovals; nb.style.display=sysApprovals>0?'':'none'; } }
@@ -543,7 +543,7 @@
   function payWaiting(){ return PAY.filter(p=>p.status==='waiting_approval').length; }
   function ecoSync(){ const ep=$('ecoPending'); if(ep){ ep.textContent=payWaiting(); } }
   function renderEconomy(){ const col=s=>({g:'grn',w:'cyan',r:'mag'}[stCol(s)]||'cyan');
-    return '<h3>💳 AI Economy</h3><div class="sub">Wallet · Agent Wallets · Payments · Marketplace · Limits · source: demo (fallback)</div>'+
+    return '<h3>💳 AI-Экономика</h3><div class="sub">Wallet · Agent Wallets · Payments · Marketplace · Limits · source: demo (fallback)</div>'+
       '<div class="planned" style="border-color:rgba(255,211,77,.45);color:#ffd34d;text-align:left;margin-bottom:12px">🔐 No private keys stored — seed/ключи не хранятся · платежи только через ручное подтверждение · реального списания нет (симуляция).</div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>'+WALLET.provider+' · connected</div><div class="pmeta">'+WALLET.account+' · '+WALLET.addr+'<br>Баланс: '+WALLET.bal.TON+' TON · '+WALLET.bal.USDT+' USDT · '+WALLET.bal.XTR+' ⭐ · сегодня −2.7 · доход +15.3</div></div>'+
       '<div style="font-weight:800;margin:14px 0 6px">Payment requests · '+payWaiting()+' waiting</div>'+
@@ -591,30 +591,30 @@
   function renderPanel(name){
     if(name==='workspace') return renderWorkspace();
     if(name==='economy') return renderEconomy();
-    if(name==='missions') return '<h3>📋 Mission Center</h3><div class="sub">Draft → In Progress → Waiting Approval → Executed · '+sysMissions+' активных</div>'+
+    if(name==='missions') return '<h3>📋 Центр миссий</h3><div class="sub">Draft→ In Progress → Waiting Approval → Executed · '+sysMissions+' активных</div>'+
       MISSIONS.map(m=>'<div class="pcard"><div class="pt"><span class="sd '+stCol(m[2])+'" style="width:9px;height:9px;border-radius:50%"></span>'+m[1]+'</div><div class="pmeta">'+m[0]+' · '+m[2]+'</div></div>').join('');
-    if(name==='approvals') return '<h3>✅ Approval Center</h3><div class="sub">'+sysApprovals+' waiting · MANUAL_APPROVAL_ONLY</div>'+
+    if(name==='approvals') return '<h3>✅ Центр подтверждений</h3><div class="sub">'+sysApprovals+' waiting · MANUAL_APPROVAL_ONLY</div>'+
       APITEMS.map(a=>'<div class="pcard" id="P_'+a.id+'"><div class="pt">'+a.title+'</div><div class="pmeta">'+a.module+' · риск '+a.risk+' · <b style="color:var(--'+({g:'grn',w:'cyan',r:'mag'}[stCol(a.status)]||'cyan')+')">'+a.status+'</b></div>'+
         (a.status==='waiting_approval'?'<div class="approw"><button class="mini app" data-ap="'+a.id+'">✓ Approve</button><button class="mini rej" data-rj="'+a.id+'">Reject</button></div>':'')+'</div>').join('');
-    if(name==='accounts') return '<h3>👥 Account Center</h3><div class="sub">аккаунты · сессии · прокси · риск</div>'+
+    if(name==='accounts') return '<h3>👥 Аккаунты</h3><div class="sub">аккаунты · сессии · прокси · риск</div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>@buch_main</div><div class="pmeta">session OK · VPN HideMyName · risk LOW · 12 каналов</div></div>'+
       '<div class="pcard"><div class="pt"><span class="sd w" style="width:9px;height:9px;border-radius:50%"></span>@buchiha_ops</div><div class="pmeta">proxy <b>degraded</b> · session OK · risk MED · 6 каналов</div></div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>@epic_publisher</div><div class="pmeta">MTProxy OK · session OK · risk LOW</div></div>';
-    if(name==='network') return '<h3>🌐 Network Center</h3><div class="sub">VPN · MTProxy · SOCKS5 · geo</div>'+
+    if(name==='network') return '<h3>🌐 Сеть</h3><div class="sub">VPN · MTProxy · SOCKS5 · geo</div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>HideMyName VPN</div><div class="pmeta">OK · latency 42ms</div></div>'+
       '<div class="pcard"><div class="pt"><span class="sd w" style="width:9px;height:9px;border-radius:50%"></span>Proxy #3</div><div class="pmeta"><b>degraded</b> · latency 380ms · рекомендуется ротация</div></div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>MTProxy pool</div><div class="pmeta">4/4 online</div></div>';
-    if(name==='security') return '<h3>🛡 AI Security</h3><div class="sub">Risk Engine · Guardian · Audit</div>'+
+    if(name==='security') return '<h3>🛡 Безопасность</h3><div class="sub">Risk Engine · Guardian · Audit</div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>Guardian</div><div class="pmeta">риск-скан: чисто · 0 флагов</div></div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>Risk Engine</div><div class="pmeta">лимиты и антиспам активны</div></div>'+
       '<div class="pcard"><div class="pt"><span class="sd r" style="width:9px;height:9px;border-radius:50%"></span>Rate limit</div><div class="pmeta">канал #promo достиг лимита публикаций</div></div>';
-    if(name==='agents') return '<h3>🤖 AI Agents Registry</h3><div class="sub">операторы-агенты · можно запускать отдельно</div>'+
+    if(name==='agents') return '<h3>🤖 Реестр AI-агентов</h3><div class="sub">операторы-агенты · можно запускать отдельно</div>'+
       ['Operator-Core','Guardian','Publisher','Analytics','Growth','Security','Vision','Voice','Knowledge','Router','Scheduler'].map(a=>'<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>'+a+'</div><div class="pmeta">🟢 ready</div></div>').join('');
-    if(name==='analytics') return '<h3>📈 AI Analytics</h3><div class="sub">метрики платформы</div>'+
+    if(name==='analytics') return '<h3>📈 Аналитика</h3><div class="sub">метрики платформы</div>'+
       '<div class="pcard"><div class="pt">Охват / сутки</div><div class="pmeta">+3.4% ↑ · 22 канала</div></div>'+
       '<div class="pcard"><div class="pt">Публикации</div><div class="pmeta">за неделю: 74 · approve-rate 96%</div></div>'+
       '<div class="pcard"><div class="pt">Монетизация</div><div class="pmeta">Stars · Premium · TON — сводка по запросу</div></div>';
-    if(name==='channels') return '<h3>📢 Channel Center</h3><div class="sub">каналы · папки · модерация</div>'+
+    if(name==='channels') return '<h3>📢 Каналы</h3><div class="sub">каналы · папки · модерация</div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>@deepinside</div><div class="pmeta">активен · 3 поста в очереди</div></div>'+
       '<div class="pcard"><div class="pt"><span class="sd r" style="width:9px;height:9px;border-radius:50%"></span>#promo</div><div class="pmeta"><b>rate-limited</b> · публикации приостановлены</div></div>';
     const P={publisher:'Ideas · Generator · Planner · Queue · Approval · Publish',runtime:'TDLib · Accounts · Sessions · Auth · Folders · Chats',knowledge:'RAG · Telegram · TDLib · Bot API · TON · Project Docs'};
