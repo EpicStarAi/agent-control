@@ -57,6 +57,7 @@ export default function AvatarStudioPage() {
   const [activeSeason, setActiveSeason] = useState(""); const [activeEpisode, setActiveEpisode] = useState(""); const [selScene, setSelScene] = useState("");
   const [seasName, setSeasName] = useState(""); const [epName, setEpName] = useState(""); const [scName, setScName] = useState("");
   const [scEdit, setScEdit] = useState<{ cast: string[]; goal: string; summary: string; output: string; status: string }>({ cast: [], goal: "", summary: "", output: "", status: "draft" });
+  const [runInfo, setRunInfo] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -206,6 +207,14 @@ export default function AvatarStudioPage() {
   async function delScene(id: string) {
     if (!window.confirm("Удалить сцену?")) return;
     await fetch(`/api/avatar-studio/scenes/${id}`, { method: "DELETE" }); if (selScene === id) setSelScene(""); load();
+  }
+  async function runScene() {
+    if (!selScene) return; setBusy(true); setRunInfo("");
+    const r = await fetch(`/api/avatar-studio/scenes/${selScene}/run`, { method: "POST" }).then(x => x.json()).catch(() => ({}));
+    setBusy(false);
+    if (r && r.reason) { setRunInfo("Run недоступен: " + r.reason); }
+    else if (r && r.ok) { setRunInfo(`▶ ${r.imageJobs} image job(s) → Candidate Groups (pending_review). Video/Voice/Caption/Publish — placeholder.`); }
+    load();
   }
   async function runQueue() { setBusy(true); await fetch("/api/avatar-studio/render-jobs/run-once", { method: "POST" }); setBusy(false); load(); }
   async function checkGrok() { setGrokStatus("…"); const r = await fetch("/api/avatar-studio/grok/check", { method: "POST" }).then(x => x.json()).catch(() => ({ status: "error" })); setGrokStatus((r.status || "?") + (r.detail ? " · " + r.detail : "")); }
@@ -417,13 +426,16 @@ export default function AvatarStudioPage() {
               <div><div className="text-[11px] text-slate-400 mb-0.5">📝 Summary (что происходит)</div><textarea className={inp} rows={2} value={scEdit.summary} onChange={e => setScEdit({ ...scEdit, summary: e.target.value })} /></div>
               <div><div className="text-[11px] text-slate-400 mb-0.5">📦 Output (что сгенерить)</div><textarea className={inp} rows={2} placeholder="напр. 2 image, 1 video, 1 dialogue, 1 post" value={scEdit.output} onChange={e => setScEdit({ ...scEdit, output: e.target.value })} /></div>
             </div>
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
               <span className="text-[11px] text-slate-400">Status</span>
               <select className="rounded-lg bg-black/40 border border-white/10 px-2 py-1 text-[12px] text-white" value={scEdit.status} onChange={e => setScEdit({ ...scEdit, status: e.target.value })}>
                 {["draft", "ready", "generating", "done"].map(s => <option key={s} value={s}>{s}</option>)}
               </select>
-              <button className={btn + " bg-sky-500 text-black ml-auto"} disabled={busy} onClick={saveScene}>Сохранить сцену</button>
+              <button className={btn + " bg-sky-500 text-black"} disabled={busy} onClick={saveScene}>Сохранить</button>
+              <button className={btn + " bg-emerald-500 text-black ml-auto"} disabled={busy || !scEdit.cast.length} title={scEdit.cast.length ? "" : "добавь персонажей в cast"} onClick={runScene}>▶ Run Scene</button>
             </div>
+            <div className="text-[10px] text-slate-500 mt-1">Pipeline: Scene → Character Context → Prompt → Image(Quality Gate) → Video/Voice/Caption/Publish (placeholder). Картинки появятся в Candidate Groups ниже.</div>
+            {runInfo && <div className="text-[11px] text-emerald-300 mt-1">{runInfo}</div>}
           </div>
         )}
       </div>

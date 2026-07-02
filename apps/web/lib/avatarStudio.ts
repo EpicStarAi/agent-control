@@ -392,6 +392,22 @@ export function normalizeScene(workspaceId: string, i: Partial<Scene>): Scene {
     status: (SCENE_STATUSES as string[]).includes(String(i.status)) ? (String(i.status) as SceneStatus) : "draft",
     createdAt: i.createdAt || now, updatedAt: now };
 }
+
+// P29.4 Cast→Content — compose a per-character image prompt for a Scene, grounding the
+// render in the character context (P29.2) + the scene's summary/goal + identity lock.
+export function buildScenePrompt(scene: Pick<Scene, "summary" | "goal">, characterContext: string): string {
+  return [
+    characterContext,
+    scene.summary ? `Scene: ${scene.summary}.` : "",
+    scene.goal ? `Scene goal: ${scene.goal}.` : "",
+    `IDENTITY LOCK: ${IDENTITY_LOCK}`,
+    `NEGATIVE / FORBIDDEN: ${FORBIDDEN_RULES.join("; ")}.`,
+  ].filter(Boolean).join(" ");
+}
+// P29.4 — the fixed execution pipeline steps of Run Scene. image is real (mock render
+// pipeline); video/voice/caption/publish are placeholders wired in later phases.
+export type SceneRunStep = "image" | "video" | "voice" | "caption" | "publish";
+export const SCENE_RUN_STEPS: SceneRunStep[] = ["image", "voice", "video", "caption", "publish"];
 // Merge passport + one template card into a render prompt with identity lock + safety.
 export function buildTemplatePrompt(passport: Partial<AvatarPassport> | null, card: TemplateCard): string {
   const identity = (passport?.identityNotes || "reference avatar").trim();
