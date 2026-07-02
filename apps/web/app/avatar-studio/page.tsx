@@ -12,6 +12,9 @@ type Template = { id: string; category: string; value: string; label: string; fr
 type Project = { id: string; name: string; type: string; status: string; description?: string };
 type Character = { id: string; projectId: string; avatarId: string; name: string; role: string; archetype: string; status: string };
 type Relationship = { id: string; projectId: string; sourceCharacterId: string; targetCharacterId: string; relationType: string; description: string; strength: number };
+type Season = { id: string; projectId: string; name: string; orderIndex: number };
+type Episode = { id: string; projectId: string; seasonId: string; name: string; synopsis: string; orderIndex: number };
+type Scene = { id: string; projectId: string; episodeId: string; name: string; characterIds: string[]; summary: string; goal: string; output: string; status: string; orderIndex: number };
 
 const CHAR_ROLES = ["main", "side", "enemy", "friend", "narrator", "npc", "manager", "sponsor", "client", "fan"];
 const REL_TYPES = ["friend", "family", "enemy", "rival", "manager", "sponsor", "client", "creator", "romantic", "unknown"];
@@ -48,6 +51,12 @@ export default function AvatarStudioPage() {
   const [relSrc, setRelSrc] = useState(""); const [relTgt, setRelTgt] = useState(""); const [relType, setRelType] = useState("friend");
   const [selChar, setSelChar] = useState("");
   const [prof, setProf] = useState<Record<string, string>>({ goals: "", profession: "", interests: "", speechStyle: "", memory: "", skills: "", constraints: "", toneOfVoice: "" });
+  const [seasons, setSeasons] = useState<Season[]>([]);
+  const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const [scenes, setScenes] = useState<Scene[]>([]);
+  const [activeSeason, setActiveSeason] = useState(""); const [activeEpisode, setActiveEpisode] = useState(""); const [selScene, setSelScene] = useState("");
+  const [seasName, setSeasName] = useState(""); const [epName, setEpName] = useState(""); const [scName, setScName] = useState("");
+  const [scEdit, setScEdit] = useState<{ cast: string[]; goal: string; summary: string; output: string; status: string }>({ cast: [], goal: "", summary: "", output: "", status: "draft" });
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -62,6 +71,9 @@ export default function AvatarStudioPage() {
     const pj = await fetch("/api/avatar-studio/projects").then(x => x.json()).catch(() => ({ projects: [] })); setProjects(pj.projects || []);
     const ch = await fetch("/api/avatar-studio/characters").then(x => x.json()).catch(() => ({ characters: [] })); setCharacters(ch.characters || []);
     const rl = await fetch("/api/avatar-studio/relationships").then(x => x.json()).catch(() => ({ relationships: [] })); setRelationships(rl.relationships || []);
+    const ss = await fetch("/api/avatar-studio/seasons").then(x => x.json()).catch(() => ({ seasons: [] })); setSeasons(ss.seasons || []);
+    const ee = await fetch("/api/avatar-studio/episodes").then(x => x.json()).catch(() => ({ episodes: [] })); setEpisodes(ee.episodes || []);
+    const scn = await fetch("/api/avatar-studio/scenes").then(x => x.json()).catch(() => ({ scenes: [] })); setScenes(scn.scenes || []);
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -163,6 +175,38 @@ export default function AvatarStudioPage() {
     await fetch(`/api/avatar-studio/characters/${selChar}/profile`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(prof) });
     setBusy(false);
   }
+  async function createSeason() {
+    if (!seasName.trim()) return; setBusy(true);
+    await fetch("/api/avatar-studio/seasons", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: seasName, projectId: activeProject || undefined }) });
+    setSeasName(""); setBusy(false); load();
+  }
+  async function createEpisode() {
+    if (!epName.trim() || !activeSeason) return; setBusy(true);
+    await fetch("/api/avatar-studio/episodes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: epName, seasonId: activeSeason, projectId: activeProject || undefined }) });
+    setEpName(""); setBusy(false); load();
+  }
+  async function createScene() {
+    if (!scName.trim() || !activeEpisode) return; setBusy(true);
+    await fetch("/api/avatar-studio/scenes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: scName, episodeId: activeEpisode, projectId: activeProject || undefined }) });
+    setScName(""); setBusy(false); load();
+  }
+  function selectScene(s: Scene) {
+    setSelScene(s.id);
+    setScEdit({ cast: s.characterIds || [], goal: s.goal || "", summary: s.summary || "", output: s.output || "", status: s.status || "draft" });
+  }
+  function toggleSceneChar(id: string) {
+    setScEdit(e => ({ ...e, cast: e.cast.includes(id) ? e.cast.filter(x => x !== id) : [...e.cast, id] }));
+  }
+  async function saveScene() {
+    if (!selScene) return; setBusy(true);
+    await fetch(`/api/avatar-studio/scenes/${selScene}`, { method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ characterIds: scEdit.cast, goal: scEdit.goal, summary: scEdit.summary, output: scEdit.output, status: scEdit.status }) });
+    setBusy(false); load();
+  }
+  async function delScene(id: string) {
+    if (!window.confirm("Удалить сцену?")) return;
+    await fetch(`/api/avatar-studio/scenes/${id}`, { method: "DELETE" }); if (selScene === id) setSelScene(""); load();
+  }
   async function runQueue() { setBusy(true); await fetch("/api/avatar-studio/render-jobs/run-once", { method: "POST" }); setBusy(false); load(); }
   async function checkGrok() { setGrokStatus("…"); const r = await fetch("/api/avatar-studio/grok/check", { method: "POST" }).then(x => x.json()).catch(() => ({ status: "error" })); setGrokStatus((r.status || "?") + (r.detail ? " · " + r.detail : "")); }
   async function runGrok() { setBusy(true); const r = await fetch("/api/avatar-studio/render-jobs/run-grok-once", { method: "POST" }).then(x => x.json()).catch(() => ({})); setBusy(false); if (r.error) setGrokStatus(r.status + " · " + r.error); load(); }
@@ -190,6 +234,9 @@ export default function AvatarStudioPage() {
   const avById: Record<string, Avatar> = {}; avatars.forEach(a => { avById[a.id] = a; });
   const castChars = activeProject ? characters.filter(c => c.projectId === activeProject) : characters;
   const roleColor = (r: string) => r === "main" ? "bg-fuchsia-500/20 text-fuchsia-300" : r === "enemy" || r === "rival" ? "bg-rose-500/20 text-rose-300" : r === "narrator" ? "bg-amber-500/20 text-amber-300" : "bg-sky-500/20 text-sky-300";
+  const seasonsForProject = activeProject ? seasons.filter(s => s.projectId === activeProject) : seasons;
+  const episodesForSeason = activeSeason ? episodes.filter(e => e.seasonId === activeSeason) : [];
+  const scenesForEpisode = activeEpisode ? scenes.filter(s => s.episodeId === activeEpisode) : [];
   return (
     <div className="min-h-screen bg-[#05070f] text-slate-100 p-5">
       <div className="mb-3 flex items-center gap-3">
@@ -296,6 +343,87 @@ export default function AvatarStudioPage() {
               ))}
             </div>
             <button className={btn + " bg-sky-500 text-black mt-2"} disabled={busy} onClick={saveProfile}>Сохранить паспорт</button>
+          </div>
+        )}
+      </div>
+
+      <div className={box + " mb-4"}>
+        <div className="flex items-center gap-2 flex-wrap mb-2">
+          <div className="font-bold">🎞 Story Planner</div>
+          <span className="text-[11px] text-slate-500">P29.3 · Project → Season → Episode → Scene · Scene = cast·summary·goal·output·status</span>
+          {!activeProject && <span className="text-[11px] text-amber-300">выбери проект в Cast выше</span>}
+        </div>
+        <div className="grid md:grid-cols-3 gap-3">
+          <div>
+            <div className="text-[12px] text-slate-400 mb-1">Seasons</div>
+            <div className="flex gap-1.5 mb-1.5">
+              <input className="flex-1 rounded-lg bg-black/40 border border-white/10 px-2 py-1 text-[12px] text-white" placeholder="season" value={seasName} onChange={e => setSeasName(e.target.value)} />
+              <button className={btn + " bg-cyan-600 text-white"} disabled={busy || !seasName.trim()} onClick={createSeason}>＋</button>
+            </div>
+            <div className="space-y-1 max-h-40 overflow-auto">
+              {seasonsForProject.map(s => (
+                <button key={s.id} onClick={() => { setActiveSeason(s.id); setActiveEpisode(""); setSelScene(""); }} className={"w-full text-left rounded px-2 py-1 text-[12px] border " + (activeSeason === s.id ? "border-cyan-400 bg-cyan-400/10" : "border-white/10 bg-white/5")}>{s.name}</button>
+              ))}
+              {!seasonsForProject.length && <div className="text-[11px] text-slate-500">Сезонов нет.</div>}
+            </div>
+          </div>
+          <div>
+            <div className="text-[12px] text-slate-400 mb-1">Episodes {activeSeason ? "" : "(выбери season)"}</div>
+            <div className="flex gap-1.5 mb-1.5">
+              <input className="flex-1 rounded-lg bg-black/40 border border-white/10 px-2 py-1 text-[12px] text-white" placeholder="episode" value={epName} onChange={e => setEpName(e.target.value)} disabled={!activeSeason} />
+              <button className={btn + " bg-cyan-600 text-white"} disabled={busy || !activeSeason || !epName.trim()} onClick={createEpisode}>＋</button>
+            </div>
+            <div className="space-y-1 max-h-40 overflow-auto">
+              {episodesForSeason.map(e => (
+                <button key={e.id} onClick={() => { setActiveEpisode(e.id); setSelScene(""); }} className={"w-full text-left rounded px-2 py-1 text-[12px] border " + (activeEpisode === e.id ? "border-cyan-400 bg-cyan-400/10" : "border-white/10 bg-white/5")}>{e.name}</button>
+              ))}
+              {activeSeason && !episodesForSeason.length && <div className="text-[11px] text-slate-500">Эпизодов нет.</div>}
+            </div>
+          </div>
+          <div>
+            <div className="text-[12px] text-slate-400 mb-1">Scenes {activeEpisode ? "" : "(выбери episode)"}</div>
+            <div className="flex gap-1.5 mb-1.5">
+              <input className="flex-1 rounded-lg bg-black/40 border border-white/10 px-2 py-1 text-[12px] text-white" placeholder="scene" value={scName} onChange={e => setScName(e.target.value)} disabled={!activeEpisode} />
+              <button className={btn + " bg-cyan-600 text-white"} disabled={busy || !activeEpisode || !scName.trim()} onClick={createScene}>＋</button>
+            </div>
+            <div className="space-y-1 max-h-40 overflow-auto">
+              {scenesForEpisode.map(s => (
+                <div key={s.id} className={"flex items-center gap-1 rounded px-2 py-1 text-[12px] border " + (selScene === s.id ? "border-cyan-400 bg-cyan-400/10" : "border-white/10 bg-white/5")}>
+                  <span className="flex-1 truncate cursor-pointer" onClick={() => selectScene(s)}>{s.name}</span>
+                  <span className="text-[10px] text-slate-500">{s.status}</span>
+                  <button className="text-rose-400" onClick={() => delScene(s.id)}>✕</button>
+                </div>
+              ))}
+              {activeEpisode && !scenesForEpisode.length && <div className="text-[11px] text-slate-500">Сцен нет.</div>}
+            </div>
+          </div>
+        </div>
+        {selScene && (
+          <div className="mt-3 rounded-lg border border-cyan-400/30 bg-black/20 p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="font-bold text-[13px]">🎬 Scene · {scenesForEpisode.find(s => s.id === selScene)?.name || ""}</div>
+              <span className="text-[11px] text-slate-500">кто · что · цель · output · статус (исполнит P29.4)</span>
+              <button className="ml-auto text-[11px] text-slate-400" onClick={() => setSelScene("")}>закрыть</button>
+            </div>
+            <div className="text-[11px] text-slate-400 mb-1">Cast (кто в сцене)</div>
+            <div className="flex flex-wrap gap-1 mb-2">
+              {characters.map(c => (
+                <button key={c.id} onClick={() => toggleSceneChar(c.id)} className={"rounded px-2 py-0.5 text-[11px] border " + (scEdit.cast.includes(c.id) ? "border-fuchsia-400 bg-fuchsia-400/10 text-fuchsia-200" : "border-white/10 bg-white/5 text-slate-300")}>{c.name}</button>
+              ))}
+              {!characters.length && <span className="text-[11px] text-slate-500">Нет персонажей — создай в Cast.</span>}
+            </div>
+            <div className="grid sm:grid-cols-3 gap-2">
+              <div><div className="text-[11px] text-slate-400 mb-0.5">🎯 Goal</div><textarea className={inp} rows={2} value={scEdit.goal} onChange={e => setScEdit({ ...scEdit, goal: e.target.value })} /></div>
+              <div><div className="text-[11px] text-slate-400 mb-0.5">📝 Summary (что происходит)</div><textarea className={inp} rows={2} value={scEdit.summary} onChange={e => setScEdit({ ...scEdit, summary: e.target.value })} /></div>
+              <div><div className="text-[11px] text-slate-400 mb-0.5">📦 Output (что сгенерить)</div><textarea className={inp} rows={2} placeholder="напр. 2 image, 1 video, 1 dialogue, 1 post" value={scEdit.output} onChange={e => setScEdit({ ...scEdit, output: e.target.value })} /></div>
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-[11px] text-slate-400">Status</span>
+              <select className="rounded-lg bg-black/40 border border-white/10 px-2 py-1 text-[12px] text-white" value={scEdit.status} onChange={e => setScEdit({ ...scEdit, status: e.target.value })}>
+                {["draft", "ready", "generating", "done"].map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <button className={btn + " bg-sky-500 text-black ml-auto"} disabled={busy} onClick={saveScene}>Сохранить сцену</button>
+            </div>
           </div>
         )}
       </div>

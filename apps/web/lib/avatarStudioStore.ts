@@ -2,18 +2,21 @@ import fs from "node:fs";
 import path from "node:path";
 import { normalizeAvatar, normalizePassport, normalizeJob, normalizeAsset, normalizeIdentitySource,
   normalizeProject, normalizeCharacter, normalizeRelationship, normalizeCharacterProfile,
+  normalizeSeason, normalizeEpisode, normalizeScene,
   type Avatar, type AvatarPassport, type RenderJob, type AvatarAsset, type AvatarIdentitySource,
-  type Project, type Character, type CharacterRelationship, type CharacterProfile } from "@/lib/avatarStudio";
+  type Project, type Character, type CharacterRelationship, type CharacterProfile,
+  type Season, type Episode, type Scene } from "@/lib/avatarStudio";
 
 // P27.1 fs fallback (keyed by workspace_id). Same shape as the DB adapter.
 const FILE = path.join(process.cwd(), ".avatar-studio-data.json");
 type WS = { avatars: Avatar[]; passports: AvatarPassport[]; jobs: RenderJob[]; assets: AvatarAsset[];
   identitySources?: AvatarIdentitySource[]; projects?: Project[]; characters?: Character[];
-  relationships?: CharacterRelationship[]; characterProfiles?: CharacterProfile[] };
+  relationships?: CharacterRelationship[]; characterProfiles?: CharacterProfile[];
+  seasons?: Season[]; episodes?: Episode[]; scenes?: Scene[] };
 type DB = { ws: Record<string, WS> };
 function load(): DB { try { if (fs.existsSync(FILE)) return JSON.parse(fs.readFileSync(FILE, "utf8")); } catch {} return { ws: {} }; }
 function save(db: DB) { try { fs.writeFileSync(FILE, JSON.stringify(db, null, 2)); } catch {} }
-function bucket(db: DB, ws: string): WS { return (db.ws[ws] ||= { avatars: [], passports: [], jobs: [], assets: [], identitySources: [], projects: [], characters: [], relationships: [], characterProfiles: [] }); }
+function bucket(db: DB, ws: string): WS { return (db.ws[ws] ||= { avatars: [], passports: [], jobs: [], assets: [], identitySources: [], projects: [], characters: [], relationships: [], characterProfiles: [], seasons: [], episodes: [], scenes: [] }); }
 const desc = <T extends { updatedAt: string }>(a: T[]) => a.slice().sort((x, y) => (x.updatedAt < y.updatedAt ? 1 : -1));
 
 export async function listAvatars(ws: string): Promise<Avatar[]> { return desc(bucket(load(), ws).avatars); }
@@ -107,3 +110,27 @@ export async function upsertCharacterProfile(ws: string, characterId: string, in
   const i = b.characterProfiles.findIndex(p => p.characterId === characterId);
   if (i >= 0) { n.id = b.characterProfiles[i].id; n.createdAt = b.characterProfiles[i].createdAt; b.characterProfiles[i] = n; } else b.characterProfiles.push(n);
   save(db); return n; }
+// P29.3 story planner.
+const bySort = <T extends { orderIndex: number; createdAt: string }>(a: T[]) => a.slice().sort((x, y) => (x.orderIndex - y.orderIndex) || (x.createdAt < y.createdAt ? -1 : 1));
+export async function listSeasons(ws: string, projectId?: string): Promise<Season[]> {
+  const s = bucket(load(), ws).seasons || []; return bySort(projectId ? s.filter(x => x.projectId === projectId) : s); }
+export async function createSeason(ws: string, input: Partial<Season>): Promise<Season> {
+  const db = load(); const b = bucket(db, ws); (b.seasons ||= []); const n = normalizeSeason(ws, input); b.seasons.push(n); save(db); return n; }
+export async function listEpisodes(ws: string, seasonId?: string): Promise<Episode[]> {
+  const e = bucket(load(), ws).episodes || []; return bySort(seasonId ? e.filter(x => x.seasonId === seasonId) : e); }
+export async function createEpisode(ws: string, input: Partial<Episode>): Promise<Episode> {
+  const db = load(); const b = bucket(db, ws); (b.episodes ||= []); const n = normalizeEpisode(ws, input); b.episodes.push(n); save(db); return n; }
+export async function listScenes(ws: string, episodeId?: string): Promise<Scene[]> {
+  const s = bucket(load(), ws).scenes || []; return bySort(episodeId ? s.filter(x => x.episodeId === episodeId) : s); }
+export async function getScene(ws: string, id: string): Promise<Scene | null> { return (bucket(load(), ws).scenes || []).find(s => s.id === id) ?? null; }
+export async function createScene(ws: string, input: Partial<Scene>): Promise<Scene> {
+  const db = load(); const b = bucket(db, ws); (b.scenes ||= []); const n = normalizeScene(ws, input); b.scenes.push(n); save(db); return n; }
+export async function updateScene(ws: string, id: string, patch: Partial<Scene>): Promise<Scene | null> {
+  const db = load(); const b = bucket(db, ws); const s = (b.scenes ||= []).find(x => x.id === id); if (!s) return null;
+  if (patch.name != null) s.name = patch.name; if (patch.characterIds != null) s.characterIds = patch.characterIds;
+  if (patch.summary != null) s.summary = patch.summary; if (patch.goal != null) s.goal = patch.goal;
+  if (patch.output != null) s.output = patch.output; if (patch.status != null) s.status = patch.status;
+  if (patch.orderIndex != null) s.orderIndex = patch.orderIndex;
+  s.updatedAt = new Date().toISOString(); save(db); return s; }
+export async function deleteScene(ws: string, id: string): Promise<void> {
+  const db = load(); const b = bucket(db, ws); if (b.scenes) { b.scenes = b.scenes.filter(s => s.id !== id); save(db); } }

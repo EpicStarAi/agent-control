@@ -1,7 +1,9 @@
 import { normalizeAvatar, normalizePassport, normalizeJob, normalizeAsset, normalizeIdentitySource,
   normalizeProject, normalizeCharacter, normalizeRelationship, normalizeCharacterProfile,
+  normalizeSeason, normalizeEpisode, normalizeScene,
   type Avatar, type AvatarPassport, type RenderJob, type AvatarAsset, type AvatarIdentitySource,
-  type Project, type Character, type CharacterRelationship, type CharacterProfile } from "@/lib/avatarStudio";
+  type Project, type Character, type CharacterRelationship, type CharacterProfile,
+  type Season, type Episode, type Scene } from "@/lib/avatarStudio";
 
 // P27.1 Postgres adapter. CREATE TABLE/INDEX IF NOT EXISTS only. No DROP/DELETE.
 // Shares the global pg pool. Stores no secrets.
@@ -101,6 +103,22 @@ async function ensureInit(p: PgPool): Promise<void> {
       memory text, skills text, constraints text, tone_of_voice text,
       created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())`);
     await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS character_profiles_uq ON character_profiles(workspace_id, character_id)`);
+    // P29.3 Story / Scene Planner — Project → Season → Episode → Scene (minimal).
+    await p.query(`CREATE TABLE IF NOT EXISTS avatar_seasons (
+      id text PRIMARY KEY, workspace_id text NOT NULL, project_id text, name text, order_index integer DEFAULT 0,
+      created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())`);
+    await p.query(`CREATE INDEX IF NOT EXISTS avatar_seasons_ws ON avatar_seasons(workspace_id, project_id)`);
+    await p.query(`CREATE TABLE IF NOT EXISTS avatar_episodes (
+      id text PRIMARY KEY, workspace_id text NOT NULL, project_id text, season_id text, name text,
+      order_index integer DEFAULT 0, synopsis text,
+      created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())`);
+    await p.query(`CREATE INDEX IF NOT EXISTS avatar_episodes_ws ON avatar_episodes(workspace_id, season_id)`);
+    await p.query(`CREATE TABLE IF NOT EXISTS avatar_scenes (
+      id text PRIMARY KEY, workspace_id text NOT NULL, project_id text, episode_id text, name text,
+      order_index integer DEFAULT 0, character_ids jsonb DEFAULT '[]'::jsonb, summary text, goal text,
+      output text, status text DEFAULT 'draft',
+      created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())`);
+    await p.query(`CREATE INDEX IF NOT EXISTS avatar_scenes_ws ON avatar_scenes(workspace_id, episode_id)`);
   })();
   return g.__epicAvatarInit;
 }
@@ -288,3 +306,60 @@ export async function upsertCharacterProfile(ws: string, characterId: string, in
     ON CONFLICT (workspace_id,character_id) DO UPDATE SET goals=$4,profession=$5,interests=$6,speech_style=$7,memory=$8,skills=$9,constraints=$10,tone_of_voice=$11,updated_at=$13 RETURNING *`,
     [n.id, characterId, ws, n.goals, n.profession, n.interests, n.speechStyle, n.memory, n.skills, n.constraints, n.toneOfVoice, n.createdAt, n.updatedAt]);
   return cprofRow(r.rows[0]); }
+
+// P29.3 story planner — seasons / episodes / scenes.
+function seasonRow(r: any): Season { return { id: r.id, workspaceId: r.workspace_id, projectId: r.project_id ?? "", name: r.name ?? "",
+  orderIndex: Number(r.order_index ?? 0), createdAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString() }; }
+function episodeRow(r: any): Episode { return { id: r.id, workspaceId: r.workspace_id, projectId: r.project_id ?? "", seasonId: r.season_id ?? "",
+  name: r.name ?? "", orderIndex: Number(r.order_index ?? 0), synopsis: r.synopsis ?? "",
+  createdAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString() }; }
+function sceneRow(r: any): Scene { return { id: r.id, workspaceId: r.workspace_id, projectId: r.project_id ?? "", episodeId: r.episode_id ?? "",
+  name: r.name ?? "", orderIndex: Number(r.order_index ?? 0), characterIds: Array.isArray(r.character_ids) ? r.character_ids : [],
+  summary: r.summary ?? "", goal: r.goal ?? "", output: r.output ?? "", status: r.status ?? "draft",
+  createdAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString() }; }
+
+export async function listSeasons(ws: string, projectId?: string): Promise<Season[]> {
+  const p = await db();
+  const q = projectId ? await p.query(`SELECT * FROM avatar_seasons WHERE workspace_id=$1 AND project_id=$2 ORDER BY order_index ASC, created_at ASC`, [ws, projectId])
+    : await p.query(`SELECT * FROM avatar_seasons WHERE workspace_id=$1 ORDER BY order_index ASC, created_at ASC`, [ws]);
+  return q.rows.map(seasonRow); }
+export async function createSeason(ws: string, input: Partial<Season>): Promise<Season> {
+  const p = await db(); const n = normalizeSeason(ws, input);
+  const r = await p.query(`INSERT INTO avatar_seasons(id,workspace_id,project_id,name,order_index,created_at,updated_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`, [n.id, ws, n.projectId, n.name, n.orderIndex, n.createdAt, n.updatedAt]);
+  return seasonRow(r.rows[0]); }
+export async function listEpisodes(ws: string, seasonId?: string): Promise<Episode[]> {
+  const p = await db();
+  const q = seasonId ? await p.query(`SELECT * FROM avatar_episodes WHERE workspace_id=$1 AND season_id=$2 ORDER BY order_index ASC, created_at ASC`, [ws, seasonId])
+    : await p.query(`SELECT * FROM avatar_episodes WHERE workspace_id=$1 ORDER BY order_index ASC, created_at ASC`, [ws]);
+  return q.rows.map(episodeRow); }
+export async function createEpisode(ws: string, input: Partial<Episode>): Promise<Episode> {
+  const p = await db(); const n = normalizeEpisode(ws, input);
+  const r = await p.query(`INSERT INTO avatar_episodes(id,workspace_id,project_id,season_id,name,order_index,synopsis,created_at,updated_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`, [n.id, ws, n.projectId, n.seasonId, n.name, n.orderIndex, n.synopsis, n.createdAt, n.updatedAt]);
+  return episodeRow(r.rows[0]); }
+export async function listScenes(ws: string, episodeId?: string): Promise<Scene[]> {
+  const p = await db();
+  const q = episodeId ? await p.query(`SELECT * FROM avatar_scenes WHERE workspace_id=$1 AND episode_id=$2 ORDER BY order_index ASC, created_at ASC`, [ws, episodeId])
+    : await p.query(`SELECT * FROM avatar_scenes WHERE workspace_id=$1 ORDER BY order_index ASC, created_at ASC`, [ws]);
+  return q.rows.map(sceneRow); }
+export async function getScene(ws: string, id: string): Promise<Scene | null> {
+  const p = await db(); const r = (await p.query(`SELECT * FROM avatar_scenes WHERE workspace_id=$1 AND id=$2`, [ws, id])).rows[0]; return r ? sceneRow(r) : null; }
+export async function createScene(ws: string, input: Partial<Scene>): Promise<Scene> {
+  const p = await db(); const n = normalizeScene(ws, input);
+  const r = await p.query(`INSERT INTO avatar_scenes(id,workspace_id,project_id,episode_id,name,order_index,character_ids,summary,goal,output,status,created_at,updated_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+    [n.id, ws, n.projectId, n.episodeId, n.name, n.orderIndex, JSON.stringify(n.characterIds), n.summary, n.goal, n.output, n.status, n.createdAt, n.updatedAt]);
+  return sceneRow(r.rows[0]); }
+export async function updateScene(ws: string, id: string, patch: Partial<Scene>): Promise<Scene | null> {
+  const p = await db(); const now = new Date().toISOString();
+  const r = await p.query(`UPDATE avatar_scenes SET name=COALESCE($3,name), character_ids=COALESCE($4,character_ids),
+      summary=COALESCE($5,summary), goal=COALESCE($6,goal), output=COALESCE($7,output), status=COALESCE($8,status),
+      order_index=COALESCE($9,order_index), updated_at=$10
+    WHERE workspace_id=$1 AND id=$2 RETURNING *`,
+    [ws, id, patch.name ?? null, patch.characterIds ? JSON.stringify(patch.characterIds) : null,
+     patch.summary ?? null, patch.goal ?? null, patch.output ?? null, patch.status ?? null,
+     patch.orderIndex ?? null, now]);
+  return r.rows[0] ? sceneRow(r.rows[0]) : null; }
+export async function deleteScene(ws: string, id: string): Promise<void> {
+  const p = await db(); await p.query(`DELETE FROM avatar_scenes WHERE workspace_id=$1 AND id=$2`, [ws, id]); }

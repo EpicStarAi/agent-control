@@ -1,6 +1,6 @@
 import * as db from "@/lib/avatarStudioDb";
 import * as store from "@/lib/avatarStudioStore";
-import type { Avatar, AvatarPassport, RenderJob, AvatarAsset, AvatarIdentitySource, Project, Character, CharacterRelationship, CharacterProfile } from "@/lib/avatarStudio";
+import type { Avatar, AvatarPassport, RenderJob, AvatarAsset, AvatarIdentitySource, Project, Character, CharacterRelationship, CharacterProfile, Season, Episode, Scene } from "@/lib/avatarStudio";
 import { getProvider, DEFAULT_PROVIDER } from "@/lib/renderProviders";
 
 // P27.1 facade: Postgres when available, else fs. Carries source: "db"|"fallback".
@@ -28,6 +28,16 @@ export const deleteRelationship = (ws: string, id: string) => pick(() => db.dele
 // P29.2 character profiles.
 export const getCharacterProfile = (ws: string, cid: string) => pick(() => db.getCharacterProfile(ws, cid), () => store.getCharacterProfile(ws, cid));
 export const upsertCharacterProfile = (ws: string, cid: string, i: Partial<CharacterProfile>) => pick(() => db.upsertCharacterProfile(ws, cid, i), () => store.upsertCharacterProfile(ws, cid, i));
+// P29.3 story planner — seasons / episodes / scenes.
+export const listSeasons = (ws: string, projectId?: string) => pick(() => db.listSeasons(ws, projectId), () => store.listSeasons(ws, projectId));
+export const createSeason = (ws: string, i: Partial<Season>) => pick(() => db.createSeason(ws, i), () => store.createSeason(ws, i));
+export const listEpisodes = (ws: string, seasonId?: string) => pick(() => db.listEpisodes(ws, seasonId), () => store.listEpisodes(ws, seasonId));
+export const createEpisode = (ws: string, i: Partial<Episode>) => pick(() => db.createEpisode(ws, i), () => store.createEpisode(ws, i));
+export const listScenes = (ws: string, episodeId?: string) => pick(() => db.listScenes(ws, episodeId), () => store.listScenes(ws, episodeId));
+export const getScene = (ws: string, id: string) => pick(() => db.getScene(ws, id), () => store.getScene(ws, id));
+export const createScene = (ws: string, i: Partial<Scene>) => pick(() => db.createScene(ws, i), () => store.createScene(ws, i));
+export const updateScene = (ws: string, id: string, patch: Partial<Scene>) => pick(() => db.updateScene(ws, id, patch), () => store.updateScene(ws, id, patch));
+export const deleteScene = (ws: string, id: string) => pick(() => db.deleteScene(ws, id), () => store.deleteScene(ws, id));
 export const getPassport = (ws: string, aid: string) => pick(() => db.getPassport(ws, aid), () => store.getPassport(ws, aid));
 export const upsertPassport = (ws: string, aid: string, i: Partial<AvatarPassport>) => pick(() => db.upsertPassport(ws, aid, i), () => store.upsertPassport(ws, aid, i));
 export const listJobs = (ws: string) => pick(() => db.listJobs(ws), () => store.listJobs(ws));

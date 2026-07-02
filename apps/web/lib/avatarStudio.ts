@@ -351,6 +351,47 @@ export function buildCharacterContext(character: Pick<Character, "name" | "role"
   ].filter(Boolean);
   return parts.join(" ");
 }
+
+// ============================================================================
+// P29.3 Story / Scene Planner — MINIMAL. Project → Season → Episode → Scene.
+// A Scene carries: who (characterIds), what (summary), goal, output (assets to
+// generate), status. This is the unit P29.4 executes. No RPG, no world-sim.
+// ============================================================================
+export interface Season {
+  id: string; workspaceId: string; projectId: string; name: string; orderIndex: number;
+  createdAt: string; updatedAt: string;
+}
+export function normalizeSeason(workspaceId: string, i: Partial<Season>): Season {
+  const now = new Date().toISOString();
+  return { id: i.id || nid("season"), workspaceId, projectId: clip(i.projectId, 60),
+    name: clip(i.name, 120) || "Season", orderIndex: num(i.orderIndex, 0), createdAt: i.createdAt || now, updatedAt: now };
+}
+export interface Episode {
+  id: string; workspaceId: string; projectId: string; seasonId: string; name: string;
+  orderIndex: number; synopsis: string; createdAt: string; updatedAt: string;
+}
+export function normalizeEpisode(workspaceId: string, i: Partial<Episode>): Episode {
+  const now = new Date().toISOString();
+  return { id: i.id || nid("ep"), workspaceId, projectId: clip(i.projectId, 60), seasonId: clip(i.seasonId, 60),
+    name: clip(i.name, 120) || "Episode", orderIndex: num(i.orderIndex, 0), synopsis: clip(i.synopsis, 800),
+    createdAt: i.createdAt || now, updatedAt: now };
+}
+export type SceneStatus = "draft" | "ready" | "generating" | "done";
+export const SCENE_STATUSES: SceneStatus[] = ["draft", "ready", "generating", "done"];
+export interface Scene {
+  id: string; workspaceId: string; projectId: string; episodeId: string; name: string;
+  orderIndex: number; characterIds: string[]; summary: string; goal: string; output: string;
+  status: SceneStatus; createdAt: string; updatedAt: string;
+}
+export function normalizeScene(workspaceId: string, i: Partial<Scene>): Scene {
+  const now = new Date().toISOString();
+  const ids = Array.isArray(i.characterIds) ? i.characterIds.map(x => clip(x, 60)).filter(Boolean).slice(0, 24) : [];
+  return { id: i.id || nid("scene"), workspaceId, projectId: clip(i.projectId, 60), episodeId: clip(i.episodeId, 60),
+    name: clip(i.name, 120) || "Scene", orderIndex: num(i.orderIndex, 0), characterIds: ids,
+    summary: clip(i.summary, 800), goal: clip(i.goal, 400), output: clip(i.output, 400),
+    status: (SCENE_STATUSES as string[]).includes(String(i.status)) ? (String(i.status) as SceneStatus) : "draft",
+    createdAt: i.createdAt || now, updatedAt: now };
+}
 // Merge passport + one template card into a render prompt with identity lock + safety.
 export function buildTemplatePrompt(passport: Partial<AvatarPassport> | null, card: TemplateCard): string {
   const identity = (passport?.identityNotes || "reference avatar").trim();
