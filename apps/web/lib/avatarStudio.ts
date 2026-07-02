@@ -4,8 +4,25 @@
 // Scoped to the caller's workspace_id. No secrets stored.
 
 export type AvatarStatus = "draft" | "active" | "archived";
-export type JobStatus = "pending" | "done" | "approved" | "rejected" | "error";
-export type AssetStatus = "draft" | "approved" | "rejected";
+export type JobStatus = "queued" | "running" | "done" | "failed" | "approved" | "rejected" | "regenerate_requested" | "cancelled";
+export type AssetStatus = "pending_review" | "approved" | "rejected" | "published";
+export const JOB_STATUSES: JobStatus[] = ["queued", "running", "done", "failed", "approved", "rejected", "regenerate_requested", "cancelled"];
+export const ASSET_STATUSES: AssetStatus[] = ["pending_review", "approved", "rejected", "published"];
+
+// P27.2 status transition guard. Only these moves are allowed.
+const TRANSITIONS: Record<JobStatus, JobStatus[]> = {
+  queued: ["running", "cancelled"],
+  running: ["done", "failed", "cancelled"],
+  done: ["approved", "rejected"],
+  failed: ["queued"],
+  approved: [],
+  rejected: ["regenerate_requested"],
+  regenerate_requested: ["queued", "cancelled"],
+  cancelled: [],
+};
+export function canTransition(from: JobStatus, to: JobStatus): boolean {
+  return from === to ? false : (TRANSITIONS[from] || []).includes(to);
+}
 
 export interface Avatar {
   id: string; workspaceId: string; name: string; status: AvatarStatus;
@@ -20,6 +37,8 @@ export interface RenderPack { id: string; name: string; description: string; sce
 export interface RenderJob {
   id: string; workspaceId: string; avatarId: string; packId: string; engine: string;
   status: JobStatus; sceneKey: string; prompt: string; resultUrl: string; error: string;
+  attempts: number; maxAttempts: number; startedAt: string; completedAt: string;
+  lastError: string; batchId: string; priority: number;
   createdAt: string; updatedAt: string;
 }
 export interface AvatarAsset {
@@ -114,8 +133,9 @@ export function getAdapter(_engine: string): RenderEngineAdapter { return grokIm
 function nid(p: string): string { return `${p}_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`; }
 function clip(s: unknown, n: number): string { return String(s ?? "").slice(0, n); }
 function jobStatus(s: unknown): JobStatus {
-  return s === "done" || s === "approved" || s === "rejected" || s === "error" ? s : "pending";
+  return (JOB_STATUSES as string[]).includes(String(s)) ? (String(s) as JobStatus) : "queued";
 }
+function num(v: unknown, d: number): number { const n = Number(v); return Number.isFinite(n) ? n : d; }
 
 export function normalizeAvatar(workspaceId: string, i: Partial<Avatar>): Avatar {
   const now = new Date().toISOString();
@@ -137,12 +157,15 @@ export function normalizeJob(workspaceId: string, i: Partial<RenderJob>): Render
   return { id: i.id || nid("job"), workspaceId, avatarId: clip(i.avatarId, 60), packId: clip(i.packId, 40),
     engine: clip(i.engine, 40) || "grok_imagine_ui", status: jobStatus(i.status), sceneKey: clip(i.sceneKey, 60),
     prompt: clip(i.prompt, 2000), resultUrl: clip(i.resultUrl, 400), error: clip(i.error, 400),
+    attempts: num(i.attempts, 0), maxAttempts: num(i.maxAttempts, 3), startedAt: clip(i.startedAt, 40), completedAt: clip(i.completedAt, 40),
+    lastError: clip(i.lastError, 400), batchId: clip(i.batchId, 60), priority: num(i.priority, 0),
     createdAt: i.createdAt || now, updatedAt: now };
 }
+export function newBatchId(): string { return nid("batch"); }
 export function normalizeAsset(workspaceId: string, i: Partial<AvatarAsset>): AvatarAsset {
   const now = new Date().toISOString();
   return { id: i.id || nid("asset"), workspaceId, avatarId: clip(i.avatarId, 60), jobId: clip(i.jobId, 60),
     assetType: clip(i.assetType, 40) || "image", imageUrl: clip(i.imageUrl, 400), prompt: clip(i.prompt, 2000),
-    status: (i.status === "approved" || i.status === "rejected" ? i.status : "draft"),
+    status: ((ASSET_STATUSES as string[]).includes(String(i.status)) ? (String(i.status) as AssetStatus) : "pending_review"),
     createdAt: i.createdAt || now, updatedAt: now };
 }

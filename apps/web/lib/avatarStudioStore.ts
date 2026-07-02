@@ -24,9 +24,15 @@ export async function listJobs(ws: string): Promise<RenderJob[]> { return desc(b
 export async function getJob(ws: string, id: string): Promise<RenderJob | null> { return bucket(load(), ws).jobs.find(j => j.id === id) ?? null; }
 export async function createJob(ws: string, input: Partial<RenderJob>): Promise<RenderJob> {
   const db = load(); const b = bucket(db, ws); const n = normalizeJob(ws, input); b.jobs.push(n); save(db); return n; }
+export async function listJobsByStatus(ws: string, status: string, limit = 20): Promise<RenderJob[]> {
+  const jobs = bucket(load(), ws).jobs.filter(j => j.status === status);
+  jobs.sort((a, b) => (b.priority - a.priority) || (a.createdAt < b.createdAt ? -1 : 1));
+  return jobs.slice(0, limit); }
 export async function setJob(ws: string, id: string, patch: Partial<RenderJob>): Promise<RenderJob | null> {
   const db = load(); const b = bucket(db, ws); const j = b.jobs.find(x => x.id === id); if (!j) return null;
   if (patch.status) j.status = patch.status; if (patch.resultUrl != null) j.resultUrl = patch.resultUrl; if (patch.error != null) j.error = patch.error;
+  if (patch.attempts != null) j.attempts = patch.attempts; if (patch.startedAt != null) j.startedAt = patch.startedAt;
+  if (patch.completedAt != null) j.completedAt = patch.completedAt; if (patch.lastError != null) j.lastError = patch.lastError;
   j.updatedAt = new Date().toISOString(); save(db); return j; }
 export async function listAssets(ws: string, avatarId?: string): Promise<AvatarAsset[]> {
   const a = bucket(load(), ws).assets; return desc(avatarId ? a.filter(x => x.avatarId === avatarId) : a); }

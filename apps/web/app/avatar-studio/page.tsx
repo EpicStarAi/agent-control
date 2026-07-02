@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 // P27.1 AI Avatar Studio — base UI (mock-safe). Requires a referral session.
 type Avatar = { id: string; name: string; status: string; sourceImageUrl: string; consentConfirmed: boolean };
 type Pack = { id: string; name: string; description: string; scenes: string[]; engine: string };
-type Job = { id: string; avatarId: string; packId: string; engine: string; status: string; sceneKey: string; prompt: string; resultUrl: string };
+type Job = { id: string; avatarId: string; packId: string; engine: string; status: string; sceneKey: string; prompt: string; resultUrl: string; batchId?: string; attempts?: number; maxAttempts?: number };
 
 const box = "rounded-xl border border-white/10 bg-white/5 p-4";
 const btn = "rounded-lg px-3 py-1.5 text-[13px] font-semibold";
@@ -49,9 +49,10 @@ export default function AvatarStudioPage() {
       body: JSON.stringify({ avatarId: sel, packId }) });
     setBusy(false); load();
   }
-  async function act(id: string, kind: "approve" | "reject" | "regenerate") {
+  async function act(id: string, kind: "approve" | "reject" | "regenerate" | "cancel") {
     await fetch(`/api/avatar-studio/render-jobs/${id}/${kind}`, { method: "POST" }); load();
   }
+  async function runQueue() { setBusy(true); await fetch("/api/avatar-studio/render-jobs/run-once", { method: "POST" }); setBusy(false); load(); }
 
   if (!authed) return (
     <div className="min-h-screen bg-[#05070f] text-slate-100 grid place-items-center p-6">
@@ -117,20 +118,32 @@ export default function AvatarStudioPage() {
       </div>
 
       <div className={box + " mt-4"}>
-        <div className="font-bold mb-2">Render Jobs ({jobs.length})</div>
+        <div className="flex items-center gap-3 mb-1">
+          <div className="font-bold">Render Jobs ({jobs.length})</div>
+          <button className={btn + " bg-cyan-500 text-black"} disabled={busy} onClick={runQueue}>▶ Run Queue Once</button>
+          <span className="text-[11px] text-amber-300">P27.2 uses mock render queue only. Real Grok Imagine automation is not active yet.</span>
+        </div>
         <div className="space-y-1 max-h-72 overflow-auto">
-          {jobs.map(j => (
-            <div key={j.id} className="rounded-lg bg-white/5 px-3 py-2 text-[12px] flex items-center gap-2">
-              <span className="w-40 truncate font-mono text-slate-300">{j.sceneKey}</span>
-              <span className={"px-2 py-0.5 rounded " + (j.status === "approved" ? "bg-emerald-500/20 text-emerald-300" : j.status === "rejected" ? "bg-rose-500/20 text-rose-300" : "bg-white/10 text-slate-300")}>{j.status}</span>
-              <span className="text-slate-500">{j.engine}</span>
-              <span className="flex-1 truncate text-slate-500">{j.resultUrl}</span>
-              <button className={btn + " bg-emerald-600/40 text-white"} onClick={() => act(j.id, "approve")}>approve</button>
-              <button className={btn + " bg-rose-600/40 text-white"} onClick={() => act(j.id, "reject")}>reject</button>
-              <button className={btn + " bg-white/10 text-white"} onClick={() => act(j.id, "regenerate")}>regen</button>
-            </div>
-          ))}
-          {!jobs.length && <div className="text-[12px] text-slate-500">Джобов нет — создай из пака.</div>}
+          {jobs.map(j => {
+            const canApprove = j.status === "done"; const canReject = j.status === "done";
+            const canCancel = j.status === "queued" || j.status === "running" || j.status === "regenerate_requested";
+            const canRegen = j.status === "done" || j.status === "rejected" || j.status === "failed";
+            const c = j.status === "approved" ? "bg-emerald-500/20 text-emerald-300" : j.status === "rejected" || j.status === "failed" || j.status === "cancelled" ? "bg-rose-500/20 text-rose-300" : j.status === "done" ? "bg-sky-500/20 text-sky-300" : "bg-white/10 text-slate-300";
+            return (
+              <div key={j.id} className="rounded-lg bg-white/5 px-3 py-2 text-[12px] flex items-center gap-2">
+                <span className="w-36 truncate font-mono text-slate-300">{j.sceneKey}</span>
+                <span className={"px-2 py-0.5 rounded " + c}>{j.status}</span>
+                <span className="text-slate-500">try {j.attempts ?? 0}/{j.maxAttempts ?? 3}</span>
+                <span className="text-slate-600 truncate w-24" title={j.batchId}>{(j.batchId || "").slice(-6)}</span>
+                <span className="flex-1 truncate text-slate-500">{j.resultUrl}</span>
+                {canApprove && <button className={btn + " bg-emerald-600/40 text-white"} onClick={() => act(j.id, "approve")}>approve</button>}
+                {canReject && <button className={btn + " bg-rose-600/40 text-white"} onClick={() => act(j.id, "reject")}>reject</button>}
+                {canRegen && <button className={btn + " bg-white/10 text-white"} onClick={() => act(j.id, "regenerate")}>regen</button>}
+                {canCancel && <button className={btn + " bg-amber-600/40 text-white"} onClick={() => act(j.id, "cancel")}>cancel</button>}
+              </div>
+            );
+          })}
+          {!jobs.length && <div className="text-[12px] text-slate-500">Джобов нет — создай из пака, затем Run Queue Once.</div>}
         </div>
       </div>
 
@@ -139,7 +152,7 @@ export default function AvatarStudioPage() {
         <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
           {assets.map(j => (
             <div key={j.id} className="aspect-square rounded-lg bg-white/5 border border-white/10 grid place-items-center text-center p-2">
-              <div className="text-[10px] text-slate-400">{j.sceneKey}<br /><span className="text-slate-600">mock</span></div>
+              <div className="text-[10px] text-slate-400">{j.sceneKey}<br /><span className="text-slate-600">{j.status}</span></div>
             </div>
           ))}
           {!assets.length && <div className="text-[12px] text-slate-500">Пусто.</div>}

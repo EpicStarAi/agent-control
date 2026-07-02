@@ -1,6 +1,6 @@
 import * as db from "@/lib/avatarStudioDb";
 import * as store from "@/lib/avatarStudioStore";
-import type { Avatar, AvatarPassport, RenderJob, AvatarAsset } from "@/lib/avatarStudio";
+import { getAdapter, type Avatar, type AvatarPassport, type RenderJob, type AvatarAsset } from "@/lib/avatarStudio";
 
 // P27.1 facade: Postgres when available, else fs. Carries source: "db"|"fallback".
 type Src = "db" | "fallback";
@@ -21,3 +21,31 @@ export const setJob = (ws: string, id: string, patch: Partial<RenderJob>) => pic
 export const listAssets = (ws: string, aid?: string) => pick(() => db.listAssets(ws, aid), () => store.listAssets(ws, aid));
 export const createAsset = (ws: string, i: Partial<AvatarAsset>) => pick(() => db.createAsset(ws, i), () => store.createAsset(ws, i));
 export const setAssetStatusByJob = (ws: string, jobId: string, status: string) => pick(() => db.setAssetStatusByJob(ws, jobId, status), () => store.setAssetStatusByJob(ws, jobId, status));
+export const listJobsByStatus = (ws: string, status: string, limit = 20) => pick(() => db.listJobsByStatus(ws, status, limit), () => store.listJobsByStatus(ws, status, limit));
+
+// P27.2 mock queue runner — one pass over queued jobs. NO external calls (mock adapter only).
+export async function runQueueOnce(ws: string): Promise<{ processed: number; results: { id: string; status: string }[]; source: Src }> {
+  const { data: queued, source } = await listJobsByStatus(ws, "queued", 10);
+  const results: { id: string; status: string }[] = [];
+  for (const job of queued) {
+    const attempts = job.attempts + 1;
+    await setJob(ws, job.id, { status: "running", startedAt: new Date().toISOString(), attempts });
+    try {
+      const r = await getAdapter(job.engine).createJob({ avatarId: job.avatarId, sceneKey: job.sceneKey, prompt: job.prompt });
+      if (r.status === "done") {
+        await setJob(ws, job.id, { status: "done", resultUrl: r.resultUrl, completedAt: new Date().toISOString() });
+        await createAsset(ws, { avatarId: job.avatarId, jobId: job.id, assetType: "image", imageUrl: r.resultUrl, prompt: job.prompt, status: "pending_review" });
+        results.push({ id: job.id, status: "done" });
+      } else {
+        const next = attempts < job.maxAttempts ? "queued" : "failed";
+        await setJob(ws, job.id, { status: next, lastError: r.error || "mock not done" });
+        results.push({ id: job.id, status: next });
+      }
+    } catch (e) {
+      const next = attempts < job.maxAttempts ? "queued" : "failed";
+      await setJob(ws, job.id, { status: next, lastError: String((e as Error)?.message || "error").slice(0, 200) });
+      results.push({ id: job.id, status: next });
+    }
+  }
+  return { processed: queued.length, results, source };
+}

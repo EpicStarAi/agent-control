@@ -34,6 +34,15 @@ async function ensureInit(p: PgPool): Promise<void> {
       status text, scene_key text, prompt text, result_url text, error text,
       created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())`);
     await p.query(`CREATE INDEX IF NOT EXISTS avatar_jobs_ws ON avatar_render_jobs(workspace_id)`);
+    // P27.2 additive columns (safe on a pre-existing table).
+    await p.query(`ALTER TABLE avatar_render_jobs ADD COLUMN IF NOT EXISTS attempts integer DEFAULT 0`);
+    await p.query(`ALTER TABLE avatar_render_jobs ADD COLUMN IF NOT EXISTS max_attempts integer DEFAULT 3`);
+    await p.query(`ALTER TABLE avatar_render_jobs ADD COLUMN IF NOT EXISTS started_at text`);
+    await p.query(`ALTER TABLE avatar_render_jobs ADD COLUMN IF NOT EXISTS completed_at text`);
+    await p.query(`ALTER TABLE avatar_render_jobs ADD COLUMN IF NOT EXISTS last_error text`);
+    await p.query(`ALTER TABLE avatar_render_jobs ADD COLUMN IF NOT EXISTS batch_id text`);
+    await p.query(`ALTER TABLE avatar_render_jobs ADD COLUMN IF NOT EXISTS priority integer DEFAULT 0`);
+    await p.query(`CREATE INDEX IF NOT EXISTS avatar_jobs_status ON avatar_render_jobs(workspace_id, status)`);
     await p.query(`CREATE TABLE IF NOT EXISTS avatar_assets (
       id text PRIMARY KEY, workspace_id text NOT NULL, avatar_id text, job_id text, asset_type text,
       image_url text, prompt text, status text,
@@ -53,8 +62,11 @@ function passRow(r: any): AvatarPassport { return { id: r.id, avatarId: r.avatar
   identityNotes: r.identity_notes ?? "", styleNotes: r.style_notes ?? "", forbiddenRules: jarr(r.forbidden_rules),
   createdAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString() }; }
 function jobRow(r: any): RenderJob { return { id: r.id, workspaceId: r.workspace_id, avatarId: r.avatar_id ?? "", packId: r.pack_id ?? "",
-  engine: r.engine ?? "grok_imagine_ui", status: r.status ?? "pending", sceneKey: r.scene_key ?? "", prompt: r.prompt ?? "",
-  resultUrl: r.result_url ?? "", error: r.error ?? "", createdAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString() }; }
+  engine: r.engine ?? "grok_imagine_ui", status: r.status ?? "queued", sceneKey: r.scene_key ?? "", prompt: r.prompt ?? "",
+  resultUrl: r.result_url ?? "", error: r.error ?? "",
+  attempts: Number(r.attempts ?? 0), maxAttempts: Number(r.max_attempts ?? 3), startedAt: r.started_at ?? "", completedAt: r.completed_at ?? "",
+  lastError: r.last_error ?? "", batchId: r.batch_id ?? "", priority: Number(r.priority ?? 0),
+  createdAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString() }; }
 function assetRow(r: any): AvatarAsset { return { id: r.id, workspaceId: r.workspace_id, avatarId: r.avatar_id ?? "", jobId: r.job_id ?? "",
   assetType: r.asset_type ?? "image", imageUrl: r.image_url ?? "", prompt: r.prompt ?? "", status: r.status ?? "draft",
   createdAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString() }; }
@@ -83,14 +95,22 @@ export async function getJob(ws: string, id: string): Promise<RenderJob | null> 
   const p = await db(); const r = (await p.query(`SELECT * FROM avatar_render_jobs WHERE workspace_id=$1 AND id=$2`, [ws, id])).rows[0]; return r ? jobRow(r) : null; }
 export async function createJob(ws: string, input: Partial<RenderJob>): Promise<RenderJob> {
   const p = await db(); const n = normalizeJob(ws, input);
-  const r = await p.query(`INSERT INTO avatar_render_jobs(id,workspace_id,avatar_id,pack_id,engine,status,scene_key,prompt,result_url,error,created_at,updated_at)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-    [n.id, ws, n.avatarId, n.packId, n.engine, n.status, n.sceneKey, n.prompt, n.resultUrl, n.error, n.createdAt, n.updatedAt]);
+  const r = await p.query(`INSERT INTO avatar_render_jobs(id,workspace_id,avatar_id,pack_id,engine,status,scene_key,prompt,result_url,error,attempts,max_attempts,started_at,completed_at,last_error,batch_id,priority,created_at,updated_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
+    [n.id, ws, n.avatarId, n.packId, n.engine, n.status, n.sceneKey, n.prompt, n.resultUrl, n.error, n.attempts, n.maxAttempts, n.startedAt, n.completedAt, n.lastError, n.batchId, n.priority, n.createdAt, n.updatedAt]);
   return jobRow(r.rows[0]); }
+export async function listJobsByStatus(ws: string, status: string, limit = 20): Promise<RenderJob[]> {
+  const p = await db();
+  return (await p.query(`SELECT * FROM avatar_render_jobs WHERE workspace_id=$1 AND status=$2 ORDER BY priority DESC, created_at ASC LIMIT $3`, [ws, status, limit])).rows.map(jobRow); }
 export async function setJob(ws: string, id: string, patch: Partial<RenderJob>): Promise<RenderJob | null> {
   const p = await db(); const now = new Date().toISOString();
-  const r = await p.query(`UPDATE avatar_render_jobs SET status=COALESCE($3,status),result_url=COALESCE($4,result_url),error=COALESCE($5,error),updated_at=$6
-    WHERE workspace_id=$1 AND id=$2 RETURNING *`, [ws, id, patch.status ?? null, patch.resultUrl ?? null, patch.error ?? null, now]);
+  const r = await p.query(`UPDATE avatar_render_jobs SET
+      status=COALESCE($3,status), result_url=COALESCE($4,result_url), error=COALESCE($5,error),
+      attempts=COALESCE($6,attempts), started_at=COALESCE($7,started_at), completed_at=COALESCE($8,completed_at),
+      last_error=COALESCE($9,last_error), updated_at=$10
+    WHERE workspace_id=$1 AND id=$2 RETURNING *`,
+    [ws, id, patch.status ?? null, patch.resultUrl ?? null, patch.error ?? null,
+     patch.attempts ?? null, patch.startedAt ?? null, patch.completedAt ?? null, patch.lastError ?? null, now]);
   return r.rows[0] ? jobRow(r.rows[0]) : null; }
 export async function listAssets(ws: string, avatarId?: string): Promise<AvatarAsset[]> {
   const p = await db();
