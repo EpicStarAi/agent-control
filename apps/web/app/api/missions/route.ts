@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
-import { getMissions } from "@/lib/missionStore";
+import { getMissions } from "@/lib/missionData";
 
-// P24.1: read-only mission list (local simulated store; no backend/Telegram).
+// P24.1 / P25.1: mission list via the data facade (Postgres if configured,
+// otherwise local fs fallback). Read-only.
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return NextResponse.json({ missions: getMissions() });
+  const { missions, source } = await getMissions();
+  return NextResponse.json({ missions, source });
 }

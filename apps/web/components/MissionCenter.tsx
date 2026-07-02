@@ -39,7 +39,8 @@ export function MissionCenter() {
   const [events, setEvents] = useState<OperatorEvent[]>([]);
   const [selId, setSelId] = useState<string>("");
   const [loading, setLoading] = useState(true);
-  const [source, setSource] = useState<"api" | "fallback">("api");
+  const [source, setSource] = useState<"api" | "seed">("api");
+  const [backend, setBackend] = useState<"db" | "fallback" | null>(null);
   const [sse, setSse] = useState<SseState>("connecting");
   const [gate, setGate] = useState<{ locked?: boolean; killSwitch?: boolean; live?: boolean; mode?: string } | null>(null);
   const [gateUnknown, setGateUnknown] = useState(false);
@@ -67,13 +68,15 @@ export function MissionCenter() {
           setMissions(md.missions);
           setEvents(Array.isArray(ed.events) ? ed.events : SEED_EVENTS);
           setSource("api");
+          setBackend(md.source === "db" ? "db" : "fallback");
           setSelId((prev) => prev || md.missions[0].id);
         } else { throw new Error("empty"); }
       } catch {
         if (cancelled) return;
         setMissions(SEED_MISSIONS);
         setEvents(SEED_EVENTS);
-        setSource("fallback");
+        setSource("seed");
+        setBackend(null);
         setSelId((prev) => prev || SEED_MISSIONS[0]?.id || "");
       } finally {
         if (!cancelled) setLoading(false);
@@ -145,7 +148,7 @@ export function MissionCenter() {
       <div className={`${card} mb-4`}>
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="text-sm font-bold text-fuchsia-100">Mission lifecycle</span>
-          <span className="text-[11px] text-white/35">источник: {source === "api" ? "/api/missions" : "seed (fallback)"}</span>
+          <span className="text-[11px] text-white/35">источник: {source === "api" ? `/api/missions · ${backend === "db" ? "DB" : "fs-fallback"}` : "seed (client fallback)"}</span>
           <span className={`ml-auto rounded-lg border px-2.5 py-1 text-[12px] font-semibold ${locked ? "border-amber-400/40 bg-amber-400/10 text-amber-200" : "border-emerald-400/30 bg-emerald-400/5 text-emerald-200"}`}>
             Approval Gate · {gateLabel}
           </span>
