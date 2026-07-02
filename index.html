@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EPIC💀GRAM · AI Operator — LIVE PREVIEW (demo)</title>
+<style>
+  :root{--cyan:#22e3ff;--mag:#ff2bd6;--grn:#39ff14;--pur:#7b5cff;--txt:#eaf6ff;--pan:#0b1122;--pan2:#0f1730;--line:rgba(255,255,255,.08)}
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;background:#04060d;overflow:hidden;font-family:"Segoe UI",system-ui,Arial,sans-serif;color:var(--txt)}
+  #bg{position:fixed;inset:0;background:radial-gradient(120% 120% at 50% 25%,#0a1226,#05070f 55%,#020308);overflow:hidden;z-index:0}
+  .glow{position:absolute;border-radius:50%;filter:blur(70px);opacity:.45;mix-blend-mode:screen}
+  .g1{width:44vw;height:44vw;left:-10vw;top:-12vh;background:var(--mag);animation:fl 13s ease-in-out infinite}
+  .g2{width:48vw;height:48vw;right:-12vw;bottom:-16vh;background:var(--cyan);animation:fl 16s ease-in-out infinite reverse}
+  @keyframes fl{0%,100%{transform:translate(0,0)}50%{transform:translate(4vw,-4vh)}}
+  .bub{position:absolute;bottom:-40px;border-radius:50%;background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.5),rgba(34,227,255,.12));box-shadow:0 0 8px rgba(34,227,255,.4);animation:rise linear infinite}
+  @keyframes rise{from{transform:translateY(0);opacity:0}10%{opacity:.7}to{transform:translateY(-110vh);opacity:0}}
+  .scan{position:fixed;inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.02) 0 2px,transparent 2px 4px);pointer-events:none;z-index:50;opacity:.5}
+  #stage{position:relative;z-index:2;height:100%;display:grid;place-items:center;padding:2vh 2vw}
+
+  .badge{position:fixed;top:14px;right:16px;z-index:60;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--mag);
+    border:1px solid rgba(255,43,214,.5);border-radius:999px;padding:6px 12px;background:rgba(10,15,30,.6);text-shadow:0 0 10px var(--mag)}
+  .brandline{position:fixed;top:14px;left:16px;z-index:60;font-size:12px;letter-spacing:.32em;text-transform:uppercase;color:#5f86a4}
+
+  .gradtext{background:linear-gradient(92deg,var(--cyan),var(--pur) 45%,var(--mag));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .skull{filter:drop-shadow(0 0 16px var(--mag))}
+
+  /* auth card */
+  .card{width:min(94vw,420px);background:linear-gradient(180deg,rgba(15,23,48,.92),rgba(8,12,26,.94));border:1px solid var(--line);
+    border-radius:22px;padding:34px 30px;box-shadow:0 30px 80px rgba(0,0,0,.55),0 0 0 1px rgba(34,227,255,.06) inset;backdrop-filter:blur(8px);text-align:center}
+  .logo{font-weight:900;font-size:38px;letter-spacing:-.01em;display:flex;gap:.15em;justify-content:center;align-items:center}
+  .ttl{font-weight:800;font-size:22px;margin-top:16px}
+  .desc{color:#9fc0da;font-size:14px;margin-top:8px;line-height:1.4}
+  .fld{margin-top:22px;text-align:left}
+  .fld label{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#7fa6c4}
+  .inp{width:100%;margin-top:7px;background:#070b17;border:1px solid var(--line);border-radius:12px;padding:14px 16px;color:#fff;font-size:18px;letter-spacing:.04em;outline:none}
+  .inp:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(34,227,255,.15)}
+  .btn{margin-top:22px;width:100%;border:none;border-radius:12px;padding:15px;font-weight:800;font-size:16px;letter-spacing:.04em;color:#04121a;cursor:pointer;
+    background:linear-gradient(92deg,var(--cyan),var(--pur) 60%,var(--mag));box-shadow:0 10px 30px rgba(34,227,255,.35)}
+  .btn:active{transform:translateY(1px)}
+  .btn.ghost{background:transparent;color:#9fc0da;box-shadow:none;border:1px solid var(--line);font-weight:600;margin-top:12px}
+  .codebox{display:flex;gap:10px;justify-content:center;margin-top:16px}
+  .codebox input{width:46px;height:56px;text-align:center;font-size:24px;font-weight:800;background:#070b17;border:1px solid var(--line);border-radius:12px;color:#fff}
+  .hint{margin-top:14px;font-size:12px;color:#6f93b0}
+  .hint a{color:var(--cyan);cursor:pointer;text-decoration:underline}
+
+  /* connecting */
+  .conn{width:min(94vw,460px);text-align:center}
+  .ring{width:70px;height:70px;border-radius:50%;border:3px solid rgba(34,227,255,.2);border-top-color:var(--cyan);margin:0 auto 22px;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .clog{font-family:Consolas,monospace;font-size:13px;color:#bfe0f5;text-align:left;max-width:380px;margin:0 auto}
+  .clog div{opacity:0;transform:translateX(-10px);padding:3px 0}
+  .clog div.on{opacity:1;transform:none;transition:.35s}
+  .clog .ok{color:var(--grn)}
+
+  /* client */
+  #client{display:none;width:min(96vw,1100px);height:min(90vh,720px);background:rgba(6,10,20,.9);border:1px solid var(--line);
+    border-radius:18px;overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.6);grid-template-columns:280px 1fr}
+  #client.show{display:grid}
+  .rail{background:var(--pan);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+  .rhead{padding:16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;font-weight:800}
+  .rhead .sk{font-size:20px}
+  .chat-item{padding:12px 16px;display:flex;gap:12px;align-items:center;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04)}
+  .chat-item:hover{background:rgba(34,227,255,.06)}
+  .chat-item.active{background:rgba(34,227,255,.10);box-shadow:inset 3px 0 0 var(--cyan)}
+  .av{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:15px;flex:none;background:linear-gradient(135deg,var(--pur),var(--mag));color:#fff}
+  .av.op{background:linear-gradient(135deg,var(--cyan),var(--pur))}
+  .ci-main{min-width:0}.ci-name{font-weight:700;font-size:14px;display:flex;align-items:center;gap:6px}
+  .ci-sub{font-size:12px;color:#8fb3cf;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .online{width:8px;height:8px;border-radius:50%;background:var(--grn);box-shadow:0 0 8px var(--grn);animation:opulse 1.8s infinite}
+  @keyframes opulse{0%,100%{box-shadow:0 0 5px var(--grn);opacity:1}50%{box-shadow:0 0 16px var(--grn);opacity:.55}}
+  .amb{align-self:center;font-size:11px;color:#7fa6c4;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:999px;padding:5px 12px;opacity:0;animation:pop .5s forwards}
+  .amb b{color:var(--cyan);font-weight:700}
+  .chat-item .ci-sub{transition:color .3s}
+  .chat-item.live .ci-sub{color:var(--grn)}
+  .main{display:flex;flex-direction:column;min-height:0;background:linear-gradient(180deg,#070b17,#0a1020)}
+  .mhead{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
+  .mhead .nm{font-weight:800}.mhead .st{font-size:12px;color:var(--grn)}
+  .msgs{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:12px}
+  .row{display:flex;gap:10px;max-width:82%}
+  .row.me{align-self:flex-end;flex-direction:row-reverse}
+  .bub2{padding:11px 14px;border-radius:16px;font-size:15px;line-height:1.4;opacity:0;transform:translateY(8px);animation:pop .4s forwards}
+  @keyframes pop{to{opacity:1;transform:none}}
+  .op .bub2{background:rgba(34,227,255,.10);border:1px solid rgba(34,227,255,.25);border-top-left-radius:5px}
+  .me .bub2{background:linear-gradient(92deg,var(--pur),var(--mag));color:#fff;border-top-right-radius:5px}
+  .tstamp{font-size:10px;color:#6f93b0;margin-top:5px}
+  .typing{display:inline-flex;gap:4px;padding:12px 14px}
+  .typing i{width:7px;height:7px;border-radius:50%;background:var(--cyan);animation:bl 1.2s infinite}
+  .typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}
+  @keyframes bl{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
+  .card2{margin-top:8px;border:1px solid var(--line);border-radius:12px;padding:12px;background:rgba(10,15,30,.6);font-size:13px}
+  .card2 .t{font-weight:800;margin-bottom:6px}
+  .pill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;border:1px solid var(--line);margin:2px}
+  .pill.warn{color:#ffd34d;border-color:rgba(255,211,77,.5)}
+  .pill.ok{color:var(--grn);border-color:rgba(57,255,20,.5)}
+  .approw{display:flex;gap:8px;margin-top:10px}
+  .mini{border:none;border-radius:9px;padding:8px 14px;font-weight:800;font-size:13px;cursor:pointer}
+  .mini.app{background:var(--grn);color:#04121a}.mini.rej{background:transparent;color:#ff6b8b;border:1px solid rgba(255,107,139,.5)}
+  .quick{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap}
+  .chip{border:1px solid rgba(34,227,255,.35);color:var(--cyan);background:rgba(34,227,255,.06);border-radius:999px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer}
+  .chip:hover{background:rgba(34,227,255,.14)}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:80;background:rgba(10,15,30,.95);border:1px solid var(--grn);
+    color:var(--grn);padding:12px 20px;border-radius:12px;font-weight:700;box-shadow:0 0 24px rgba(57,255,20,.3);opacity:0;transition:.3s}
+  .toast.show{opacity:1}
+  .sound{position:fixed;bottom:16px;right:16px;z-index:60;font-size:12px;color:#7fa6c4;cursor:pointer;border:1px solid var(--line);border-radius:999px;padding:6px 12px;background:rgba(10,15,30,.6)}
+  /* --- mobile / narrow: single column, chat fills the screen --- */
+  @media (max-width:820px){
+    #stage{padding:0}
+    #client.show{grid-template-columns:1fr;width:100vw;height:100dvh;height:100vh;border-radius:0;border:none}
+    .rail{display:none}
+    .mhead{padding:52px 16px 12px}
+    .msgs{padding:14px}
+    .row{max-width:92%}
+    .quick{padding:10px 12px calc(env(safe-area-inset-bottom) + 56px)}
+    .brandline{font-size:10px;letter-spacing:.18em}
+    .badge{font-size:10px;padding:5px 9px;top:10px;right:10px}
+    .card{padding:26px 20px}
+    .sound{bottom:10px;right:10px}
+  }
+  @media (max-width:820px) and (orientation:portrait){
+    /* show a compact chat-list toggle strip on top instead of full rail */
+    .mhead::after{content:'Совет операторов · Mission Center · Approval · Audit';display:block;font-size:10px;color:#6f93b0;margin-top:2px;letter-spacing:.04em}
+  }
+</style>
+</head>
+<body>
+<div id="bg"><div class="glow g1"></div><div class="glow g2"></div><div id="bubs"></div></div>
+<div class="brandline">EPIC💀GRAM · AI OPERATOR</div>
+<div class="badge">● LIVE PREVIEW · DEMO</div>
+<div class="scan"></div>
+
+<div id="stage">
+  <!-- AUTH: phone -->
+  <div class="card" id="s-phone">
+    <div class="logo"><span class="gradtext">EPIC</span><span class="skull">💀</span><span class="gradtext">GRAM</span></div>
+    <div class="ttl">Вход в клиент</div>
+    <div class="desc">AI Operator Client · демо-режим.<br>Это имитация — реальный Telegram и авторизация не используются.</div>
+    <div class="fld"><label>Номер телефона</label><input class="inp" id="phone" value="+7 999 315-00-00" inputmode="tel"></div>
+    <button class="btn" id="toCode">Продолжить</button>
+  </div>
+
+  <!-- AUTH: code -->
+  <div class="card" id="s-code" style="display:none">
+    <div class="logo"><span class="gradtext">EPIC</span><span class="skull">💀</span><span class="gradtext">GRAM</span></div>
+    <div class="ttl">Введите код</div>
+    <div class="desc">Мы «отправили» код в демо-режиме. <br>Нажми «Заполнить демо-код».</div>
+    <div class="codebox">
+      <input maxlength="1" value=""><input maxlength="1"><input maxlength="1"><input maxlength="1"><input maxlength="1">
+    </div>
+    <button class="btn" id="doLogin">Войти</button>
+    <div class="hint"><a id="fillCode">Заполнить демо-код (3 1 5 0 0)</a></div>
+    <button class="btn ghost" id="backPhone">Назад</button>
+  </div>
+
+  <!-- connecting -->
+  <div class="conn" id="s-conn" style="display:none">
+    <div class="ring"></div>
+    <div class="clog" id="clog">
+      <div>› Telegram Runtime (TDLib): инициализация…</div>
+      <div>› Сессия аккаунта: <span class="ok">установлена (demo)</span></div>
+      <div>› Загрузка Совета операторов…</div>
+      <div>› Approval Gate: <span class="ok">MANUAL_APPROVAL_ONLY</span></div>
+      <div>› Event Bus / SSE: <span class="ok">connected</span></div>
+      <div>› Готово. Открываю клиент…</div>
+    </div>
+  </div>
+
+  <!-- client -->
+  <div id="client">
+    <aside class="rail">
+      <div class="rhead"><span class="sk">💀</span> EPIC<span class="gradtext">GRAM</span></div>
+      <div class="chat-item active"><div class="av op">AI</div><div class="ci-main"><div class="ci-name">AI Operator <span class="online"></span></div><div class="ci-sub">печатает…</div></div></div>
+      <div class="chat-item"><div class="av">СО</div><div class="ci-main"><div class="ci-name">Совет операторов</div><div class="ci-sub">6 операторов · онлайн</div></div></div>
+      <div class="chat-item"><div class="av">MC</div><div class="ci-main"><div class="ci-name">Mission Center</div><div class="ci-sub">6 миссий · 1 ждёт approve</div></div></div>
+      <div class="chat-item"><div class="av">VPN</div><div class="ci-main"><div class="ci-name">HideMyName VPN</div><div class="ci-sub">рабочий контур</div></div></div>
+      <div class="chat-item"><div class="av">AL</div><div class="ci-main"><div class="ci-name">Audit Log</div><div class="ci-sub">живой поток событий</div></div></div>
+    </aside>
+    <section class="main">
+      <div class="mhead"><div class="av op">AI</div><div><div class="nm">AI Operator</div><div class="st">● онлайн · MANUAL_APPROVAL_ONLY</div></div></div>
+      <div class="msgs" id="msgs"></div>
+      <div class="quick" id="quick"></div>
+    </section>
+  </div>
+</div>
+
+<div class="sound" id="sound">🔊 8D-звук: вкл</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  // bubbles
+  const bb=document.getElementById('bubs');
+  for(let i=0;i<26;i++){const b=document.createElement('div');b.className='bub';const s=4+Math.random()*14;
+    b.style.width=b.style.height=s+'px';b.style.left=Math.random()*100+'%';const d=8+Math.random()*10;
+    b.style.animationDuration=d+'s';b.style.animationDelay=(-Math.random()*d)+'s';bb.appendChild(b);}
+
+  const $=id=>document.getElementById(id);
+  let audioOn=true, ac=null, musicGain=null, panner=null, bgm=null, rotT=0;
+  const VOL=0.6, DUCK=0.18;
+  // ---- Real track as 8D background (starts on first gesture) ----
+  function startMusic(){
+    if(ac) return; try{
+      const AC=window.AudioContext||window.webkitAudioContext; ac=new AC();
+      bgm=new Audio('epicgram-bg.mp3'); bgm.loop=true; bgm.crossOrigin='anonymous';
+      const src=ac.createMediaElementSource(bgm);
+      panner=ac.createPanner(); panner.panningModel='HRTF'; panner.distanceModel='inverse';
+      panner.refDistance=1; panner.maxDistance=1000; panner.rolloffFactor=1;
+      musicGain=ac.createGain(); musicGain.gain.value=audioOn?VOL:0;
+      src.connect(panner); panner.connect(musicGain); musicGain.connect(ac.destination);
+      bgm.play().catch(()=>{});
+      // 8D effect: orbit the sound source around the listener's head
+      setInterval(()=>{ if(!panner||!ac) return; rotT+=0.035; const r=5, t=ac.currentTime+0.05;
+        const x=Math.sin(rotT)*r, z=Math.cos(rotT)*r;
+        if(panner.positionX){ panner.positionX.setValueAtTime(x,t); panner.positionY.setValueAtTime(0,t); panner.positionZ.setValueAtTime(z,t); }
+        else { panner.setPosition(x,0,z); } }, 55);
+    }catch(e){}
+  }
+  function duck(on){ if(!musicGain||!ac) return; const t=ac.currentTime; const v=audioOn?(on?DUCK:VOL):0;
+    musicGain.gain.cancelScheduledValues(t); musicGain.gain.setValueAtTime(musicGain.gain.value,t); musicGain.gain.linearRampToValueAtTime(v,t+0.25); }
+  // ---- Voiceover (RU, женский уверенный голос) — ducks the 8D track while speaking ----
+  function pickVoice(){ const vs=speechSynthesis.getVoices(); if(!vs.length) return null;
+    const ru=vs.filter(v=>/ru/i.test(v.lang));
+    const fem=/(milena|alena|alyona|tatyana|tatiana|katya|dar[iy]a|svetlana|elena|irina|female|женск|Google\s*рус)/i;
+    const male=/(male|мужск|pavel|dmitr|yuri|maxim|artem)/i;
+    return ru.find(v=>fem.test(v.name)) || ru.find(v=>!male.test(v.name)) || ru[0]
+        || vs.find(v=>fem.test(v.name)) || vs.find(v=>/^Google/.test(v.name)) || vs[0]; }
+  function speak(text){ if(!audioOn) return; try{ const u=new SpeechSynthesisUtterance(text.replace(/[«»💀⭐]/g,''));
+    u.lang='ru-RU'; u.rate=0.95; u.pitch=1.15; const v=pickVoice(); if(v)u.voice=v; // выше тон + мягче темп = увереннее/женственнее
+    duck(true); u.onend=()=>duck(false); u.onerror=()=>duck(false);
+    speechSynthesis.cancel(); speechSynthesis.speak(u);}catch(e){} }
+  $('sound').onclick=()=>{audioOn=!audioOn; $('sound').textContent='🔊 8D-звук: '+(audioOn?'вкл':'выкл');
+    if(musicGain&&ac){ musicGain.gain.value=audioOn?VOL:0; } if(!audioOn){try{speechSynthesis.cancel();}catch(e){}}};
+
+  // ---- flow ----
+  function show(id){['s-phone','s-code','s-conn'].forEach(x=>$(x).style.display='none'); if(id)$(id).style.display=''; }
+  $('toCode').onclick=()=>{ startMusic(); show('s-code'); $('s-code').querySelectorAll('.codebox input')[0].focus(); };
+  $('backPhone').onclick=()=>show('s-phone');
+  $('fillCode').onclick=()=>{ const c=['3','1','5','0','0']; $('s-code').querySelectorAll('.codebox input').forEach((el,i)=>el.value=c[i]); };
+  $('doLogin').onclick=()=>{ startMusic(); show('s-conn'); runConnect(); };
+
+  function runConnect(){
+    const lines=[...$('clog').children]; let i=0;
+    const iv=setInterval(()=>{ if(i<lines.length){lines[i].classList.add('on'); i++; }
+      else { clearInterval(iv); setTimeout(openClient, 700); } }, 520);
+  }
+
+  // ---- client chat ----
+  const msgs=()=>$('msgs');
+  function stamp(){const d=new Date();return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');}
+  function typing(cb,ms){ const r=document.createElement('div');r.className='row op';
+    r.innerHTML='<div class="av op">AI</div><div class="bub2"><div class="typing"><i></i><i></i><i></i></div></div>';
+    msgs().appendChild(r); msgs().scrollTop=msgs().scrollHeight; setTimeout(()=>{r.remove();cb&&cb();}, ms||1100); }
+  function opMsg(html,voice){ const r=document.createElement('div');r.className='row op';
+    r.innerHTML='<div class="av op">AI</div><div><div class="bub2">'+html+'</div><div class="tstamp">'+stamp()+'</div></div>';
+    msgs().appendChild(r); msgs().scrollTop=msgs().scrollHeight; if(voice)speak(voice); }
+  function meMsg(text){ const r=document.createElement('div');r.className='row me';
+    r.innerHTML='<div class="av">Я</div><div><div class="bub2">'+text+'</div><div class="tstamp">'+stamp()+'</div></div>';
+    msgs().appendChild(r); msgs().scrollTop=msgs().scrollHeight; }
+  function toast(t){ const el=$('toast'); el.textContent=t; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),2200); }
+
+  function openClient(){
+    $('stage').querySelectorAll('.card,.conn').forEach(x=>x.style.display='none');
+    $('client').classList.add('show');
+    setTimeout(()=>typing(()=>{
+      opMsg('Привет, <b>EPIC⭐STAR</b>. Я твой <b>AI-оператор</b>. 💀', 'Привет, EPIC STAR. Я твой AI оператор.');
+      setTimeout(()=>typing(()=>{
+        opMsg('Я управляю аккаунтами, каналами, публикациями и аналитикой — но <b>ничего не делаю без твоего подтверждения</b>.',
+          'Я управляю аккаунтами, каналами, публикациями и аналитикой, но ничего не делаю без твоего подтверждения.');
+        renderQuick(); startPresence();
+      },1200),700);
+    },1100), 500);
+  }
+
+  // ---- presence: операторы «живут» — фоновая активность + мягкие блипы ----
+  function blip(){ if(!ac||!audioOn) return; try{ const t=ac.currentTime; const o=ac.createOscillator(); const g=ac.createGain();
+    o.type='sine'; o.frequency.setValueAtTime(880,t); o.frequency.exponentialRampToValueAtTime(1320,t+.12);
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.06,t+.02); g.gain.exponentialRampToValueAtTime(0.0008,t+.35);
+    const pn=ac.createStereoPanner?ac.createStereoPanner():null; if(pn){pn.pan.value=(Math.random()*2-1);o.connect(g);g.connect(pn);pn.connect(ac.destination);} else {o.connect(g);g.connect(ac.destination);}
+    o.start(t); o.stop(t+.36);}catch(e){} }
+  const AMB=[
+    ['Live-Ops','пульс каналов в норме · 22 канала онлайн'],
+    ['Analytics','+3.4% охват за сутки · тренд ↑'],
+    ['Guardian','риск-скан: чисто · 0 флагов'],
+    ['Publisher','черновик готов · ждёт approve'],
+    ['Operator-Core','синхронизация операторов ✓'],
+    ['Live-Ops','SSE: событие в Audit Log'],
+  ];
+  const rail=[...document.querySelectorAll('.rail .chat-item')];
+  let ai=0;
+  function startPresence(){
+    setInterval(()=>{
+      const [who,txt]=AMB[ai%AMB.length]; ai++;
+      const d=document.createElement('div'); d.className='amb'; d.innerHTML='<b>'+who+'</b> · '+txt;
+      msgs().appendChild(d); msgs().scrollTop=msgs().scrollHeight; blip();
+      // подсветить соответствующий пункт в рейле как «живой»
+      const idx = who.includes('Live')?2 : who.includes('Analytics')?2 : who.includes('Guardian')?1 : who.includes('Publisher')?2 : 1;
+      const item=rail[idx]; if(item){ item.classList.add('live'); setTimeout(()=>item.classList.remove('live'),1600); }
+      // не копить слишком много ambient-строк
+      const ambs=[...msgs().querySelectorAll('.amb')]; if(ambs.length>4) ambs[0].remove();
+    }, 5200);
+  }
+
+  const QUICK=[
+    {q:'Что ты умеешь?', a:()=>{ opMsg('Совет операторов: <b>Operator-Core, Production-Gate, Live-Ops, Analytics, Publisher, Guardian</b>. Каждое действие проходит через <b>Approval Gate</b> и пишется в <b>Audit Log</b>.','Совет операторов из шести ролей. Каждое действие проходит через шлюз подтверждения и пишется в журнал аудита.'); }},
+    {q:'Покажи миссии', a:()=>{ opMsg('<div class="card2"><div class="t">Mission Center</div>'+
+        '<span class="pill">Draft</span><span class="pill">In&nbsp;Progress</span><span class="pill warn">Waiting&nbsp;Approval</span><span class="pill ok">Executed</span>'+
+        '<div style="margin-top:8px;color:#9fc0da">6 миссий · 1 ждёт подтверждения оператора.</div></div>','Открываю Mission Center. Шесть миссий, одна ждёт подтверждения.'); }},
+    {q:'Заявки на подтверждение', a:()=>{ opMsg('<div class="card2"><div class="t">Заявка от AI Publisher</div>'+
+        'Публикация тизера в канал <b>@deepinside</b> · риск <span class="pill warn">low</span>'+
+        '<div class="approw"><button class="mini app" id="apA">✓ Одобрить</button><button class="mini rej" id="apR">Отклонить</button></div></div>',
+        'Есть заявка на публикацию тизера. Одобряешь?');
+        setTimeout(()=>{ const a=$('apA'),r=$('apR'); if(a)a.onclick=()=>{meMsg('Одобряю ✓'); setTimeout(()=>{toast('одобрено · симуляция, без внешних действий'); opMsg('Заявка одобрена. Действие <b>симулировано</b> — реальная отправка не выполнялась.','Заявка одобрена. Действие симулировано, реальная отправка не выполнялась.');},400);};
+          if(r)r.onclick=()=>{meMsg('Отклоняю'); setTimeout(()=>{toast('отклонено'); opMsg('Принято. Заявка отклонена, ничего не выполнено.','Принято. Заявка отклонена.');},400);}; },50); }},
+    {q:'Это безопасно?', a:()=>{ opMsg('Да. Режим <b>MANUAL_APPROVAL_ONLY</b>: я предлагаю и объясняю риск, но <b>исполняю только после твоего «да»</b>. Всё логируется.','Да. Режим только ручного подтверждения. Я предлагаю и объясняю риск, но исполняю только после твоего да.'); }},
+  ];
+  function renderQuick(){ const q=$('quick'); q.innerHTML='';
+    QUICK.forEach(item=>{ const c=document.createElement('div');c.className='chip';c.textContent=item.q;
+      c.onclick=()=>{ meMsg(item.q); setTimeout(()=>typing(()=>item.a(),900),250); }; q.appendChild(c); }); }
+
+  // preload voices
+  try{ speechSynthesis.onvoiceschanged=()=>{}; }catch(e){}
+})();
+</script>
+</body>
+</html>
