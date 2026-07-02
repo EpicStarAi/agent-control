@@ -249,6 +249,14 @@
       <div class="sysrow"><span class="l">Approvals</span><span class="v w" id="sysApprovals">1 waiting</span></div>
       <div class="sysrow"><span class="l">Missions</span><span class="v c" id="sysMissions">6 active</span></div>
       <div class="sysrow"><span class="l">Executed (sim)</span><span class="v g" id="sysExecuted">0</span></div>
+      <h4>Экономика</h4>
+      <div class="sysrow"><span class="l">Wallet</span><span class="v g">🟢 connected</span></div>
+      <div class="sysrow"><span class="l">TON</span><span class="v c">42.5</span></div>
+      <div class="sysrow"><span class="l">USDT</span><span class="v c">130.0</span></div>
+      <div class="sysrow"><span class="l">Stars</span><span class="v c">850</span></div>
+      <div class="sysrow"><span class="l">Today's spend</span><span class="v w">2.7 USDT</span></div>
+      <div class="sysrow"><span class="l">Pending payments</span><span class="v w" id="ecoPending">2</span></div>
+      <div class="sysrow"><span class="l">Revenue today</span><span class="v g">15.3 USDT</span></div>
       <button class="saAsk" id="saAsk">⚠ Что требует внимания?</button>
     </aside>
   </div>
@@ -508,21 +516,34 @@
   const PAY=[ {id:'pr-ads',title:'Оплата Telegram Ads',amount:25,cur:'TON',target:'Telegram Ads',agent:'AI-Growth',risk:'high',status:'waiting_approval'},
     {id:'pr-sub',title:'Продление Premium x3',amount:12,cur:'USDT',target:'Fragment',agent:'Account-Manager',risk:'medium',status:'waiting_approval'},
     {id:'pr-tip',title:'Донат автору контента',amount:2,cur:'USDT',target:'@creator',agent:'AI-Publisher',risk:'low',status:'approved'} ];
-  const AWAL=[ ['AI-Growth','Growth wallet',5,'USDT',true,1.2,'medium'],['AI-Publisher','Publisher wallet',2,'USDT',true,0,'low'],['AI-Operator','Operator wallet',0,'USDT',false,0,'none'] ];
+  // [id,label,balance,limit,cur,enabled,spent,risk] — каждый агент = экономический субъект
+  const AWAL=[ ['AI-Growth','Growth AI',67,5,'USDT',true,1.2,'medium'],['AI-Publisher','Publisher AI',25,3,'USDT',true,1.2,'low'],['AI-Operator','Operator AI',0,0,'USDT',false,0,'none'] ];
+  const MARKET=['Vision','Voice','Translation','Research','SEO','Analytics','Copywriter','Image'];
   function payWaiting(){ return PAY.filter(p=>p.status==='waiting_approval').length; }
+  function ecoSync(){ const ep=$('ecoPending'); if(ep){ ep.textContent=payWaiting(); } }
   function renderEconomy(){ const col=s=>({g:'grn',w:'cyan',r:'mag'}[stCol(s)]||'cyan');
-    return '<h3>💳 Economy · Wallet</h3><div class="sub">TON Connect · payment requests · agent limits · source: demo (fallback)</div>'+
+    return '<h3>💳 AI Economy</h3><div class="sub">Wallet · Agent Wallets · Payments · Marketplace · Limits · source: demo (fallback)</div>'+
       '<div class="planned" style="border-color:rgba(255,211,77,.45);color:#ffd34d;text-align:left;margin-bottom:12px">🔐 No private keys stored — seed/ключи не хранятся · платежи только через ручное подтверждение · реального списания нет (симуляция).</div>'+
-      '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>'+WALLET.provider+' · connected</div><div class="pmeta">'+WALLET.account+' · '+WALLET.addr+'<br>Баланс: '+WALLET.bal.TON+' TON · '+WALLET.bal.USDT+' USDT · '+WALLET.bal.XTR+' ⭐</div></div>'+
+      '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>'+WALLET.provider+' · connected</div><div class="pmeta">'+WALLET.account+' · '+WALLET.addr+'<br>Баланс: '+WALLET.bal.TON+' TON · '+WALLET.bal.USDT+' USDT · '+WALLET.bal.XTR+' ⭐ · сегодня −2.7 · доход +15.3</div></div>'+
       '<div style="font-weight:800;margin:14px 0 6px">Payment requests · '+payWaiting()+' waiting</div>'+
       PAY.map(p=>'<div class="pcard"><div class="pt">'+p.title+' · <b>'+p.amount+' '+p.cur+'</b></div><div class="pmeta">'+p.agent+' → '+p.target+' · риск '+p.risk+' · <b style="color:var(--'+col(p.status)+')">'+p.status+'</b></div>'+
         (p.status==='waiting_approval'?'<div class="approw"><button class="mini app" data-pay="'+p.id+'">✓ Approve</button><button class="mini rej" data-prj="'+p.id+'">Reject</button></div>':'')+'</div>').join('')+
-      '<div style="font-weight:800;margin:14px 0 6px">Agent wallets · дневные лимиты</div>'+
-      AWAL.map(a=>'<div class="pcard"><div class="pt"><span class="sd '+(a[4]?'g':'r')+'" style="width:9px;height:9px;border-radius:50%"></span>'+a[0]+'</div><div class="pmeta">лимит '+a[2]+' '+a[3]+'/сутки · потрачено '+a[5]+' · риск '+a[6]+' · '+(a[4]?'enabled':'disabled')+'</div></div>').join('');
+      '<div style="font-weight:800;margin:14px 0 6px">Агенты как экономические субъекты</div>'+
+      AWAL.map(a=>'<div class="pcard"><div class="pt"><span class="sd '+(a[5]?'g':'r')+'" style="width:9px;height:9px;border-radius:50%"></span>'+a[1]+'</div><div class="pmeta">баланс <b>'+a[2]+' '+a[4]+'</b> · лимит '+a[3]+'/сутки · потрачено '+a[6]+' · остаток '+(a[3]-a[6]).toFixed(1)+' · риск '+a[7]+' · '+(a[5]?'enabled':'disabled')+'</div></div>').join('')+
+      '<div style="font-weight:800;margin:14px 0 6px">AI Marketplace</div>'+
+      '<div class="pcard"><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+MARKET.map(s=>'<span class="pill">'+s+'</span>').join('')+'</div>'+
+      '<div class="pmeta" style="margin-bottom:8px">Агенты кооперируются под задачу. Оплата услуг — через Approval + лимиты.</div>'+
+      '<button class="mini app" data-mk="campaign">⚡ Собрать рекламную кампанию</button></div>';
   }
+  function runCampaign(){ setView('operator');
+    const steps=[['Research','собрал данные по нише ✓'],['Copywriter','написал текст объявления ✓'],['Image','сгенерировал баннер ✓'],['Publisher','подготовил публикацию ✓']]; let i=0;
+    (function next(){ if(i<steps.length){ const s=steps[i++]; setTimeout(()=>typing(()=>{ opCard('AI Marketplace · '+s[0], [{chk:1,t:s[1]}], s[0]+': '+s[1]); next(); },650),120); }
+      else { setTimeout(()=>typing(()=>{ PAY.unshift({id:'pr_'+Date.now().toString(36).slice(-4),title:'Публикация рекламной кампании',amount:8,cur:'USDT',target:'@deepinside',agent:'AI-Marketplace',risk:'medium',status:'waiting_approval'}); ecoSync();
+        opCard('Кампания собрана', [{chk:1,t:'4 агента отработали'},{t:'Создан <b>payment request</b> 8 USDT → Economy'},{t:'Оплата — только после твоего <b>approve</b>.'}], 'Кампания собрана четырьмя агентами. Создан запрос на оплату восемь USDT — платёж только после подтверждения.'); },800),120); } })(); }
   function wireEconomy(){
-    $('panelBody').querySelectorAll('[data-pay]').forEach(b=>b.onclick=()=>{const it=PAY.find(x=>x.id===b.dataset.pay); if(it&&it.status==='waiting_approval'){it.status='approved'; toast('платёж одобрен · симуляция, без списания'); auditAmb('Audit','payment '+it.id+' → approved · NO execution'); $('panelBody').innerHTML=renderEconomy(); wireEconomy();}});
-    $('panelBody').querySelectorAll('[data-prj]').forEach(b=>b.onclick=()=>{const it=PAY.find(x=>x.id===b.dataset.prj); if(it&&it.status==='waiting_approval'){it.status='rejected'; toast('платёж отклонён'); auditAmb('Audit','payment '+it.id+' → rejected'); $('panelBody').innerHTML=renderEconomy(); wireEconomy();}});
+    $('panelBody').querySelectorAll('[data-pay]').forEach(b=>b.onclick=()=>{const it=PAY.find(x=>x.id===b.dataset.pay); if(it&&it.status==='waiting_approval'){it.status='approved'; ecoSync(); toast('платёж одобрен · симуляция, без списания'); auditAmb('Audit','payment '+it.id+' → approved · NO execution'); $('panelBody').innerHTML=renderEconomy(); wireEconomy();}});
+    $('panelBody').querySelectorAll('[data-prj]').forEach(b=>b.onclick=()=>{const it=PAY.find(x=>x.id===b.dataset.prj); if(it&&it.status==='waiting_approval'){it.status='rejected'; ecoSync(); toast('платёж отклонён'); auditAmb('Audit','payment '+it.id+' → rejected'); $('panelBody').innerHTML=renderEconomy(); wireEconomy();}});
+    const mk=$('panelBody').querySelector('[data-mk]'); if(mk) mk.onclick=()=>runCampaign();
   }
   function renderPanel(name){
     if(name==='economy') return renderEconomy();
