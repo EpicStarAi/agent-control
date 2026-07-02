@@ -5,7 +5,7 @@ import { useEffect, useState, useCallback } from "react";
 type Avatar = { id: string; name: string; status: string; sourceImageUrl: string; consentConfirmed: boolean };
 type Pack = { id: string; name: string; description: string; scenes: string[]; engine: string };
 type Job = { id: string; avatarId: string; packId: string; engine: string; status: string; sceneKey: string; prompt: string; resultUrl: string; batchId?: string; attempts?: number; maxAttempts?: number; providerId?: string; selectedBy?: string };
-type Prov = { id: string; name: string; mode: string; capabilities: string[]; enabled: boolean };
+type Prov = { id: string; name: string; mode: string; capabilities: string[]; enabled: boolean; status?: string };
 type Asset = { id: string; jobId: string; avatarId: string; imageUrl: string; status: string; qualityStatus: string; qualityScore: number | null; identityScore: number | null; sceneKey: string; candidateIndex: number; qualityNotes: string };
 
 const box = "rounded-xl border border-white/10 bg-white/5 p-4";
@@ -136,8 +136,9 @@ export default function AvatarStudioPage() {
           <span className="text-[12px] text-slate-400">Провайдер (Render Router):</span>
           <select className="rounded-lg bg-black/40 border border-white/10 px-2 py-1 text-[12px] text-white" value={providerId} onChange={e => setProviderId(e.target.value)}>
             <option value="">Auto (Router)</option>
-            {providers.map(p => <option key={p.id} value={p.id} disabled={!p.enabled}>{p.name} · {p.mode}{p.enabled ? "" : " · not configured"}</option>)}
+            {providers.map(p => <option key={p.id} value={p.id} disabled={!p.enabled}>{p.name} · {p.mode} · {p.status || (p.enabled ? "ready" : "not configured")}</option>)}
           </select>
+          {providerId && <span className="text-[11px] text-violet-300">{(providers.find(p => p.id === providerId)?.status) || ""}</span>}
           <span className="text-[12px] text-slate-400 ml-2">Кандидатов/сцена:</span>
           <select className="rounded-lg bg-black/40 border border-white/10 px-2 py-1 text-[12px] text-white" value={candCount} onChange={e => setCandCount(Number(e.target.value))}>
             {[1, 2, 3, 4].map(n => <option key={n} value={n}>{n}</option>)}

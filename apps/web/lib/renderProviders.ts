@@ -16,6 +16,7 @@ export interface RenderProviderAdapter {
   createJob(input: { avatarId: string; sceneKey: string; prompt: string }): Promise<ProviderJobResult>;
   getJobStatus(providerJobId: string): Promise<ProviderJobResult>;
   cancelJob?(providerJobId: string): Promise<boolean>;
+  health?(): Promise<string>;
 }
 
 function pid(): string { return `pj_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`; }
@@ -27,25 +28,19 @@ const mockGrokImagine: RenderProviderAdapter = {
   async createJob(input) { return { providerJobId: pid(), status: "done", resultUrl: `mock://render/${input.avatarId}/${encodeURIComponent(input.sceneKey)}.png`, error: "", providerStatus: "succeeded" }; },
   async getJobStatus(providerJobId) { return { providerJobId, status: "done", resultUrl: "", error: "", providerStatus: "succeeded" }; },
   async cancelJob() { return true; },
+  async health() { return "READY"; },
 };
 
-// --- grok_imagine_browser: real target placeholder. Disabled unless EPIC_GROK_BROWSER=1. ---
-function browserEnabled(): boolean { return process.env.EPIC_GROK_BROWSER === "1"; }
-const grokImagineBrowser: RenderProviderAdapter = {
-  id: "grok_imagine_browser", name: "Grok Imagine (browser)", mode: "browser", capabilities: ["image", "video"],
-  enabled() { return browserEnabled(); },
-  async createJob() {
-    // P27.3 placeholder: NO Playwright, NO browser, NO network. Real automation lands in P27.4.
-    return { providerJobId: "", status: "failed", resultUrl: "", error: "NOT_CONFIGURED: grok_imagine_browser is a placeholder (enable in P27.4)", providerStatus: "not_configured" };
-  },
-  async getJobStatus(providerJobId) { return { providerJobId, status: "failed", resultUrl: "", error: "NOT_CONFIGURED", providerStatus: "not_configured" }; },
-};
+// --- grok_imagine_browser: real Playwright adapter skeleton (P27.5). Lives in its own
+// file so the build never depends on Playwright. Disabled unless EPIC_GROK_BROWSER=1. ---
+import { grokImagineBrowser } from "@/lib/renderProviders/grokImagineBrowser";
 
 // --- future providers (catalog placeholders, disabled). ---
 function futureProvider(id: string, name: string, mode: ProviderMode, caps: RenderCapability[]): RenderProviderAdapter {
   return { id, name, mode, capabilities: caps, enabled() { return false; },
     async createJob() { return { providerJobId: "", status: "failed", resultUrl: "", error: `NOT_CONFIGURED: ${id} not implemented`, providerStatus: "not_configured" }; },
-    async getJobStatus(providerJobId) { return { providerJobId, status: "failed", resultUrl: "", error: "NOT_CONFIGURED", providerStatus: "not_configured" }; } };
+    async getJobStatus(providerJobId) { return { providerJobId, status: "failed", resultUrl: "", error: "NOT_CONFIGURED", providerStatus: "not_configured" }; },
+    async health() { return "NOT_CONFIGURED"; } };
 }
 
 export const PROVIDER_REGISTRY: RenderProviderAdapter[] = [
@@ -63,8 +58,11 @@ export const DEFAULT_PROVIDER = "mock_grok_imagine";
 
 export function getProvider(id: string): RenderProviderAdapter | undefined { return PROVIDER_REGISTRY.find(p => p.id === id); }
 export function isKnownProvider(id: unknown): boolean { return PROVIDER_REGISTRY.some(p => p.id === String(id)); }
-export function providerSummary() {
-  return PROVIDER_REGISTRY.map(p => ({ id: p.id, name: p.name, mode: p.mode, capabilities: p.capabilities, enabled: p.enabled() }));
+export async function providerSummary() {
+  return Promise.all(PROVIDER_REGISTRY.map(async p => ({
+    id: p.id, name: p.name, mode: p.mode, capabilities: p.capabilities, enabled: p.enabled(),
+    status: p.health ? await p.health() : (p.enabled() ? "READY" : "NOT_CONFIGURED"),
+  })));
 }
 
 // Router: pick a provider by explicit id → pack preferred → capability match → default.
