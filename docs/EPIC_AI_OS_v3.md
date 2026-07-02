@@ -220,3 +220,73 @@ Spine before providers — so identity/video/publish attach to Character-in-Cast
 
 Invariants: MANUAL_APPROVAL_ONLY, no auto-publish, no face recognition/impersonation,
 no stored credentials, non-destructive migrations, Telegram = one provider not the core.
+
+---
+
+## 13. Perception OS (capability layer under AI Operator)
+
+The next layer after LLM-only operators: the operator that **sees, hears and understands
+context** in real time. Perception is NOT a new paradigm to invent and NOT a replacement
+for the Project/Cast spine — it is a **provider/adapter family + a fused World Model** that
+the AI Operator consumes, sitting alongside Decision Engine + Memory Engine. Same pattern
+already used across the codebase (RenderProviderAdapter · SocialConnectorAdapter · Universal
+Connect Layer): every perception source is a pluggable adapter, **mock-first, real providers
+env-gated AND consent-gated**.
+
+```
+AI OPERATOR
+   ├── Decision Engine
+   ├── Memory Engine
+   └── PERCEPTION LAYER
+         👁 Vision      Camera · Screen · OCR · Object detection · Face tracking
+         🎤 Audio       STT · Speaker ID · Emotion · Noise filtering
+         🗺 Geo         Google Maps · Street View · Places · Earth
+         🧠 Context     Memory · Calendar · Gmail · Telegram · Browser state
+         🌐 Web         Browser Agent · DOM · Playwright · MCP
+         🎭 Avatar I/O  HeyGen · Tavus · Live Portrait (live conversational avatar)
+         🎬 Generation  Flow · Veo · Gemini · Grok Imagine · Seedance · Kling · Runway
+         📡 Publish     Universal Connect Layer (TG/YT/TikTok/IG/FB/X/…)
+```
+
+Contract sketch — `PerceptionProviderAdapter { id, name, kind(vision|audio|geo|context|web|
+avatar|generation), mode(mock|api|browser|stream), enabled(), start()/stop()|read(),
+toContext() }` → normalizes raw signals into the World Model. Generation sources here are the
+same Media-Pipeline leaves from §7; Avatar-I/O is the live/interactive counterpart.
+
+## 14. World Model (fused perceptual state)
+
+The Operator never consumes raw feeds — adapters normalize into a **World Model**: where am I ·
+what is around me · what is happening now · who am I talking to · what is on screen · what is on
+the desk · which services are open · what the user is doing. This is *digital perception of the
+world*, not a chat window. Ten-level flow above the operator:
+
+```
+1 Vision → 2 Voice → 3 Browser → 4 Geo → 5 Memory →
+6 Reasoning → 7 Planning → 8 Execution → 9 Generation → 10 Publishing
+```
+
+Every action stays MANUAL_APPROVAL_ONLY; **each perception source is consent-gated
+per-source** (camera/mic/screen/geo are a heavy privacy surface — never auto-on).
+
+## 15. Geo Intelligence (sub-module)
+
+`Google Maps · Street View · Places · Earth → Flow Scene Builder`. Lets the Operator anchor a
+**Scene** to a real-world location ("NOVIKOVA выходит из Starbucks на Times Square", "реклама у
+Apple Store Fifth Avenue"). Ties into §3 / P29.2: a Scene may carry a geo-anchor consumed by
+the Generation leaf. Region-limited today (largely US), expanding — modelled as a provider with
+capability flags, never a guarantee.
+
+## 16. Maturity honesty & sequencing update
+
+Real-time multimodal perception (live camera/mic/screen, low-latency voice, live conversational
+avatars, geo-anchored video generation) is the direction the major players are moving toward, but
+it is **cutting-edge, provider-dependent and region-limited** — we design the seams now and plug
+real providers as they mature and as the user explicitly opts in. We do NOT assert any specific
+external product's current state as fact in code.
+
+**Spine still first.** Perception becomes its own track, contract-first & mock (heavy infra +
+privacy surface → consent-gated, provider-gated, never auto-on):
+- **P29.1–P29.4** — Story Universe spine (Cast · Scene · Story hierarchy · Story Engine), as fixed.
+- **P30.1** — Perception Provider Contract + World Model shell (mock adapters, no real capture).
+- **P30.2+** — real sources env-gated + consent-gated, one at a time; least-sensitive first
+  (screen/browser via existing Playwright/MCP → geo → camera/mic/live-avatar last).
