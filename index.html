@@ -96,7 +96,13 @@
   .approw{display:flex;gap:8px;margin-top:10px}
   .mini{border:none;border-radius:9px;padding:8px 14px;font-weight:800;font-size:13px;cursor:pointer}
   .mini.app{background:var(--grn);color:#04121a}.mini.rej{background:transparent;color:#ff6b8b;border:1px solid rgba(255,107,139,.5)}
-  .quick{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap}
+  .quick{padding:12px 18px 6px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap}
+  .composer{display:flex;gap:8px;padding:8px 18px 16px;align-items:center}
+  .cinp{flex:1;background:#070b17;border:1px solid var(--line);border-radius:999px;padding:12px 16px;color:#fff;font-size:14px;outline:none}
+  .cinp:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(34,227,255,.14)}
+  .csend{flex:none;width:44px;height:44px;border-radius:50%;border:none;cursor:pointer;font-size:16px;color:#04121a;
+    background:linear-gradient(135deg,var(--cyan),var(--mag));box-shadow:0 6px 18px rgba(34,227,255,.35)}
+  .csend:active{transform:translateY(1px)}
   .chip{border:1px solid rgba(34,227,255,.35);color:var(--cyan);background:rgba(34,227,255,.06);border-radius:999px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer}
   .chip:hover{background:rgba(34,227,255,.14)}
   .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:80;background:rgba(10,15,30,.95);border:1px solid var(--grn);
@@ -111,7 +117,8 @@
     .mhead{padding:52px 16px 12px}
     .msgs{padding:14px}
     .row{max-width:92%}
-    .quick{padding:10px 12px calc(env(safe-area-inset-bottom) + 56px)}
+    .quick{padding:10px 12px 4px}
+    .composer{padding:6px 12px calc(env(safe-area-inset-bottom) + 12px)}
     .brandline{font-size:10px;letter-spacing:.18em}
     .badge{font-size:10px;padding:5px 9px;top:10px;right:10px}
     .card{padding:26px 20px}
@@ -179,6 +186,10 @@
       <div class="mhead"><div class="av op">AI</div><div><div class="nm">AI Operator</div><div class="st">● онлайн · MANUAL_APPROVAL_ONLY</div></div></div>
       <div class="msgs" id="msgs"></div>
       <div class="quick" id="quick"></div>
+      <form class="composer" id="composer" autocomplete="off">
+        <input class="cinp" id="cinp" placeholder="Спроси оператора: что умеешь, как работает approval, безопасно ли…">
+        <button class="csend" id="csend" type="submit">➤</button>
+      </form>
     </section>
   </div>
 </div>
@@ -316,6 +327,38 @@
   function renderQuick(){ const q=$('quick'); q.innerHTML='';
     QUICK.forEach(item=>{ const c=document.createElement('div');c.className='chip';c.textContent=item.q;
       c.onclick=()=>{ meMsg(item.q); setTimeout(()=>typing(()=>item.a(),900),250); }; q.appendChild(c); }); }
+
+  // ---- FAQ / общий «мозг» оператора (offline, без ключей) ----
+  const FAQ=[
+    {k:['кто ты','ты кто','представься','что ты такое'], a:'Я — AI-оператор EPIC💀GRAM: управляю аккаунтами, каналами, публикациями, аналитикой и автоматизациями Telegram. Предлагаю действия и объясняю риск, но исполняю только после твоего подтверждения.'},
+    {k:['что умеешь','возможност','функци','что можешь','умени','чем помож'], a:'Совет операторов из 6 ролей: Operator-Core — оркестрация, Production-Gate — контроль запуска, Live-Ops — мониторинг 24/7, Analytics — метрики, Publisher — контент, Guardian — риски и аудит. Плюс Mission Center, Approval Gate и Audit Log.'},
+    {k:['approval','подтвержд','апрув','одобр','gate','ручн','approve'], a:'Approval Gate работает в режиме MANUAL_APPROVAL_ONLY: я готовлю заявку — действие, риск и payload, а ты жмёшь Approve, Reject или Cancel. Approve меняет только статус и НЕ запускает внешнее действие сам. Всё под твоим контролем.'},
+    {k:['безопас','риск','опасно','защит','risk'], a:'Безопасно by design: ничего не уходит наружу без твоего «да». Guardian сканирует риски, всё пишется в Audit Log, лимиты и антиспам — на стороне Risk Engine.'},
+    {k:['мисси','mission','задач'], a:'Mission Center — жизненный цикл задачи: Draft → Queued → In Progress → Waiting Approval → Executed. Каждая миссия хранится в реальной базе Postgres и видна в реальном времени.'},
+    {k:['vpn','hidemyname','прокси','proxy','mtproxy'], a:'Слой Proxy/VPN: HideMyName VPN как рабочий контур, MTProxy и прокси для аккаунтов — отдельный изолированный модуль.'},
+    {k:['монетиз','stars','звёзд','звезд','деньги','заработ','premium','подписк','gift'], a:'AI Monetization: Telegram Stars (XTR), Premium, Gifts и подписки. Реальные списания — только через Approval, я лишь предлагаю.'},
+    {k:['аналитик','analytics','метрик','отчёт','статист','охват'], a:'Analytics Dashboard: охваты, кампании, аккаунты, тренды. Живой поток событий идёт через SSE в Audit Log.'},
+    {k:['публик','контент','пост','publisher','канал'], a:'AI Publisher: генерация и публикация контента по каналам. Черновик готовится автоматически, публикация — по твоему approve.'},
+    {k:['ton','fragment','web3','кошел','крипт'], a:'TON / Fragment Layer: кошелёк, Fragment и Web3-операции — тоже под Approval Gate.'},
+    {k:['аккаунт','account','сесси','tdlib','runtime','авториз'], a:'Telegram Runtime на TDLib: авторизация, сессии, мультиаккаунт с изоляцией. Account Manager следит за профилями, статусами и риском.'},
+    {k:['rag','знани','база знаний','документ'], a:'Knowledge Base / RAG: база знаний по Telegram и твоим правилам — операторы отвечают, опираясь на неё.'},
+    {k:['автоматиз','workflow','сценар','automation','оркестр','plugin','sdk'], a:'Automation Engine — сценарии и workflows. Agent Orchestrator дирижирует операторами, Plugin SDK подключает модули.'},
+    {k:['сколько стоит','цена','стоимост','тариф','pricing'], a:'Это демо-превью, тарифов тут нет. Модель — платформа EPIC💀GRAM с продуктами (WORK=VPN, PERSONAL=hub). Про цены — отдельно по запросу.'},
+    {k:['демо','demo','настоящ','реальн','симул'], a:'Сейчас это LIVE PREVIEW — интерфейс и логика реальны, но исполнение симулировано: без настоящего Telegram, отправок и списаний. Боевой режим включается в реальном клиенте.'},
+    {k:['привет','здаров','хай','hello','ку ','здравств','салют'], a:'Привет 👋 Спрашивай что угодно про EPIC💀GRAM: возможности, approval, безопасность, монетизацию, миссии.'},
+    {k:['спасибо','благодар','thanks','спс'], a:'Всегда рядом 💀 Что дальше сделаем?'},
+  ];
+  function answerFAQ(q){ const t=' '+q.toLowerCase()+' '; let best=null,score=0;
+    for(const item of FAQ){ let s=0; for(const k of item.k){ if(t.includes(k)) s+=k.length; } if(s>score){score=s;best=item;} }
+    if(best&&score>0) return best.a;
+    return 'Отвечаю по базе EPIC💀GRAM. Спроси про: что умею · approval / подтверждение · безопасность · миссии · VPN · монетизацию · аналитику · аккаунты. Свободные ответы на любой вопрос включатся, когда оператор подключён к live-модели.';
+  }
+  const composer=$('composer');
+  if(composer){ composer.addEventListener('submit', e=>{ e.preventDefault();
+    const inp=$('cinp'); const q=(inp.value||'').trim(); if(!q) return; inp.value='';
+    meMsg(q.replace(/&/g,'&amp;').replace(/</g,'&lt;'));
+    const ans=answerFAQ(q); setTimeout(()=>typing(()=>opMsg(ans,ans),800),220);
+  }); }
 
   // preload voices
   try{ speechSynthesis.onvoiceschanged=()=>{}; }catch(e){}
