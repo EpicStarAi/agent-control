@@ -1,5 +1,5 @@
-import { normalizeAvatar, normalizePassport, normalizeJob, normalizeAsset,
-  type Avatar, type AvatarPassport, type RenderJob, type AvatarAsset } from "@/lib/avatarStudio";
+import { normalizeAvatar, normalizePassport, normalizeJob, normalizeAsset, normalizeIdentitySource,
+  type Avatar, type AvatarPassport, type RenderJob, type AvatarAsset, type AvatarIdentitySource } from "@/lib/avatarStudio";
 
 // P27.1 Postgres adapter. CREATE TABLE/INDEX IF NOT EXISTS only. No DROP/DELETE.
 // Shares the global pg pool. Stores no secrets.
@@ -65,6 +65,13 @@ async function ensureInit(p: PgPool): Promise<void> {
     await p.query(`ALTER TABLE avatar_assets ADD COLUMN IF NOT EXISTS quality_notes text`);
     await p.query(`ALTER TABLE avatar_assets ADD COLUMN IF NOT EXISTS scene_key text`);
     await p.query(`ALTER TABLE avatar_assets ADD COLUMN IF NOT EXISTS candidate_index integer DEFAULT 0`);
+    // P27.8 identity intake sources (operator-registered reference metadata).
+    await p.query(`CREATE TABLE IF NOT EXISTS avatar_identity_sources (
+      id text PRIMARY KEY, avatar_id text NOT NULL, workspace_id text NOT NULL,
+      type text, label text, file_url text, status text DEFAULT 'pending_review',
+      consent_status text DEFAULT 'unknown',
+      created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())`);
+    await p.query(`CREATE INDEX IF NOT EXISTS avatar_identity_sources_ws ON avatar_identity_sources(workspace_id, avatar_id)`);
   })();
   return g.__epicAvatarInit;
 }
@@ -163,3 +170,17 @@ export async function setAssetQuality(ws: string, id: string, patch: Partial<Ava
   return r.rows[0] ? assetRow(r.rows[0]) : null; }
 export async function setAssetStatusByJob(ws: string, jobId: string, status: string): Promise<void> {
   const p = await db(); await p.query(`UPDATE avatar_assets SET status=$3,updated_at=$4 WHERE workspace_id=$1 AND job_id=$2`, [ws, jobId, status, new Date().toISOString()]); }
+
+// P27.8 identity sources.
+function idsrcRow(r: any): AvatarIdentitySource { return { id: r.id, avatarId: r.avatar_id, workspaceId: r.workspace_id,
+  type: r.type ?? "photo", label: r.label ?? "", fileUrl: r.file_url ?? "", status: r.status ?? "pending_review",
+  consentStatus: r.consent_status ?? "unknown",
+  createdAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString() }; }
+export async function listIdentitySources(ws: string, avatarId: string): Promise<AvatarIdentitySource[]> {
+  const p = await db(); return (await p.query(`SELECT * FROM avatar_identity_sources WHERE workspace_id=$1 AND avatar_id=$2 ORDER BY created_at ASC`, [ws, avatarId])).rows.map(idsrcRow); }
+export async function createIdentitySource(ws: string, avatarId: string, input: Partial<AvatarIdentitySource> & { consentConfirmed?: boolean }): Promise<AvatarIdentitySource> {
+  const p = await db(); const n = normalizeIdentitySource(ws, avatarId, input);
+  const r = await p.query(`INSERT INTO avatar_identity_sources(id,avatar_id,workspace_id,type,label,file_url,status,consent_status,created_at,updated_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+    [n.id, avatarId, ws, n.type, n.label, n.fileUrl, n.status, n.consentStatus, n.createdAt, n.updatedAt]);
+  return idsrcRow(r.rows[0]); }

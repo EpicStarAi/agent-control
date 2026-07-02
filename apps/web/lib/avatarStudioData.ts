@@ -1,6 +1,6 @@
 import * as db from "@/lib/avatarStudioDb";
 import * as store from "@/lib/avatarStudioStore";
-import type { Avatar, AvatarPassport, RenderJob, AvatarAsset } from "@/lib/avatarStudio";
+import type { Avatar, AvatarPassport, RenderJob, AvatarAsset, AvatarIdentitySource } from "@/lib/avatarStudio";
 import { getProvider, DEFAULT_PROVIDER } from "@/lib/renderProviders";
 
 // P27.1 facade: Postgres when available, else fs. Carries source: "db"|"fallback".
@@ -26,6 +26,9 @@ export const listAssetsByJob = (ws: string, jobId: string) => pick(() => db.list
 export const setAssetQuality = (ws: string, id: string, patch: Partial<AvatarAsset>) => pick(() => db.setAssetQuality(ws, id, patch), () => store.setAssetQuality(ws, id, patch));
 export const setAssetStatusByJob = (ws: string, jobId: string, status: string) => pick(() => db.setAssetStatusByJob(ws, jobId, status), () => store.setAssetStatusByJob(ws, jobId, status));
 export const listJobsByStatus = (ws: string, status: string, limit = 20) => pick(() => db.listJobsByStatus(ws, status, limit), () => store.listJobsByStatus(ws, status, limit));
+// P27.8 identity sources.
+export const listIdentitySources = (ws: string, aid: string) => pick(() => db.listIdentitySources(ws, aid), () => store.listIdentitySources(ws, aid));
+export const createIdentitySource = (ws: string, aid: string, i: Partial<AvatarIdentitySource> & { consentConfirmed?: boolean }) => pick(() => db.createIdentitySource(ws, aid, i), () => store.createIdentitySource(ws, aid, i));
 
 // P27.2 mock queue runner — one pass over queued jobs. NO external calls (mock adapter only).
 export async function runQueueOnce(ws: string): Promise<{ processed: number; results: { id: string; status: string }[]; source: Src }> {

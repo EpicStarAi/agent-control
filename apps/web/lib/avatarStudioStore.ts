@@ -1,15 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
-import { normalizeAvatar, normalizePassport, normalizeJob, normalizeAsset,
-  type Avatar, type AvatarPassport, type RenderJob, type AvatarAsset } from "@/lib/avatarStudio";
+import { normalizeAvatar, normalizePassport, normalizeJob, normalizeAsset, normalizeIdentitySource,
+  type Avatar, type AvatarPassport, type RenderJob, type AvatarAsset, type AvatarIdentitySource } from "@/lib/avatarStudio";
 
 // P27.1 fs fallback (keyed by workspace_id). Same shape as the DB adapter.
 const FILE = path.join(process.cwd(), ".avatar-studio-data.json");
-type WS = { avatars: Avatar[]; passports: AvatarPassport[]; jobs: RenderJob[]; assets: AvatarAsset[] };
+type WS = { avatars: Avatar[]; passports: AvatarPassport[]; jobs: RenderJob[]; assets: AvatarAsset[]; identitySources?: AvatarIdentitySource[] };
 type DB = { ws: Record<string, WS> };
 function load(): DB { try { if (fs.existsSync(FILE)) return JSON.parse(fs.readFileSync(FILE, "utf8")); } catch {} return { ws: {} }; }
 function save(db: DB) { try { fs.writeFileSync(FILE, JSON.stringify(db, null, 2)); } catch {} }
-function bucket(db: DB, ws: string): WS { return (db.ws[ws] ||= { avatars: [], passports: [], jobs: [], assets: [] }); }
+function bucket(db: DB, ws: string): WS { return (db.ws[ws] ||= { avatars: [], passports: [], jobs: [], assets: [], identitySources: [] }); }
 const desc = <T extends { updatedAt: string }>(a: T[]) => a.slice().sort((x, y) => (x.updatedAt < y.updatedAt ? 1 : -1));
 
 export async function listAvatars(ws: string): Promise<Avatar[]> { return desc(bucket(load(), ws).avatars); }
@@ -56,3 +56,11 @@ export async function setAssetStatusByJob(ws: string, jobId: string, status: str
   const db = load(); const b = bucket(db, ws); let ch = false;
   for (const a of b.assets) if (a.jobId === jobId) { a.status = status as AvatarAsset["status"]; a.updatedAt = new Date().toISOString(); ch = true; }
   if (ch) save(db); }
+
+// P27.8 identity sources.
+export async function listIdentitySources(ws: string, avatarId: string): Promise<AvatarIdentitySource[]> {
+  const b = bucket(load(), ws);
+  return (b.identitySources || []).filter(s => s.avatarId === avatarId).slice().sort((x, y) => (x.createdAt < y.createdAt ? -1 : 1)); }
+export async function createIdentitySource(ws: string, avatarId: string, input: Partial<AvatarIdentitySource> & { consentConfirmed?: boolean }): Promise<AvatarIdentitySource> {
+  const db = load(); const b = bucket(db, ws); (b.identitySources ||= []);
+  const n = normalizeIdentitySource(ws, avatarId, input); b.identitySources.push(n); save(db); return n; }

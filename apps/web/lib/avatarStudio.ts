@@ -191,3 +191,85 @@ export function canApproveAsset(a: Pick<AvatarAsset, "status" | "qualityStatus">
   if (a.status !== "pending_review") return false;
   return a.qualityStatus === "passed" || Boolean(override && override.trim());
 }
+
+// ============================================================================
+// P27.8 — Avatar Identity Intake + Template Cards.
+// NOT face recognition: no biometric matching, no impersonation, no identity
+// verification. Reference sources are operator-registered metadata that feed
+// the passport / identity lock. Prepares the ground for future image identity
+// providers (InstantID / PuLID / PhotoMaker) without implementing them here.
+// ============================================================================
+export type IdentitySourceType = "photo" | "prompt" | "manual";
+export type IdentitySourceStatus = "pending_review" | "approved" | "rejected";
+export type ConsentStatus = "operator_confirmed" | "unknown";
+export interface AvatarIdentitySource {
+  id: string; avatarId: string; workspaceId: string;
+  type: IdentitySourceType; label: string; fileUrl: string;
+  status: IdentitySourceStatus; consentStatus: ConsentStatus;
+  createdAt: string; updatedAt: string;
+}
+export function normalizeIdentitySource(
+  workspaceId: string, avatarId: string,
+  i: Partial<AvatarIdentitySource> & { consentConfirmed?: boolean },
+): AvatarIdentitySource {
+  const now = new Date().toISOString();
+  const type: IdentitySourceType = i.type === "prompt" || i.type === "manual" ? i.type : "photo";
+  const status: IdentitySourceStatus = i.status === "approved" || i.status === "rejected" ? i.status : "pending_review";
+  const consentStatus: ConsentStatus = (i.consentStatus === "operator_confirmed" || i.consentConfirmed) ? "operator_confirmed" : "unknown";
+  return { id: i.id || nid("idsrc"), avatarId, workspaceId, type,
+    label: clip(i.label, 120) || "reference", fileUrl: clip(i.fileUrl, 400),
+    status, consentStatus, createdAt: i.createdAt || now, updatedAt: now };
+}
+
+// Template cards — deterministic prompt fragments per category. Identity stays locked.
+export type TemplateCategory = "emotion" | "pose" | "outfit" | "background" | "camera" | "platform";
+export interface TemplateCard { id: string; category: TemplateCategory; value: string; label: string; fragment: string; }
+function tcard(category: TemplateCategory, value: string, label: string, fragment: string): TemplateCard {
+  return { id: `${category}:${value}`, category, value, label, fragment };
+}
+export const TEMPLATE_CATEGORIES: TemplateCategory[] = ["emotion", "pose", "outfit", "background", "camera", "platform"];
+export const TEMPLATE_CARDS: TemplateCard[] = [
+  tcard("emotion", "neutral", "Neutral", "Expression: calm neutral, relaxed face"),
+  tcard("emotion", "smile", "Smile", "Expression: warm natural smile"),
+  tcard("emotion", "serious", "Serious", "Expression: focused serious look"),
+  tcard("emotion", "surprised", "Surprised", "Expression: mild genuine surprise"),
+  tcard("emotion", "confident", "Confident", "Expression: calm confident gaze"),
+  tcard("pose", "portrait", "Portrait", "Pose: head-and-shoulders portrait"),
+  tcard("pose", "half_body", "Half body", "Pose: half-body framing"),
+  tcard("pose", "full_body", "Full body", "Pose: full-body standing"),
+  tcard("pose", "seated", "Seated", "Pose: seated, natural posture"),
+  tcard("pose", "walking", "Walking", "Pose: walking mid-step"),
+  tcard("outfit", "casual", "Casual", "Outfit: casual everyday clothing"),
+  tcard("outfit", "business", "Business", "Outfit: business formal attire"),
+  tcard("outfit", "cyber", "Cyber", "Outfit: cyber / techwear styling"),
+  tcard("outfit", "travel", "Travel", "Outfit: travel-ready casual"),
+  tcard("outfit", "creator", "Creator", "Outfit: creator / streetwear style"),
+  tcard("background", "studio", "Studio", "Background: clean studio backdrop"),
+  tcard("background", "city", "City", "Background: urban city street"),
+  tcard("background", "office", "Office", "Background: modern office interior"),
+  tcard("background", "neon", "Neon", "Background: neon-lit environment"),
+  tcard("background", "outdoor", "Outdoor", "Background: natural outdoor setting"),
+  tcard("camera", "close_up", "Close-up", "Camera: close-up shot"),
+  tcard("camera", "medium_shot", "Medium shot", "Camera: medium shot"),
+  tcard("camera", "wide_shot", "Wide shot", "Camera: wide shot"),
+  tcard("camera", "cinematic", "Cinematic", "Camera: cinematic composition"),
+  tcard("platform", "telegram_post", "Telegram post", "Format: Telegram post framing, 4:5"),
+  tcard("platform", "avatar_portrait", "Avatar portrait", "Format: square avatar portrait, 1:1"),
+  tcard("platform", "youtube_shorts_cover", "YouTube Shorts cover", "Format: YouTube Shorts cover, 9:16"),
+  tcard("platform", "instagram_reel_cover", "Instagram Reel cover", "Format: Instagram Reel cover, 9:16"),
+  tcard("platform", "tiktok_cover", "TikTok cover", "Format: TikTok cover, 9:16"),
+];
+export function getTemplateCard(id: string): TemplateCard | undefined { return TEMPLATE_CARDS.find(c => c.id === id); }
+// Merge passport + one template card into a render prompt with identity lock + safety.
+export function buildTemplatePrompt(passport: Partial<AvatarPassport> | null, card: TemplateCard): string {
+  const identity = (passport?.identityNotes || "reference avatar").trim();
+  const style = (passport?.styleNotes || "natural, on-brand").trim();
+  const forbidden = (passport?.forbiddenRules && passport.forbiddenRules.length ? passport.forbiddenRules : FORBIDDEN_RULES);
+  return [
+    `Identity: ${identity}.`,
+    `Style: ${style}.`,
+    `Template [${card.category}]: ${card.fragment}.`,
+    `IDENTITY LOCK: ${IDENTITY_LOCK}`,
+    `NEGATIVE / FORBIDDEN: ${forbidden.join("; ")}.`,
+  ].join(" ");
+}

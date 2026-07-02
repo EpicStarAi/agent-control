@@ -7,6 +7,8 @@ type Pack = { id: string; name: string; description: string; scenes: string[]; e
 type Job = { id: string; avatarId: string; packId: string; engine: string; status: string; sceneKey: string; prompt: string; resultUrl: string; batchId?: string; attempts?: number; maxAttempts?: number; providerId?: string; selectedBy?: string };
 type Prov = { id: string; name: string; mode: string; capabilities: string[]; enabled: boolean; status?: string };
 type Asset = { id: string; jobId: string; avatarId: string; imageUrl: string; status: string; qualityStatus: string; qualityScore: number | null; identityScore: number | null; sceneKey: string; candidateIndex: number; qualityNotes: string; createdAt?: string };
+type IdSource = { id: string; avatarId: string; type: string; label: string; fileUrl: string; status: string; consentStatus: string };
+type Template = { id: string; category: string; value: string; label: string; fragment: string };
 
 const box = "rounded-xl border border-white/10 bg-white/5 p-4";
 const btn = "rounded-lg px-3 py-1.5 text-[13px] font-semibold";
@@ -27,6 +29,10 @@ export default function AvatarStudioPage() {
   const [packId, setPackId] = useState<string>("profile");
   const [name, setName] = useState(""); const [url, setUrl] = useState(""); const [consent, setConsent] = useState(false);
   const [idNotes, setIdNotes] = useState(""); const [styleNotes, setStyleNotes] = useState("");
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [idSources, setIdSources] = useState<IdSource[]>([]);
+  const [idType, setIdType] = useState<string>("photo");
+  const [idLabel, setIdLabel] = useState(""); const [idUrl, setIdUrl] = useState(""); const [idConsent, setIdConsent] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -37,8 +43,16 @@ export default function AvatarStudioPage() {
     const pr = await fetch("/api/avatar-studio/providers").then(x => x.json()).catch(() => ({ providers: [] })); setProviders(pr.providers || []);
     const j = await fetch("/api/avatar-studio/render-jobs").then(x => x.json()).catch(() => ({ jobs: [] })); setJobs(j.jobs || []);
     const as = await fetch("/api/avatar-studio/assets").then(x => x.json()).catch(() => ({ assets: [] })); setAssets(as.assets || []);
+    const tp = await fetch("/api/avatar-studio/templates").then(x => x.json()).catch(() => ({ templates: [] })); setTemplates(tp.templates || []);
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  const loadIdentity = useCallback(async (aid: string) => {
+    if (!aid) { setIdSources([]); return; }
+    const r = await fetch(`/api/avatar-studio/avatars/${aid}/identity-sources`).then(x => x.json()).catch(() => ({ sources: [] }));
+    setIdSources(r.sources || []);
+  }, []);
+  useEffect(() => { loadIdentity(sel); }, [sel, loadIdentity]);
 
   async function createAvatar() {
     if (!name.trim()) return; setBusy(true);
@@ -79,6 +93,19 @@ export default function AvatarStudioPage() {
     setBusy(false);
     if (r && r.reason) window.alert("Regenerate недоступен: " + r.reason); else load();
   }
+  async function addSource() {
+    if (!sel || !idLabel.trim()) return; setBusy(true);
+    await fetch(`/api/avatar-studio/avatars/${sel}/identity-sources`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: idType, label: idLabel, fileUrl: idUrl, consentConfirmed: idConsent }) });
+    setIdLabel(""); setIdUrl(""); setIdConsent(false); setBusy(false); loadIdentity(sel);
+  }
+  async function renderTemplate(templateId: string) {
+    if (!sel) return; setBusy(true);
+    const r = await fetch("/api/avatar-studio/templates/render", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ avatarId: sel, templateId, candidateCount: 3, providerId: providerId || undefined }) }).then(x => x.json()).catch(() => ({}));
+    setBusy(false);
+    if (r && r.reason) window.alert("Template render недоступен: " + r.reason); else load();
+  }
   async function runQueue() { setBusy(true); await fetch("/api/avatar-studio/render-jobs/run-once", { method: "POST" }); setBusy(false); load(); }
   async function checkGrok() { setGrokStatus("…"); const r = await fetch("/api/avatar-studio/grok/check", { method: "POST" }).then(x => x.json()).catch(() => ({ status: "error" })); setGrokStatus((r.status || "?") + (r.detail ? " · " + r.detail : "")); }
   async function runGrok() { setBusy(true); const r = await fetch("/api/avatar-studio/render-jobs/run-grok-once", { method: "POST" }).then(x => x.json()).catch(() => ({})); setBusy(false); if (r.error) setGrokStatus(r.status + " · " + r.error); load(); }
@@ -97,6 +124,11 @@ export default function AvatarStudioPage() {
   const groupsMap: Record<string, Asset[]> = {};
   assets.forEach(a => { const k = a.avatarId + "::" + a.sceneKey; (groupsMap[k] = groupsMap[k] || []).push(a); });
   const groupList = Object.keys(groupsMap).map(k => ({ key: k, scene: groupsMap[k][0]?.sceneKey || "—", list: groupsMap[k].slice().sort((x, y) => x.candidateIndex - y.candidateIndex) }));
+  const tByCat: Record<string, Template[]> = {}; templates.forEach(t => { (tByCat[t.category] = tByCat[t.category] || []).push(t); });
+  const idLock = idSources.some(s => s.status === "approved") ? "locked · approved reference" : idSources.length ? "pending reference review" : "no reference yet";
+  const idReady = idSources.length > 0;
+  const mockProv = providers.find(p => p.id === "mock_grok_imagine");
+  const grokProv = providers.find(p => p.id === "grok_imagine_browser");
   return (
     <div className="min-h-screen bg-[#05070f] text-slate-100 p-5">
       <div className="mb-3 flex items-center gap-3">
@@ -133,6 +165,75 @@ export default function AvatarStudioPage() {
           <textarea className={inp} rows={2} placeholder="identity notes (лицо, возраст, причёска…)" value={idNotes} onChange={e => setIdNotes(e.target.value)} />
           <textarea className={inp + " mt-2"} rows={2} placeholder="style notes" value={styleNotes} onChange={e => setStyleNotes(e.target.value)} />
           <button className={btn + " bg-sky-500 text-black mt-3"} disabled={!sel || busy} onClick={savePassport}>Сохранить паспорт</button>
+        </div>
+      </div>
+
+      <div className={box + " mt-4"}>
+        <div className="flex items-center gap-2 flex-wrap mb-2">
+          <div className="font-bold">🪪 Avatar Identity Intake {sel ? "" : "(выбери аватар)"}</div>
+          <span className="text-[11px] text-slate-500">P27.8 · не распознавание лиц — только референс-метаданные + consent оператора</span>
+        </div>
+        <div className="grid md:grid-cols-2 gap-3">
+          <div>
+            <div className="flex gap-2 flex-wrap items-center mb-2 text-[12px]">
+              <span className="text-slate-400">Identity lock:</span>
+              <span className={"px-2 py-0.5 rounded " + (idSources.some(s => s.status === "approved") ? "bg-emerald-500/20 text-emerald-300" : idReady ? "bg-amber-500/20 text-amber-300" : "bg-white/10 text-slate-400")}>{idLock}</span>
+              <span className="text-slate-500">· sources: {idSources.length}</span>
+            </div>
+            <div className="flex gap-2 flex-wrap mb-2">
+              <select className="rounded-lg bg-black/40 border border-white/10 px-2 py-1 text-[12px] text-white" value={idType} onChange={e => setIdType(e.target.value)}>
+                <option value="photo">photo</option><option value="prompt">prompt</option><option value="manual">manual</option>
+              </select>
+              <input className="flex-1 min-w-[120px] rounded-lg bg-black/40 border border-white/10 px-2 py-1 text-[12px] text-white" placeholder="label (напр. front photo)" value={idLabel} onChange={e => setIdLabel(e.target.value)} />
+            </div>
+            <input className={inp} placeholder="reference URL (опц. — mock-safe, без загрузки в облако)" value={idUrl} onChange={e => setIdUrl(e.target.value)} />
+            <label className="flex items-center gap-2 mt-2 text-[12px] text-slate-300"><input type="checkbox" checked={idConsent} onChange={e => setIdConsent(e.target.checked)} /> operator consent confirmed</label>
+            <button className={btn + " bg-fuchsia-600 text-white mt-2"} disabled={!sel || busy || !idLabel.trim()} onClick={addSource}>＋ Register reference</button>
+          </div>
+          <div>
+            <div className="text-[12px] text-slate-400 mb-1">Provider readiness</div>
+            <div className="space-y-1 text-[12px]">
+              <div>· mock_grok_imagine — <span className={mockProv?.enabled ? "text-emerald-300" : "text-slate-500"}>{mockProv ? (mockProv.status || (mockProv.enabled ? "ready" : "not configured")) : "—"}</span></div>
+              <div>· grok_imagine_browser — <span className="text-violet-300">{grokProv ? (grokProv.status || (grokProv.enabled ? "optional" : "optional · not configured")) : "optional"}</span></div>
+              <div>· image identity provider (InstantID/PuLID) — <span className="text-slate-500">not configured (P27.9)</span></div>
+            </div>
+            <div className="mt-2 space-y-1 max-h-28 overflow-auto">
+              {idSources.map(s => (
+                <div key={s.id} className="rounded bg-white/5 px-2 py-1 text-[11px] flex items-center gap-2">
+                  <span className="text-slate-300">{s.type}</span>
+                  <span className="text-slate-400 truncate flex-1" title={s.fileUrl}>{s.label}</span>
+                  <span className="text-slate-500">{s.status}</span>
+                  <span className={s.consentStatus === "operator_confirmed" ? "text-emerald-300" : "text-amber-300"}>{s.consentStatus === "operator_confirmed" ? "consent✓" : "consent?"}</span>
+                </div>
+              ))}
+              {sel && !idSources.length && <div className="text-[11px] text-slate-500">Нет референсов — добавь хотя бы один для template-рендера.</div>}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className={box + " mt-4"}>
+        <div className="flex items-center gap-2 flex-wrap mb-2">
+          <div className="font-bold">🃏 Template Cards · Примерочная</div>
+          <span className="text-[11px] text-slate-500">клик = 3 кандидата в очередь (identity locked) → Quality Gate</span>
+          {!idReady && sel && <span className="text-[11px] text-amber-300">нужен ≥1 identity source</span>}
+        </div>
+        <div className="space-y-2">
+          {Object.keys(tByCat).map(cat => (
+            <div key={cat} className="flex items-start gap-2 flex-wrap">
+              <span className="w-24 shrink-0 text-[12px] text-slate-400 pt-1 capitalize">{cat}</span>
+              <div className="flex flex-wrap gap-1.5">
+                {tByCat[cat].map(t => (
+                  <button key={t.id} disabled={!sel || !idReady || busy} title={t.fragment}
+                    onClick={() => renderTemplate(t.id)}
+                    className={"rounded-lg px-2.5 py-1 text-[12px] border " + (!sel || !idReady ? "border-white/5 bg-white/5 text-slate-600 cursor-not-allowed" : "border-white/10 bg-white/5 hover:border-cyan-400 hover:bg-cyan-400/10")}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          {!templates.length && <div className="text-[12px] text-slate-500">Шаблоны не загрузились.</div>}
         </div>
       </div>
 
