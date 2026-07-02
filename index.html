@@ -729,7 +729,11 @@
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>@buch_main</div><div class="pmeta">session OK · VPN HideMyName · risk LOW · 12 каналов</div></div>'+
       '<div class="pcard"><div class="pt"><span class="sd w" style="width:9px;height:9px;border-radius:50%"></span>@buchiha_ops</div><div class="pmeta">proxy <b>degraded</b> · session OK · risk MED · 6 каналов</div></div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>@epic_publisher</div><div class="pmeta">MTProxy OK · session OK · risk LOW</div></div>';
-    if(name==='network') return '<h3>🌐 Инфраструктура</h3><div class="sub">нижний слой OS · каналы · runtime · хранилища · безопасность</div>'+
+    if(name==='network') return '<h3>🌐 Инфраструктура</h3><div class="sub">нижний слой OS · Connect Service · runtime · хранилища · безопасность</div>'+
+      '<div style="font-weight:800;margin:2px 0 6px;color:#cfe6f7">Connect Service · провайдеры коммуникаций</div>'+
+      '<div class="capgrid">'+[['📱 Telegram','🟢 подключён · demo'],['📞 WhatsApp','Connect'],['💬 Discord','Connect'],['📸 Instagram','Connect'],['✖ X','Connect'],['✉️ Email','Connect']].map(x=>'<div class="pcard" style="margin:0"><div class="pt">'+x[0]+'</div><div class="pmeta">'+x[1]+'</div></div>').join('')+'</div>'+
+      '<div class="pmeta" style="margin:6px 0 12px">Все подключаются одинаково. Router видит только <b>Communication Provider</b> — Telegram не особенный.</div>'+
+      '<div style="font-weight:800;margin:6px 0 6px;color:#cfe6f7">Инфраструктура</div>'+
       '<div class="capgrid">'+[['📱 Telegram','TDLib · demo'],['👛 Wallet','TON Connect'],['🛡 VPN','HideMyName · OK'],['🗄 Storage','медиа · файлы'],['📚 RAG','база знаний'],['⚙ Runtime','сессии · очереди'],['🔌 API','ключи скрыты'],['📝 Logs','аудит'],['💾 Backups','ежедневно (сим)'],['📈 Monitoring','SSE · uptime']].map(x=>'<div class="pcard" style="margin:0"><div class="pt">'+x[0]+'</div><div class="pmeta">'+x[1]+'</div></div>').join('')+'</div>'+
       '<div style="font-weight:800;margin:12px 0 6px;color:#cfe6f7">Сеть · живой статус</div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>HideMyName VPN</div><div class="pmeta">OK · latency 42ms</div></div>'+
@@ -758,6 +762,9 @@
       '<div class="planned" style="text-align:left;border-color:rgba(255,211,77,.35);color:#ffd34d;margin:10px 0">🗺 Направление (в коде пока не вводим): Организация → Отделы → Команды. Сначала — рабочий персональный Workspace.</div>'+
       '<div style="font-weight:800;margin:8px 0 6px">Управление</div>'+
       '<div class="capgrid">'+[['👥 Команда','1 участник · EPIC⭐STAR'],['🎭 Роли','Owner · Operator · Viewer'],['✉️ Приглашения','по реферальному коду'],['📊 Лимиты','бюджеты · rate-limit'],['💳 Подписка','demo · без биллинга'],['🔑 Реферальные коды','EPIC-DEV-•••• (из env)'],['🔌 API','ключи — не показываются'],['📝 Логи','аудит действий'],['🧩 Интеграции','Telegram · Gmail · GitHub · Wallet']].map(x=>'<div class="pcard" style="margin:0"><div class="pt">'+x[0]+'</div><div class="pmeta">'+x[1]+'</div></div>').join('')+'</div>'+
+      '<div class="pcard" style="border-color:rgba(34,227,255,.35);background:rgba(34,227,255,.06)"><div class="pt">🧬 Digital Twin · цифровой двойник</div><div class="pmeta">Знает продажи · расходы · сотрудников · KPI · клиентов · документы · память · подключения.<br>AI говорит с двойником организации, а не с «базой». Спроси: «Почему прибыль упала на этой неделе?», «Какие каналы дают лучший ROI?», «За что мы переплачиваем в AI?»</div></div>'+
+      '<div style="font-weight:800;margin:12px 0 6px">Проекты — основная единица работы</div>'+
+      '<div class="pmeta" style="margin-bottom:8px">Организация → <b>Проект</b> → каналы · AI · кошельки · документы · команда · CRM · лиды · аналитика. Пример: Hide My Name → RU · EN · Ads · Support · Affiliate · Media.</div>'+
       '<div style="font-weight:800;margin:12px 0 6px">Отделы (план · в коде пока не вводим)</div>'+
       ['Маркетинг','Продажи','Медиа','Разработка','Безопасность','Финансы','Поддержка'].map(d=>'<div class="pcard"><div class="pt"><span class="sd b" style="width:9px;height:9px;border-radius:50%"></span>'+d+'</div><div class="pmeta">свой Telegram · AI · кошелёк · бюджет · KPI — позже</div></div>').join('');
     if(name==='aiservices') return '<h3>🧰 Инструменты</h3><div class="sub">думай задачами — Router AI сам выберёт, чем выполнить · провайдеры скрыты</div>'+
