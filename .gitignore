@@ -24,3 +24,5 @@ build-*.log
 .approval-data.json
 
 .wallet-data.json
+
+.auth-data.json
