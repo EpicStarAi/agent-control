@@ -61,3 +61,31 @@ export async function runQueueOnce(ws: string): Promise<{ processed: number; res
   }
   return { processed: queued.length, results, source };
 }
+
+// P27.6 — run exactly ONE queued grok_imagine_browser job (real browser, operator-side).
+// Skips requeue on terminal states (LOGIN_REQUIRED / NOT_CONFIGURED). Creates a
+// pending_review asset on success (never auto-approved).
+export async function runGrokOnce(ws: string): Promise<{ ran: boolean; jobId?: string; status?: string; error?: string; source: Src }> {
+  const { data: queued, source } = await listJobsByStatus(ws, "queued", 20);
+  const job = queued.find(j => j.providerId === "grok_imagine_browser");
+  if (!job) return { ran: false, error: "no queued grok_imagine_browser job", source };
+  const provider = getProvider("grok_imagine_browser");
+  if (!provider) return { ran: false, error: "provider missing", source };
+  const attempts = job.attempts + 1;
+  await setJob(ws, job.id, { status: "running", startedAt: new Date().toISOString(), attempts });
+  try {
+    const r = await provider.createJob({ avatarId: job.avatarId, sceneKey: job.sceneKey, prompt: job.prompt });
+    if (r.status === "done" && r.resultUrl) {
+      await setJob(ws, job.id, { status: "done", resultUrl: r.resultUrl, completedAt: new Date().toISOString(), providerJobId: r.providerJobId, providerStatus: r.providerStatus });
+      await createAsset(ws, { avatarId: job.avatarId, jobId: job.id, assetType: "image", imageUrl: r.resultUrl, prompt: job.prompt, status: "pending_review", sceneKey: job.sceneKey, candidateIndex: job.candidateIndex });
+      return { ran: true, jobId: job.id, status: "done", source };
+    }
+    const terminal = r.error === "LOGIN_REQUIRED" || r.error === "NOT_CONFIGURED" || r.error === "PLAYWRIGHT_UNAVAILABLE" || r.error === "DRY_RUN_OK";
+    const next = (!terminal && attempts < job.maxAttempts) ? "queued" : "failed";
+    await setJob(ws, job.id, { status: next, lastError: r.error, providerStatus: r.providerStatus, providerError: r.error });
+    return { ran: true, jobId: job.id, status: next, error: r.error, source };
+  } catch (e) {
+    await setJob(ws, job.id, { status: "failed", lastError: String((e as Error)?.message || "error").slice(0, 200) });
+    return { ran: true, jobId: job.id, status: "failed", error: "error", source };
+  }
+}

@@ -22,6 +22,7 @@ export default function AvatarStudioPage() {
   const [providerId, setProviderId] = useState<string>("");
   const [candCount, setCandCount] = useState<number>(1);
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [grokStatus, setGrokStatus] = useState<string>("");
   const [sel, setSel] = useState<string>("");
   const [packId, setPackId] = useState<string>("profile");
   const [name, setName] = useState(""); const [url, setUrl] = useState(""); const [consent, setConsent] = useState(false);
@@ -73,6 +74,8 @@ export default function AvatarStudioPage() {
     await fetch(`/api/avatar-studio/assets/${assetId}/quality`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "needs_review", notes }) }); load();
   }
   async function runQueue() { setBusy(true); await fetch("/api/avatar-studio/render-jobs/run-once", { method: "POST" }); setBusy(false); load(); }
+  async function checkGrok() { setGrokStatus("…"); const r = await fetch("/api/avatar-studio/grok/check", { method: "POST" }).then(x => x.json()).catch(() => ({ status: "error" })); setGrokStatus((r.status || "?") + (r.detail ? " · " + r.detail : "")); }
+  async function runGrok() { setBusy(true); const r = await fetch("/api/avatar-studio/render-jobs/run-grok-once", { method: "POST" }).then(x => x.json()).catch(() => ({})); setBusy(false); if (r.error) setGrokStatus(r.status + " · " + r.error); load(); }
 
   if (!authed) return (
     <div className="min-h-screen bg-[#05070f] text-slate-100 grid place-items-center p-6">
@@ -149,10 +152,13 @@ export default function AvatarStudioPage() {
       </div>
 
       <div className={box + " mt-4"}>
-        <div className="flex items-center gap-3 mb-1">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
           <div className="font-bold">Render Jobs ({jobs.length})</div>
           <button className={btn + " bg-cyan-500 text-black"} disabled={busy} onClick={runQueue}>▶ Run Queue Once</button>
-          <span className="text-[11px] text-amber-300">P27.2 uses mock render queue only. Real Grok Imagine automation is not active yet.</span>
+          <button className={btn + " bg-white/10 text-white"} disabled={busy} onClick={checkGrok}>🔎 Check Grok Browser</button>
+          <button className={btn + " bg-violet-600/50 text-white"} disabled={busy} onClick={runGrok}>🦊 Run One Real Grok Job</button>
+          {grokStatus && <span className="text-[11px] text-violet-300">{grokStatus}</span>}
+          <span className="text-[11px] text-amber-300 w-full">Mock — по кнопке очереди. Реальный Grok — только с EPIC_GROK_BROWSER=1 и ручным логином.</span>
         </div>
         <div className="space-y-1 max-h-72 overflow-auto">
           {jobs.map(j => {

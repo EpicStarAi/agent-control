@@ -28,3 +28,6 @@ build-*.log
 .auth-data.json
 
 .profile-data.json
+
+# P27.6 Grok browser profile + local renders (never commit)
+.local/
