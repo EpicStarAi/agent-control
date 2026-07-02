@@ -1,5 +1,7 @@
 import { normalizeAvatar, normalizePassport, normalizeJob, normalizeAsset, normalizeIdentitySource,
-  type Avatar, type AvatarPassport, type RenderJob, type AvatarAsset, type AvatarIdentitySource } from "@/lib/avatarStudio";
+  normalizeProject, normalizeCharacter, normalizeRelationship,
+  type Avatar, type AvatarPassport, type RenderJob, type AvatarAsset, type AvatarIdentitySource,
+  type Project, type Character, type CharacterRelationship } from "@/lib/avatarStudio";
 
 // P27.1 Postgres adapter. CREATE TABLE/INDEX IF NOT EXISTS only. No DROP/DELETE.
 // Shares the global pg pool. Stores no secrets.
@@ -23,6 +25,26 @@ async function ensureInit(p: PgPool): Promise<void> {
       source_image_url text, consent_confirmed boolean DEFAULT false,
       created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())`);
     await p.query(`CREATE INDEX IF NOT EXISTS avatars_ws ON avatars(workspace_id)`);
+    // P29.1 Cast Layer — Project(Universe) + Character(wraps avatar) + Relationship graph.
+    // Avatars table is left UNCHANGED (Character is a higher entity over avatar).
+    await p.query(`CREATE TABLE IF NOT EXISTS avatar_projects (
+      id text PRIMARY KEY, workspace_id text NOT NULL, name text, type text DEFAULT 'universe',
+      status text DEFAULT 'active', description text,
+      created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())`);
+    await p.query(`CREATE INDEX IF NOT EXISTS avatar_projects_ws ON avatar_projects(workspace_id)`);
+    await p.query(`CREATE TABLE IF NOT EXISTS characters (
+      id text PRIMARY KEY, workspace_id text NOT NULL, project_id text, avatar_id text, name text,
+      role text DEFAULT 'main', archetype text, status text DEFAULT 'active',
+      economy_profile text, story_seed text,
+      created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())`);
+    await p.query(`CREATE INDEX IF NOT EXISTS characters_ws ON characters(workspace_id)`);
+    await p.query(`CREATE INDEX IF NOT EXISTS characters_project ON characters(workspace_id, project_id)`);
+    await p.query(`CREATE TABLE IF NOT EXISTS character_relationships (
+      id text PRIMARY KEY, workspace_id text NOT NULL, project_id text,
+      source_character_id text NOT NULL, target_character_id text NOT NULL,
+      relation_type text, description text, strength integer DEFAULT 50,
+      created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())`);
+    await p.query(`CREATE INDEX IF NOT EXISTS character_relationships_ws ON character_relationships(workspace_id)`);
     await p.query(`CREATE TABLE IF NOT EXISTS avatar_passports (
       id text PRIMARY KEY, avatar_id text NOT NULL, workspace_id text NOT NULL,
       profile_json jsonb DEFAULT '{}'::jsonb, identity_notes text, style_notes text,
@@ -81,6 +103,16 @@ function jarr(v: unknown): string[] { return Array.isArray(v) ? v as string[] : 
 function avatarRow(r: any): Avatar { return { id: r.id, workspaceId: r.workspace_id, name: r.name ?? "", status: r.status ?? "draft",
   sourceImageUrl: r.source_image_url ?? "", consentConfirmed: Boolean(r.consent_confirmed),
   createdAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString() }; }
+function projectRow(r: any): Project { return { id: r.id, workspaceId: r.workspace_id, name: r.name ?? "", type: r.type ?? "universe",
+  status: r.status ?? "active", description: r.description ?? "", createdAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString() }; }
+function charRow(r: any): Character { return { id: r.id, workspaceId: r.workspace_id, projectId: r.project_id ?? "", avatarId: r.avatar_id ?? "",
+  name: r.name ?? "", role: r.role ?? "main", archetype: r.archetype ?? "", status: r.status ?? "active",
+  economyProfile: r.economy_profile ?? "", storySeed: r.story_seed ?? "",
+  createdAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString() }; }
+function relRow(r: any): CharacterRelationship { return { id: r.id, workspaceId: r.workspace_id, projectId: r.project_id ?? "",
+  sourceCharacterId: r.source_character_id, targetCharacterId: r.target_character_id, relationType: r.relation_type ?? "unknown",
+  description: r.description ?? "", strength: Number(r.strength ?? 50),
+  createdAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString() }; }
 function passRow(r: any): AvatarPassport { return { id: r.id, avatarId: r.avatar_id, workspaceId: r.workspace_id,
   profileJson: (r.profile_json && typeof r.profile_json === "object" ? r.profile_json : {}),
   identityNotes: r.identity_notes ?? "", styleNotes: r.style_notes ?? "", forbiddenRules: jarr(r.forbidden_rules),
@@ -110,6 +142,56 @@ export async function createAvatar(ws: string, input: Partial<Avatar>): Promise<
   const r = await p.query(`INSERT INTO avatars(id,workspace_id,name,status,source_image_url,consent_confirmed,created_at,updated_at)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`, [n.id, ws, n.name, n.status, n.sourceImageUrl, n.consentConfirmed, n.createdAt, n.updatedAt]);
   return avatarRow(r.rows[0]); }
+// P29.1 projects.
+export async function listProjects(ws: string): Promise<Project[]> {
+  const p = await db(); return (await p.query(`SELECT * FROM avatar_projects WHERE workspace_id=$1 ORDER BY created_at ASC`, [ws])).rows.map(projectRow); }
+export async function getProject(ws: string, id: string): Promise<Project | null> {
+  const p = await db(); const r = (await p.query(`SELECT * FROM avatar_projects WHERE workspace_id=$1 AND id=$2`, [ws, id])).rows[0]; return r ? projectRow(r) : null; }
+export async function createProject(ws: string, input: Partial<Project>): Promise<Project> {
+  const p = await db(); const n = normalizeProject(ws, input);
+  const r = await p.query(`INSERT INTO avatar_projects(id,workspace_id,name,type,status,description,created_at,updated_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`, [n.id, ws, n.name, n.type, n.status, n.description, n.createdAt, n.updatedAt]);
+  return projectRow(r.rows[0]); }
+// P29.1 characters (wrap an avatar; higher entity over the visual shell).
+export async function listCharacters(ws: string, projectId?: string): Promise<Character[]> {
+  const p = await db();
+  const q = projectId
+    ? await p.query(`SELECT * FROM characters WHERE workspace_id=$1 AND project_id=$2 ORDER BY created_at ASC`, [ws, projectId])
+    : await p.query(`SELECT * FROM characters WHERE workspace_id=$1 ORDER BY created_at ASC`, [ws]);
+  return q.rows.map(charRow); }
+export async function getCharacter(ws: string, id: string): Promise<Character | null> {
+  const p = await db(); const r = (await p.query(`SELECT * FROM characters WHERE workspace_id=$1 AND id=$2`, [ws, id])).rows[0]; return r ? charRow(r) : null; }
+export async function createCharacter(ws: string, input: Partial<Character>): Promise<Character> {
+  const p = await db(); const n = normalizeCharacter(ws, input);
+  const r = await p.query(`INSERT INTO characters(id,workspace_id,project_id,avatar_id,name,role,archetype,status,economy_profile,story_seed,created_at,updated_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+    [n.id, ws, n.projectId, n.avatarId, n.name, n.role, n.archetype, n.status, n.economyProfile, n.storySeed, n.createdAt, n.updatedAt]);
+  return charRow(r.rows[0]); }
+export async function updateCharacter(ws: string, id: string, patch: Partial<Character>): Promise<Character | null> {
+  const p = await db(); const now = new Date().toISOString();
+  const r = await p.query(`UPDATE characters SET project_id=COALESCE($3,project_id), avatar_id=COALESCE($4,avatar_id),
+      name=COALESCE($5,name), role=COALESCE($6,role), archetype=COALESCE($7,archetype), status=COALESCE($8,status),
+      economy_profile=COALESCE($9,economy_profile), story_seed=COALESCE($10,story_seed), updated_at=$11
+    WHERE workspace_id=$1 AND id=$2 RETURNING *`,
+    [ws, id, patch.projectId ?? null, patch.avatarId ?? null, patch.name ?? null, patch.role ?? null, patch.archetype ?? null,
+     patch.status ?? null, patch.economyProfile ?? null, patch.storySeed ?? null, now]);
+  return r.rows[0] ? charRow(r.rows[0]) : null; }
+export async function deleteCharacter(ws: string, id: string): Promise<void> {
+  const p = await db(); await p.query(`DELETE FROM characters WHERE workspace_id=$1 AND id=$2`, [ws, id]); }
+// P29.1 relationships (character↔character edges).
+export async function listRelationships(ws: string, characterId?: string): Promise<CharacterRelationship[]> {
+  const p = await db();
+  const q = characterId
+    ? await p.query(`SELECT * FROM character_relationships WHERE workspace_id=$1 AND (source_character_id=$2 OR target_character_id=$2) ORDER BY created_at ASC`, [ws, characterId])
+    : await p.query(`SELECT * FROM character_relationships WHERE workspace_id=$1 ORDER BY created_at ASC`, [ws]);
+  return q.rows.map(relRow); }
+export async function createRelationship(ws: string, input: Partial<CharacterRelationship>): Promise<CharacterRelationship> {
+  const p = await db(); const n = normalizeRelationship(ws, input);
+  const r = await p.query(`INSERT INTO character_relationships(id,workspace_id,project_id,source_character_id,target_character_id,relation_type,description,strength,created_at,updated_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`, [n.id, ws, n.projectId, n.sourceCharacterId, n.targetCharacterId, n.relationType, n.description, n.strength, n.createdAt, n.updatedAt]);
+  return relRow(r.rows[0]); }
+export async function deleteRelationship(ws: string, id: string): Promise<void> {
+  const p = await db(); await p.query(`DELETE FROM character_relationships WHERE workspace_id=$1 AND id=$2`, [ws, id]); }
 export async function getPassport(ws: string, avatarId: string): Promise<AvatarPassport | null> {
   const p = await db(); const r = (await p.query(`SELECT * FROM avatar_passports WHERE workspace_id=$1 AND avatar_id=$2`, [ws, avatarId])).rows[0]; return r ? passRow(r) : null; }
 export async function upsertPassport(ws: string, avatarId: string, input: Partial<AvatarPassport>): Promise<AvatarPassport> {

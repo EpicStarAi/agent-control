@@ -1,6 +1,6 @@
 import * as db from "@/lib/avatarStudioDb";
 import * as store from "@/lib/avatarStudioStore";
-import type { Avatar, AvatarPassport, RenderJob, AvatarAsset, AvatarIdentitySource } from "@/lib/avatarStudio";
+import type { Avatar, AvatarPassport, RenderJob, AvatarAsset, AvatarIdentitySource, Project, Character, CharacterRelationship } from "@/lib/avatarStudio";
 import { getProvider, DEFAULT_PROVIDER } from "@/lib/renderProviders";
 
 // P27.1 facade: Postgres when available, else fs. Carries source: "db"|"fallback".
@@ -13,6 +13,18 @@ async function pick<T>(dbFn: () => Promise<T>, storeFn: () => Promise<T>): Promi
 export const listAvatars = (ws: string) => pick(() => db.listAvatars(ws), () => store.listAvatars(ws));
 export const getAvatar = (ws: string, id: string) => pick(() => db.getAvatar(ws, id), () => store.getAvatar(ws, id));
 export const createAvatar = (ws: string, i: Partial<Avatar>) => pick(() => db.createAvatar(ws, i), () => store.createAvatar(ws, i));
+// P29.1 Cast Layer — projects + characters + relationships.
+export const listProjects = (ws: string) => pick(() => db.listProjects(ws), () => store.listProjects(ws));
+export const getProject = (ws: string, id: string) => pick(() => db.getProject(ws, id), () => store.getProject(ws, id));
+export const createProject = (ws: string, i: Partial<Project>) => pick(() => db.createProject(ws, i), () => store.createProject(ws, i));
+export const listCharacters = (ws: string, projectId?: string) => pick(() => db.listCharacters(ws, projectId), () => store.listCharacters(ws, projectId));
+export const getCharacter = (ws: string, id: string) => pick(() => db.getCharacter(ws, id), () => store.getCharacter(ws, id));
+export const createCharacter = (ws: string, i: Partial<Character>) => pick(() => db.createCharacter(ws, i), () => store.createCharacter(ws, i));
+export const updateCharacter = (ws: string, id: string, patch: Partial<Character>) => pick(() => db.updateCharacter(ws, id, patch), () => store.updateCharacter(ws, id, patch));
+export const deleteCharacter = (ws: string, id: string) => pick(() => db.deleteCharacter(ws, id), () => store.deleteCharacter(ws, id));
+export const listRelationships = (ws: string, characterId?: string) => pick(() => db.listRelationships(ws, characterId), () => store.listRelationships(ws, characterId));
+export const createRelationship = (ws: string, i: Partial<CharacterRelationship>) => pick(() => db.createRelationship(ws, i), () => store.createRelationship(ws, i));
+export const deleteRelationship = (ws: string, id: string) => pick(() => db.deleteRelationship(ws, id), () => store.deleteRelationship(ws, id));
 export const getPassport = (ws: string, aid: string) => pick(() => db.getPassport(ws, aid), () => store.getPassport(ws, aid));
 export const upsertPassport = (ws: string, aid: string, i: Partial<AvatarPassport>) => pick(() => db.upsertPassport(ws, aid, i), () => store.upsertPassport(ws, aid, i));
 export const listJobs = (ws: string) => pick(() => db.listJobs(ws), () => store.listJobs(ws));

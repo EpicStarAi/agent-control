@@ -1,21 +1,55 @@
 import fs from "node:fs";
 import path from "node:path";
 import { normalizeAvatar, normalizePassport, normalizeJob, normalizeAsset, normalizeIdentitySource,
-  type Avatar, type AvatarPassport, type RenderJob, type AvatarAsset, type AvatarIdentitySource } from "@/lib/avatarStudio";
+  normalizeProject, normalizeCharacter, normalizeRelationship,
+  type Avatar, type AvatarPassport, type RenderJob, type AvatarAsset, type AvatarIdentitySource,
+  type Project, type Character, type CharacterRelationship } from "@/lib/avatarStudio";
 
 // P27.1 fs fallback (keyed by workspace_id). Same shape as the DB adapter.
 const FILE = path.join(process.cwd(), ".avatar-studio-data.json");
-type WS = { avatars: Avatar[]; passports: AvatarPassport[]; jobs: RenderJob[]; assets: AvatarAsset[]; identitySources?: AvatarIdentitySource[] };
+type WS = { avatars: Avatar[]; passports: AvatarPassport[]; jobs: RenderJob[]; assets: AvatarAsset[];
+  identitySources?: AvatarIdentitySource[]; projects?: Project[]; characters?: Character[]; relationships?: CharacterRelationship[] };
 type DB = { ws: Record<string, WS> };
 function load(): DB { try { if (fs.existsSync(FILE)) return JSON.parse(fs.readFileSync(FILE, "utf8")); } catch {} return { ws: {} }; }
 function save(db: DB) { try { fs.writeFileSync(FILE, JSON.stringify(db, null, 2)); } catch {} }
-function bucket(db: DB, ws: string): WS { return (db.ws[ws] ||= { avatars: [], passports: [], jobs: [], assets: [], identitySources: [] }); }
+function bucket(db: DB, ws: string): WS { return (db.ws[ws] ||= { avatars: [], passports: [], jobs: [], assets: [], identitySources: [], projects: [], characters: [], relationships: [] }); }
 const desc = <T extends { updatedAt: string }>(a: T[]) => a.slice().sort((x, y) => (x.updatedAt < y.updatedAt ? 1 : -1));
 
 export async function listAvatars(ws: string): Promise<Avatar[]> { return desc(bucket(load(), ws).avatars); }
 export async function getAvatar(ws: string, id: string): Promise<Avatar | null> { return bucket(load(), ws).avatars.find(a => a.id === id) ?? null; }
 export async function createAvatar(ws: string, input: Partial<Avatar>): Promise<Avatar> {
   const db = load(); const b = bucket(db, ws); const n = normalizeAvatar(ws, input); b.avatars.push(n); save(db); return n; }
+// P29.1 projects.
+export async function listProjects(ws: string): Promise<Project[]> {
+  const b = bucket(load(), ws); return (b.projects || []).slice().sort((x, y) => (x.createdAt < y.createdAt ? -1 : 1)); }
+export async function getProject(ws: string, id: string): Promise<Project | null> { return (bucket(load(), ws).projects || []).find(p => p.id === id) ?? null; }
+export async function createProject(ws: string, input: Partial<Project>): Promise<Project> {
+  const db = load(); const b = bucket(db, ws); (b.projects ||= []); const n = normalizeProject(ws, input); b.projects.push(n); save(db); return n; }
+// P29.1 characters.
+export async function listCharacters(ws: string, projectId?: string): Promise<Character[]> {
+  const chars = bucket(load(), ws).characters || [];
+  return (projectId ? chars.filter(c => c.projectId === projectId) : chars).slice().sort((x, y) => (x.createdAt < y.createdAt ? -1 : 1)); }
+export async function getCharacter(ws: string, id: string): Promise<Character | null> { return (bucket(load(), ws).characters || []).find(c => c.id === id) ?? null; }
+export async function createCharacter(ws: string, input: Partial<Character>): Promise<Character> {
+  const db = load(); const b = bucket(db, ws); (b.characters ||= []); const n = normalizeCharacter(ws, input); b.characters.push(n); save(db); return n; }
+export async function updateCharacter(ws: string, id: string, patch: Partial<Character>): Promise<Character | null> {
+  const db = load(); const b = bucket(db, ws); const c = (b.characters ||= []).find(x => x.id === id); if (!c) return null;
+  if (patch.projectId != null) c.projectId = patch.projectId; if (patch.avatarId != null) c.avatarId = patch.avatarId;
+  if (patch.name != null) c.name = patch.name; if (patch.role != null) c.role = patch.role;
+  if (patch.archetype != null) c.archetype = patch.archetype; if (patch.status != null) c.status = patch.status;
+  if (patch.economyProfile != null) c.economyProfile = patch.economyProfile; if (patch.storySeed != null) c.storySeed = patch.storySeed;
+  c.updatedAt = new Date().toISOString(); save(db); return c; }
+export async function deleteCharacter(ws: string, id: string): Promise<void> {
+  const db = load(); const b = bucket(db, ws); if (b.characters) { b.characters = b.characters.filter(c => c.id !== id); save(db); } }
+// P29.1 relationships.
+export async function listRelationships(ws: string, characterId?: string): Promise<CharacterRelationship[]> {
+  const rels = bucket(load(), ws).relationships || [];
+  return (characterId ? rels.filter(r => r.sourceCharacterId === characterId || r.targetCharacterId === characterId) : rels)
+    .slice().sort((x, y) => (x.createdAt < y.createdAt ? -1 : 1)); }
+export async function createRelationship(ws: string, input: Partial<CharacterRelationship>): Promise<CharacterRelationship> {
+  const db = load(); const b = bucket(db, ws); (b.relationships ||= []); const n = normalizeRelationship(ws, input); b.relationships.push(n); save(db); return n; }
+export async function deleteRelationship(ws: string, id: string): Promise<void> {
+  const db = load(); const b = bucket(db, ws); if (b.relationships) { b.relationships = b.relationships.filter(r => r.id !== id); save(db); } }
 export async function getPassport(ws: string, avatarId: string): Promise<AvatarPassport | null> { return bucket(load(), ws).passports.find(p => p.avatarId === avatarId) ?? null; }
 export async function upsertPassport(ws: string, avatarId: string, input: Partial<AvatarPassport>): Promise<AvatarPassport> {
   const db = load(); const b = bucket(db, ws); const n = normalizePassport(ws, avatarId, input);

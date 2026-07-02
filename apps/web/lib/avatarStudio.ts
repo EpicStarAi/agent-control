@@ -260,6 +260,64 @@ export const TEMPLATE_CARDS: TemplateCard[] = [
   tcard("platform", "tiktok_cover", "TikTok cover", "Format: TikTok cover, 9:16"),
 ];
 export function getTemplateCard(id: string): TemplateCard | undefined { return TEMPLATE_CARDS.find(c => c.id === id); }
+
+// ============================================================================
+// P29.1 Cast Layer — Story Universe spine (EPIC AI OS v3), THIN production layer.
+// Avatar = visual shell (UNCHANGED, backward-compatible). Character = higher
+// entity that WRAPS an avatar (avatarId) and adds role / archetype / status /
+// economy / story seed. Project (Universe) owns a Cast of Characters.
+// Relationship = a directed edge Character↔Character. MOCK-SAFE, ws-scoped.
+// ============================================================================
+export type CharacterRole = "main" | "side" | "enemy" | "friend" | "narrator" | "npc" | "manager" | "sponsor" | "client" | "fan";
+export const CHARACTER_ROLES: CharacterRole[] = ["main", "side", "enemy", "friend", "narrator", "npc", "manager", "sponsor", "client", "fan"];
+export type CharacterStatus = "active" | "draft" | "archived";
+
+export interface Project {
+  id: string; workspaceId: string; name: string; type: string; status: string;
+  description: string; createdAt: string; updatedAt: string;
+}
+export function normalizeProject(workspaceId: string, i: Partial<Project>): Project {
+  const now = new Date().toISOString();
+  return { id: i.id || nid("proj"), workspaceId, name: clip(i.name, 100) || "Universe",
+    type: clip(i.type, 40) || "universe", status: clip(i.status, 20) || "active",
+    description: clip(i.description, 600), createdAt: i.createdAt || now, updatedAt: now };
+}
+
+export interface Character {
+  id: string; workspaceId: string; projectId: string; avatarId: string; name: string;
+  role: CharacterRole; archetype: string; status: CharacterStatus;
+  economyProfile: string; storySeed: string; createdAt: string; updatedAt: string;
+}
+export function normalizeCharacter(workspaceId: string, i: Partial<Character>): Character {
+  const now = new Date().toISOString();
+  return { id: i.id || nid("char"), workspaceId, projectId: clip(i.projectId, 60), avatarId: clip(i.avatarId, 60),
+    name: clip(i.name, 100) || "Character",
+    role: (CHARACTER_ROLES as string[]).includes(String(i.role)) ? (String(i.role) as CharacterRole) : "main",
+    archetype: clip(i.archetype, 80),
+    status: (i.status === "draft" || i.status === "archived" ? i.status : "active"),
+    economyProfile: clip(i.economyProfile, 600), storySeed: clip(i.storySeed, 800),
+    createdAt: i.createdAt || now, updatedAt: now };
+}
+
+export type RelationType =
+  | "friend" | "family" | "enemy" | "rival" | "manager" | "sponsor" | "client" | "creator" | "romantic" | "unknown";
+export const RELATION_TYPES: RelationType[] = [
+  "friend", "family", "enemy", "rival", "manager", "sponsor", "client", "creator", "romantic", "unknown",
+];
+export interface CharacterRelationship {
+  id: string; workspaceId: string; projectId: string;
+  sourceCharacterId: string; targetCharacterId: string;
+  relationType: RelationType; description: string; strength: number;
+  createdAt: string; updatedAt: string;
+}
+export function normalizeRelationship(workspaceId: string, i: Partial<CharacterRelationship>): CharacterRelationship {
+  const now = new Date().toISOString();
+  const s = Number(i.strength); const strength = Number.isFinite(s) ? Math.max(0, Math.min(100, s)) : 50;
+  return { id: i.id || nid("rel"), workspaceId, projectId: clip(i.projectId, 60),
+    sourceCharacterId: clip(i.sourceCharacterId, 60), targetCharacterId: clip(i.targetCharacterId, 60),
+    relationType: (RELATION_TYPES as string[]).includes(String(i.relationType)) ? (String(i.relationType) as RelationType) : "unknown",
+    description: clip(i.description, 300), strength, createdAt: i.createdAt || now, updatedAt: now };
+}
 // Merge passport + one template card into a render prompt with identity lock + safety.
 export function buildTemplatePrompt(passport: Partial<AvatarPassport> | null, card: TemplateCard): string {
   const identity = (passport?.identityNotes || "reference avatar").trim();

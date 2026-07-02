@@ -9,6 +9,12 @@ type Prov = { id: string; name: string; mode: string; capabilities: string[]; en
 type Asset = { id: string; jobId: string; avatarId: string; imageUrl: string; status: string; qualityStatus: string; qualityScore: number | null; identityScore: number | null; sceneKey: string; candidateIndex: number; qualityNotes: string; createdAt?: string };
 type IdSource = { id: string; avatarId: string; type: string; label: string; fileUrl: string; status: string; consentStatus: string };
 type Template = { id: string; category: string; value: string; label: string; fragment: string };
+type Project = { id: string; name: string; type: string; status: string; description?: string };
+type Character = { id: string; projectId: string; avatarId: string; name: string; role: string; archetype: string; status: string };
+type Relationship = { id: string; projectId: string; sourceCharacterId: string; targetCharacterId: string; relationType: string; description: string; strength: number };
+
+const CHAR_ROLES = ["main", "side", "enemy", "friend", "narrator", "npc", "manager", "sponsor", "client", "fan"];
+const REL_TYPES = ["friend", "family", "enemy", "rival", "manager", "sponsor", "client", "creator", "romantic", "unknown"];
 
 const box = "rounded-xl border border-white/10 bg-white/5 p-4";
 const btn = "rounded-lg px-3 py-1.5 text-[13px] font-semibold";
@@ -33,6 +39,13 @@ export default function AvatarStudioPage() {
   const [idSources, setIdSources] = useState<IdSource[]>([]);
   const [idType, setIdType] = useState<string>("photo");
   const [idLabel, setIdLabel] = useState(""); const [idUrl, setIdUrl] = useState(""); const [idConsent, setIdConsent] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [characters, setCharacters] = useState<Character[]>([]);
+  const [relationships, setRelationships] = useState<Relationship[]>([]);
+  const [activeProject, setActiveProject] = useState<string>("");
+  const [projName, setProjName] = useState(""); const [projType, setProjType] = useState("universe");
+  const [charName, setCharName] = useState(""); const [charRole, setCharRole] = useState("main"); const [charArch, setCharArch] = useState("");
+  const [relSrc, setRelSrc] = useState(""); const [relTgt, setRelTgt] = useState(""); const [relType, setRelType] = useState("friend");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -44,6 +57,9 @@ export default function AvatarStudioPage() {
     const j = await fetch("/api/avatar-studio/render-jobs").then(x => x.json()).catch(() => ({ jobs: [] })); setJobs(j.jobs || []);
     const as = await fetch("/api/avatar-studio/assets").then(x => x.json()).catch(() => ({ assets: [] })); setAssets(as.assets || []);
     const tp = await fetch("/api/avatar-studio/templates").then(x => x.json()).catch(() => ({ templates: [] })); setTemplates(tp.templates || []);
+    const pj = await fetch("/api/avatar-studio/projects").then(x => x.json()).catch(() => ({ projects: [] })); setProjects(pj.projects || []);
+    const ch = await fetch("/api/avatar-studio/characters").then(x => x.json()).catch(() => ({ characters: [] })); setCharacters(ch.characters || []);
+    const rl = await fetch("/api/avatar-studio/relationships").then(x => x.json()).catch(() => ({ relationships: [] })); setRelationships(rl.relationships || []);
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -106,6 +122,34 @@ export default function AvatarStudioPage() {
     setBusy(false);
     if (r && r.reason) window.alert("Template render недоступен: " + r.reason); else load();
   }
+  async function createProject() {
+    if (!projName.trim()) return; setBusy(true);
+    await fetch("/api/avatar-studio/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: projName, type: projType }) });
+    setProjName(""); setBusy(false); load();
+  }
+  async function createCharacter() {
+    if (!charName.trim()) return; setBusy(true);
+    await fetch("/api/avatar-studio/characters", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: charName, role: charRole, archetype: charArch, projectId: activeProject || undefined, avatarId: sel || undefined }) });
+    setCharName(""); setCharArch(""); setBusy(false); load();
+  }
+  async function patchCharacter(id: string, patch: Record<string, string>) {
+    await fetch(`/api/avatar-studio/characters/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) }); load();
+  }
+  async function delCharacter(id: string) {
+    if (!window.confirm("Удалить персонажа? (аватар остаётся)")) return;
+    await fetch(`/api/avatar-studio/characters/${id}`, { method: "DELETE" }); load();
+  }
+  async function addRelationship() {
+    if (!relSrc || !relTgt) return; setBusy(true);
+    const r = await fetch("/api/avatar-studio/relationships", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceCharacterId: relSrc, targetCharacterId: relTgt, relationType: relType }) }).then(x => x.json()).catch(() => ({}));
+    setBusy(false);
+    if (r && r.reason) window.alert("Связь недоступна: " + r.reason); else load();
+  }
+  async function delRelationship(id: string) {
+    await fetch(`/api/avatar-studio/relationships?id=${encodeURIComponent(id)}`, { method: "DELETE" }); load();
+  }
   async function runQueue() { setBusy(true); await fetch("/api/avatar-studio/render-jobs/run-once", { method: "POST" }); setBusy(false); load(); }
   async function checkGrok() { setGrokStatus("…"); const r = await fetch("/api/avatar-studio/grok/check", { method: "POST" }).then(x => x.json()).catch(() => ({ status: "error" })); setGrokStatus((r.status || "?") + (r.detail ? " · " + r.detail : "")); }
   async function runGrok() { setBusy(true); const r = await fetch("/api/avatar-studio/render-jobs/run-grok-once", { method: "POST" }).then(x => x.json()).catch(() => ({})); setBusy(false); if (r.error) setGrokStatus(r.status + " · " + r.error); load(); }
@@ -129,6 +173,10 @@ export default function AvatarStudioPage() {
   const idReady = idSources.length > 0;
   const mockProv = providers.find(p => p.id === "mock_grok_imagine");
   const grokProv = providers.find(p => p.id === "grok_imagine_browser");
+  const charById: Record<string, Character> = {}; characters.forEach(c => { charById[c.id] = c; });
+  const avById: Record<string, Avatar> = {}; avatars.forEach(a => { avById[a.id] = a; });
+  const castChars = activeProject ? characters.filter(c => c.projectId === activeProject) : characters;
+  const roleColor = (r: string) => r === "main" ? "bg-fuchsia-500/20 text-fuchsia-300" : r === "enemy" || r === "rival" ? "bg-rose-500/20 text-rose-300" : r === "narrator" ? "bg-amber-500/20 text-amber-300" : "bg-sky-500/20 text-sky-300";
   return (
     <div className="min-h-screen bg-[#05070f] text-slate-100 p-5">
       <div className="mb-3 flex items-center gap-3">
@@ -137,6 +185,89 @@ export default function AvatarStudioPage() {
       </div>
       <h1 className="text-2xl font-black mb-1">🧬 AI Avatar Studio</h1>
       <div className="text-sm text-slate-400 mb-4">Один референс → Avatar → Passport → Prompt Packs → Render Jobs → Asset Library. Рендер — заглушка (без Grok/Playwright).</div>
+
+      <div className={box + " mb-4"}>
+        <div className="flex items-center gap-2 flex-wrap mb-2">
+          <div className="font-bold">🎬 Cast · Story Universe</div>
+          <span className="text-[11px] text-slate-500">P29.1 · Project → Cast → Character(обёртка над avatar) → Relationship graph</span>
+        </div>
+        <div className="grid md:grid-cols-3 gap-3">
+          <div>
+            <div className="text-[12px] text-slate-400 mb-1">Project (Universe)</div>
+            <div className="flex gap-1.5 mb-2">
+              <input className="flex-1 rounded-lg bg-black/40 border border-white/10 px-2 py-1 text-[12px] text-white" placeholder="имя проекта" value={projName} onChange={e => setProjName(e.target.value)} />
+              <select className="rounded-lg bg-black/40 border border-white/10 px-1 py-1 text-[11px] text-white" value={projType} onChange={e => setProjType(e.target.value)}>
+                {["universe", "campaign", "brand", "media"].map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <button className={btn + " bg-cyan-600 text-white"} disabled={busy || !projName.trim()} onClick={createProject}>＋</button>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              <button onClick={() => setActiveProject("")} className={"rounded px-2 py-0.5 text-[11px] border " + (!activeProject ? "border-cyan-400 bg-cyan-400/10" : "border-white/10 bg-white/5")}>Все ({characters.length})</button>
+              {projects.map(p => (
+                <button key={p.id} onClick={() => setActiveProject(p.id)} className={"rounded px-2 py-0.5 text-[11px] border " + (activeProject === p.id ? "border-cyan-400 bg-cyan-400/10" : "border-white/10 bg-white/5")}>{p.name} <span className="text-slate-500">{p.type}</span></button>
+              ))}
+              {!projects.length && <span className="text-[11px] text-slate-500">Проектов нет.</span>}
+            </div>
+          </div>
+          <div>
+            <div className="text-[12px] text-slate-400 mb-1">Новый Character {sel ? "· link avatar ✓" : "(без avatar)"}</div>
+            <input className="w-full rounded-lg bg-black/40 border border-white/10 px-2 py-1 text-[12px] text-white mb-1.5" placeholder="имя персонажа" value={charName} onChange={e => setCharName(e.target.value)} />
+            <div className="flex gap-1.5 mb-1.5">
+              <select className="rounded-lg bg-black/40 border border-white/10 px-1 py-1 text-[11px] text-white" value={charRole} onChange={e => setCharRole(e.target.value)}>
+                {CHAR_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+              <input className="flex-1 rounded-lg bg-black/40 border border-white/10 px-2 py-1 text-[11px] text-white" placeholder="archetype" value={charArch} onChange={e => setCharArch(e.target.value)} />
+            </div>
+            <button className={btn + " bg-fuchsia-600 text-white"} disabled={busy || !charName.trim()} onClick={createCharacter}>＋ Создать персонажа</button>
+            <div className="text-[10px] text-slate-500 mt-1">В проект: {projects.find(p => p.id === activeProject)?.name || "— (выбери проект-чип)"} · avatar: {avById[sel]?.name || "—"}</div>
+          </div>
+          <div>
+            <div className="text-[12px] text-slate-400 mb-1">Relationship graph</div>
+            <div className="flex gap-1 mb-1.5 flex-wrap">
+              <select className="rounded bg-black/40 border border-white/10 px-1 py-1 text-[11px] text-white max-w-[92px]" value={relSrc} onChange={e => setRelSrc(e.target.value)}>
+                <option value="">source…</option>{characters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <select className="rounded bg-black/40 border border-white/10 px-1 py-1 text-[11px] text-white" value={relType} onChange={e => setRelType(e.target.value)}>
+                {REL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <select className="rounded bg-black/40 border border-white/10 px-1 py-1 text-[11px] text-white max-w-[92px]" value={relTgt} onChange={e => setRelTgt(e.target.value)}>
+                <option value="">target…</option>{characters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <button className={btn + " bg-emerald-600 text-white"} disabled={busy || !relSrc || !relTgt} onClick={addRelationship}>＋</button>
+            </div>
+            <div className="space-y-1 max-h-24 overflow-auto">
+              {relationships.map(r => (
+                <div key={r.id} className="rounded bg-white/5 px-2 py-1 text-[11px] flex items-center gap-1">
+                  <span className="text-sky-300">{charById[r.sourceCharacterId]?.name || "?"}</span>
+                  <span className="text-slate-500">—{r.relationType}→</span>
+                  <span className="text-fuchsia-300">{charById[r.targetCharacterId]?.name || "?"}</span>
+                  <button className="ml-auto text-rose-400" onClick={() => delRelationship(r.id)}>✕</button>
+                </div>
+              ))}
+              {!relationships.length && <div className="text-[11px] text-slate-500">Связей нет.</div>}
+            </div>
+          </div>
+        </div>
+        <div className="mt-3">
+          <div className="text-[12px] text-slate-400 mb-1">Cast{activeProject ? " (проект)" : ""} — {castChars.length}</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {castChars.map(c => (
+              <div key={c.id} className="rounded-lg border border-white/10 bg-white/5 p-2 text-[11px]">
+                <div className="flex items-center gap-1 mb-1">
+                  <span className="font-semibold truncate flex-1">{c.name}</span>
+                  <button className="text-rose-400" onClick={() => delCharacter(c.id)}>✕</button>
+                </div>
+                <select className={"rounded px-1 py-0.5 text-[10px] " + roleColor(c.role)} value={c.role} onChange={e => patchCharacter(c.id, { role: e.target.value })}>
+                  {CHAR_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+                <div className="text-slate-500 truncate mt-1">{c.archetype || "—"}</div>
+                <div className="text-slate-600 truncate">avatar: {avById[c.avatarId]?.name || "—"} · {c.status}</div>
+              </div>
+            ))}
+            {!castChars.length && <div className="text-[11px] text-slate-500">Персонажей нет — создай Character (можно связать с текущим выбранным аватаром).</div>}
+          </div>
+        </div>
+      </div>
 
       <div className="grid md:grid-cols-3 gap-4">
         <div className={box}>
