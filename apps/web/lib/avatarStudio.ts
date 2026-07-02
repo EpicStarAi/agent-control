@@ -408,6 +408,33 @@ export function buildScenePrompt(scene: Pick<Scene, "summary" | "goal">, charact
 // pipeline); video/voice/caption/publish are placeholders wired in later phases.
 export type SceneRunStep = "image" | "video" | "voice" | "caption" | "publish";
 export const SCENE_RUN_STEPS: SceneRunStep[] = ["image", "voice", "video", "caption", "publish"];
+
+// ============================================================================
+// NOVIKOVA Social Accounts Registry (freeze-safe: types + static canonical data,
+// display only). NOT verified unless a human checked it; NO auto-connect; NO
+// impersonation — original AI avatar brand links only.
+// ============================================================================
+export type SocialPlatform = "telegram" | "instagram" | "tiktok" | "facebook" | "youtube" | "threads" | "linkhub";
+export type SocialAccountStatus = "verified" | "needs_manual_check" | "reserved_candidate" | "not_found" | "blocked_by_platform";
+export interface AvatarSocialAccount { platform: SocialPlatform; label: string; handle: string; url: string; status: SocialAccountStatus; notes?: string; }
+
+// Canonical registry for NOVIKOVA (primary handle no_vikovaforever; YouTube brand NOVIKOVAFOREVER).
+// Statuses reflect ACTUAL check state — links here are recorded, not auto-verified.
+export const NOVIKOVA_SOCIAL_ACCOUNTS: AvatarSocialAccount[] = [
+  { platform: "telegram", label: "Telegram", handle: "no_vikovaforever", url: "https://t.me/no_vikovaforever", status: "needs_manual_check" },
+  { platform: "instagram", label: "Instagram", handle: "no_vikovaforever", url: "https://www.instagram.com/no_vikovaforever/", status: "needs_manual_check" },
+  { platform: "tiktok", label: "TikTok", handle: "no_vikovaforever", url: "https://www.tiktok.com/@no_vikovaforever", status: "needs_manual_check" },
+  { platform: "facebook", label: "Facebook", handle: "no_vikovaforever", url: "https://www.facebook.com/no_vikovaforever", status: "needs_manual_check" },
+  { platform: "youtube", label: "YouTube", handle: "NOVIKOVAFOREVER", url: "https://www.youtube.com/@NOVIKOVAFOREVER", status: "needs_manual_check" },
+  { platform: "threads", label: "Threads", handle: "no_vikovaforever", url: "https://www.threads.net/@no_vikovaforever", status: "needs_manual_check" },
+  { platform: "linkhub", label: "Linktree", handle: "no_vikovaforever", url: "https://linktr.ee/no_vikovaforever", status: "reserved_candidate" },
+  { platform: "linkhub", label: "Beacons", handle: "no_vikovaforever", url: "https://beacons.ai/no_vikovaforever", status: "reserved_candidate" },
+];
+// Canonical, static-only for now (freeze: no per-character storage/table). Returns the
+// NOVIKOVA registry for a character whose name matches NOVIKOVA; else empty.
+export function socialAccountsForCharacter(name: string): AvatarSocialAccount[] {
+  return /novikova/i.test(name || "") ? NOVIKOVA_SOCIAL_ACCOUNTS : [];
+}
 // Merge passport + one template card into a render prompt with identity lock + safety.
 export function buildTemplatePrompt(passport: Partial<AvatarPassport> | null, card: TemplateCard): string {
   const identity = (passport?.identityNotes || "reference avatar").trim();

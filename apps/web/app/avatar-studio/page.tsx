@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
+import { socialAccountsForCharacter } from "@/lib/avatarStudio";
 
 // P27.1 AI Avatar Studio — base UI (mock-safe). Requires a referral session.
 type Avatar = { id: string; name: string; status: string; sourceImageUrl: string; consentConfirmed: boolean };
@@ -353,6 +354,26 @@ export default function AvatarStudioPage() {
               ))}
             </div>
             <button className={btn + " bg-sky-500 text-black mt-2"} disabled={busy} onClick={saveProfile}>Сохранить паспорт</button>
+            {(() => {
+              const socials = socialAccountsForCharacter(charById[selChar]?.name || "");
+              if (!socials.length) return null;
+              const sc = (s: string) => s === "verified" ? "bg-emerald-500/20 text-emerald-300" : s === "reserved_candidate" ? "bg-slate-500/20 text-slate-300" : s === "not_found" || s === "blocked_by_platform" ? "bg-rose-500/20 text-rose-300" : "bg-amber-500/20 text-amber-300";
+              return (
+                <div className="mt-3 border-t border-white/10 pt-2">
+                  <div className="text-[12px] text-slate-400 mb-1">🔗 Social Accounts (canonical · {socials.length}) — <span className="text-slate-500">статусы честные, verified только после ручной проверки</span></div>
+                  <div className="space-y-1">
+                    {socials.map((s, i) => (
+                      <div key={i} className="flex items-center gap-2 text-[11px] rounded bg-white/5 px-2 py-1">
+                        <span className="w-20 shrink-0 text-slate-300">{s.label}</span>
+                        <a href={s.url} target="_blank" rel="noreferrer" className="text-sky-300 truncate flex-1 hover:underline" title={s.url}>@{s.handle}</a>
+                        <span className={"px-2 py-0.5 rounded " + sc(s.status)}>{s.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-1">Канон: no_vikovaforever (YouTube: NOVIKOVAFOREVER). Только отображение — авто-подключения соцсетей нет.</div>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
