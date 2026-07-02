@@ -192,6 +192,18 @@
   .routerplan .rs{padding:3px 0;color:#dceafc;opacity:.35;transition:.35s}
   .routerplan .rs.on{opacity:1} .routerplan .rs .mdl{color:var(--cyan);font-weight:700}
   .routerplan .rs.on .mdl::before{content:'✓ ';color:var(--grn)}
+  /* ===== operator activation splash (Perplexity-style, lightweight) ===== */
+  .opsplash{position:fixed;inset:0;z-index:95;display:grid;place-items:center;background:radial-gradient(120% 120% at 50% 45%,rgba(10,15,30,.82),rgba(3,5,12,.95));backdrop-filter:blur(3px);opacity:0;animation:opsIn .18s forwards}
+  .opsplash.out{animation:opsOut .42s forwards}
+  @keyframes opsIn{to{opacity:1}} @keyframes opsOut{to{opacity:0}}
+  .opsplash .core{text-align:center;position:relative}
+  .opsplash .sk{font-size:60px;animation:opsPulse 1s ease-in-out infinite;position:relative;z-index:2}
+  @keyframes opsPulse{0%,100%{transform:scale(1);filter:drop-shadow(0 0 16px rgba(34,227,255,.6))}50%{transform:scale(1.14);filter:drop-shadow(0 0 34px rgba(255,43,214,.85))}}
+  .opsplash .ring2{width:128px;height:128px;position:absolute;left:50%;top:24px;transform:translateX(-50%);border-radius:50%;border:2px solid rgba(34,227,255,.22);border-top-color:var(--cyan);border-right-color:var(--mag);animation:opsSpin .9s linear infinite}
+  @keyframes opsSpin{to{transform:translateX(-50%) rotate(360deg)}}
+  .opsplash .lbl{margin-top:26px;font-weight:800;letter-spacing:.16em;color:#eaf6ff;text-transform:uppercase;font-size:13px}
+  .opsplash .sub2{margin-top:5px;font-size:11px;color:#7fa6c4;letter-spacing:.06em}
+  @media (prefers-reduced-motion: reduce){ .opsplash{display:none!important} }
   /* --- mobile / narrow: single column, chat fills the screen --- */
   @media (max-width:820px){
     #stage{padding:0}
@@ -483,7 +495,17 @@
       if(R) R.onclick=()=>{ if(R.disabled)return; A.disabled=R.disabled=true; R.textContent='rejected';
         sysApprovals=Math.max(0,sysApprovals-1); updateSys(); meMsg('Reject'); toast('отклонено'); auditAmb('Audit','approval '+id+' → rejected'); }; },60);
   }
+  // operator activation splash — only on heavy actions (mission/campaign). Reduced-motion safe.
+  function splash(label){ try{
+    if(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if(document.querySelector('.opsplash')) return;
+    const el=document.createElement('div'); el.className='opsplash';
+    el.innerHTML='<div class="core"><div class="ring2"></div><div class="sk">💀</div><div class="lbl">'+(label||'Оператор активируется')+'</div><div class="sub2">Router · Approval · Execution</div></div>';
+    document.body.appendChild(el); blip();
+    setTimeout(()=>{ el.classList.add('out'); setTimeout(()=>el.remove(),440); }, 1150);
+  }catch(e){} }
   function runMissionFlow(){
+    splash('Создаю миссию');
     opCard('Создаю миссию', [ {chk:1,t:'AI формирует заявку'},{chk:1,t:'Guardian проверяет риск'},
       {t:'Дальше нужен твой <b>approve</b> — без него ничего не уйдёт.'} ],
       'Создаю миссию. Формирую заявку, Guardian проверяет риск. Дальше нужно твоё подтверждение.');
@@ -684,7 +706,7 @@
       kpiGroup('', [['Доход','+15.3'],['Расход','−2.7'],['ROI','×3.1'],['Лид','0.06'],['Публикация','0.4'],['Генерация','0.05'],['AI','0.04'],['Хранение','0.01'],['Прокси','0.3'],['VPN','0.2'],['Аккаунт','0.1']])+
       '<div class="pcard"><div class="pt">🧠 Router AI · учёт стоимости</div><div class="pmeta">выбирает модель по цене задачи: «хватит дешёвой за 0.02$» ↔ «здесь нужна premium — ошибка дороже». Каждый запуск = экономическая операция через бюджет + Approval.</div></div>';
   }
-  function runCampaign(){ setView('operator');
+  function runCampaign(){ setView('operator'); splash('Собираю кампанию');
     routerPlan('Рекламная кампания', [['ChatGPT','анализ ТЗ'],['Grok','поиск трендов'],['Grok Imagine','баннеры'],['ElevenLabs','озвучка'],['FFmpeg','сборка видео'],['Telegram Publisher','публикация']], 'Router AI собирает кампанию: ChatGPT, Grok, Imagine, ElevenLabs, FFmpeg и Publisher.');
     const steps=[['Research','собрал данные по нише ✓'],['Copywriter','написал текст объявления ✓'],['Image','сгенерировал баннер ✓'],['Publisher','подготовил публикацию ✓']]; let i=0;
     (function next(){ if(i<steps.length){ const s=steps[i++]; setTimeout(()=>typing(()=>{ opCard('AI Marketplace · '+s[0], [{chk:1,t:s[1]}], s[0]+': '+s[1]); next(); },650),120); }
