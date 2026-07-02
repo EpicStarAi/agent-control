@@ -165,6 +165,7 @@
   .opcard li{padding:3px 0;color:#dceafc}
   .opcard li .chk{color:var(--grn);margin-right:7px;font-weight:900}
   .opcard b{color:var(--cyan)}
+  .navsec{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:#5f7fa0;font-weight:800;padding:12px 16px 4px;margin-top:2px}
   /* ===== P32 AI Operator Workspace 2.0 ===== */
   .opwrap{display:flex;flex:1;min-height:0}
   .opside{width:188px;flex:none;border-right:1px solid var(--line);background:rgba(9,14,28,.6);display:flex;flex-direction:column;min-height:0;overflow-y:auto}
@@ -260,25 +261,30 @@
     <aside class="rail">
       <div class="rhead"><span class="sk">💀</span> EPIC<span class="gradtext">GRAM</span></div>
       <nav id="nav">
+        <div class="navsec">Оператор</div>
         <div class="nav-item" data-view="home"><span class="ni">🏠</span>Главная</div>
         <div class="nav-item active" data-view="operator"><span class="ni">🤖</span>AI Оператор <span class="online" style="margin-left:auto"></span></div>
-        <div class="nav-item" data-view="workspace"><span class="ni">💬</span>Рабочий стол</div>
         <div class="nav-item" data-view="missions"><span class="ni">📋</span>Центр миссий <span class="badge2" id="navApr">1</span></div>
         <div class="nav-item" data-view="approvals"><span class="ni">✅</span>Подтверждения</div>
-        <div class="nav-item" data-view="economy"><span class="ni">💰</span>Экономика</div>
-        <div class="nav-item" data-view="wallet"><span class="ni">👛</span>Кошелёк</div>
+        <div class="navsec">Организация</div>
+        <div class="nav-item" data-view="org"><span class="ni">👤</span>Организация</div>
+        <div class="nav-item" data-view="partners"><span class="ni">🤝</span>Партнёры</div>
+        <div class="navsec">Производство</div>
+        <div class="nav-item" data-view="workspace"><span class="ni">💬</span>Рабочий стол</div>
         <div class="nav-item" data-view="accounts"><span class="ni">👥</span>Аккаунты</div>
         <div class="nav-item" data-view="channels"><span class="ni">📢</span>Каналы</div>
         <div class="nav-item" data-view="agents"><span class="ni">🤖</span>AI Агенты</div>
-        <div class="nav-item" data-view="aiservices"><span class="ni">🧰</span>Инструменты</div>
-        <div class="nav-item" data-view="analytics"><span class="ni">📊</span>Аналитика</div>
-        <div class="nav-item" data-view="partners"><span class="ni">🤝</span>Партнёры</div>
-        <div class="nav-item" data-view="marketing"><span class="ni">📈</span>Маркетинг</div>
-        <div class="nav-item" data-view="knowledge"><span class="ni">📚</span>База знаний</div>
         <div class="nav-item" data-view="media"><span class="ni">🗂</span>Медиацентр</div>
-        <div class="nav-item" data-view="network"><span class="ni">🌐</span>Сеть</div>
+        <div class="nav-item" data-view="marketing"><span class="ni">📈</span>Маркетинг</div>
+        <div class="nav-item" data-view="analytics"><span class="ni">📊</span>Аналитика</div>
+        <div class="nav-item" data-view="economy"><span class="ni">💰</span>Экономика</div>
+        <div class="nav-item" data-view="wallet"><span class="ni">👛</span>Кошелёк</div>
+        <div class="navsec">Инструменты</div>
+        <div class="nav-item" data-view="aiservices"><span class="ni">🧰</span>Инструменты AI</div>
+        <div class="navsec">Инфраструктура</div>
+        <div class="nav-item" data-view="knowledge"><span class="ni">📚</span>База знаний</div>
+        <div class="nav-item" data-view="network"><span class="ni">🌐</span>Инфраструктура</div>
         <div class="nav-item" data-view="security"><span class="ni">🔒</span>Безопасность</div>
-        <div class="nav-item" data-view="org"><span class="ni">👤</span>Организация</div>
         <div class="nav-item" data-view="settings"><span class="ni">⚙</span>Настройки</div>
       </nav>
     </aside>
@@ -614,7 +620,7 @@
     marketplace:{icon:'🛒',title:'Marketplace',sub:'App Store AI-возможностей'},
     analytics:{icon:'📊',title:'Аналитика',sub:'AI · Telegram · финансы · контент · лиды'},
     knowledge:{icon:'📚',title:'База знаний',sub:'единая RAG · Telegram · GitHub · Docs'},
-    network:{icon:'🌐',title:'Сеть',sub:'VPN · прокси · runtime · гео'},
+    network:{icon:'🌐',title:'Инфраструктура',sub:'Telegram · Wallet · VPN · Storage · RAG · Runtime · API · Logs'},
     security:{icon:'🔐',title:'Безопасность',sub:'risk engine · аудит'},
     settings:{icon:'⚙',title:'Настройки',sub:'язык · звук · тема'},
     approvals:{icon:'✅',title:'Центр подтверждений',sub:'только ручное подтверждение'},
@@ -673,7 +679,10 @@
       '<div class="pcard"><div class="pmeta" style="margin-bottom:8px">Реестр сервисов · учёт затрат (без реальных денег). Позже — внешние AI-провайдеры.</div>'+
       '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+MARKET.map(s=>'<span class="pill">'+s[0]+' · <b style="color:'+(s[1]==="internal"?"#8fb3cf":"var(--grn)")+'">'+s[1]+'</b></span>').join('')+'</div>'+
       '<div class="pmeta" style="margin-bottom:8px">Агенты кооперируются под задачу. Оплата услуг — через Approval + лимиты.</div>'+
-      '<button class="mini app" data-mk="campaign">⚡ Собрать рекламную кампанию</button></div>';
+      '<button class="mini app" data-mk="campaign">⚡ Собрать рекламную кампанию</button></div>'+
+      '<div style="font-weight:800;margin:14px 0 6px;color:#cfe6f7">Стоимость (сегодня · симуляция)</div>'+
+      kpiGroup('', [['Доход','+15.3'],['Расход','−2.7'],['ROI','×3.1'],['Лид','0.06'],['Публикация','0.4'],['Генерация','0.05'],['AI','0.04'],['Хранение','0.01'],['Прокси','0.3'],['VPN','0.2'],['Аккаунт','0.1']])+
+      '<div class="pcard"><div class="pt">🧠 Router AI · учёт стоимости</div><div class="pmeta">выбирает модель по цене задачи: «хватит дешёвой за 0.02$» ↔ «здесь нужна premium — ошибка дороже». Каждый запуск = экономическая операция через бюджет + Approval.</div></div>';
   }
   function runCampaign(){ setView('operator');
     routerPlan('Рекламная кампания', [['ChatGPT','анализ ТЗ'],['Grok','поиск трендов'],['Grok Imagine','баннеры'],['ElevenLabs','озвучка'],['FFmpeg','сборка видео'],['Telegram Publisher','публикация']], 'Router AI собирает кампанию: ChatGPT, Grok, Imagine, ElevenLabs, FFmpeg и Publisher.');
@@ -720,7 +729,9 @@
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>@buch_main</div><div class="pmeta">session OK · VPN HideMyName · risk LOW · 12 каналов</div></div>'+
       '<div class="pcard"><div class="pt"><span class="sd w" style="width:9px;height:9px;border-radius:50%"></span>@buchiha_ops</div><div class="pmeta">proxy <b>degraded</b> · session OK · risk MED · 6 каналов</div></div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>@epic_publisher</div><div class="pmeta">MTProxy OK · session OK · risk LOW</div></div>';
-    if(name==='network') return '<h3>🌐 Сеть</h3><div class="sub">VPN · MTProxy · SOCKS5 · geo</div>'+
+    if(name==='network') return '<h3>🌐 Инфраструктура</h3><div class="sub">нижний слой OS · каналы · runtime · хранилища · безопасность</div>'+
+      '<div class="capgrid">'+[['📱 Telegram','TDLib · demo'],['👛 Wallet','TON Connect'],['🛡 VPN','HideMyName · OK'],['🗄 Storage','медиа · файлы'],['📚 RAG','база знаний'],['⚙ Runtime','сессии · очереди'],['🔌 API','ключи скрыты'],['📝 Logs','аудит'],['💾 Backups','ежедневно (сим)'],['📈 Monitoring','SSE · uptime']].map(x=>'<div class="pcard" style="margin:0"><div class="pt">'+x[0]+'</div><div class="pmeta">'+x[1]+'</div></div>').join('')+'</div>'+
+      '<div style="font-weight:800;margin:12px 0 6px;color:#cfe6f7">Сеть · живой статус</div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>HideMyName VPN</div><div class="pmeta">OK · latency 42ms</div></div>'+
       '<div class="pcard"><div class="pt"><span class="sd w" style="width:9px;height:9px;border-radius:50%"></span>Proxy #3</div><div class="pmeta"><b>degraded</b> · latency 380ms · рекомендуется ротация</div></div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>MTProxy pool</div><div class="pmeta">4/4 online</div></div>';
@@ -736,7 +747,9 @@
       kpiGroup('Финансы', [['TON','42.5'],['USDT','130.0'],['Stars','850 ⭐'],['Доход','+15.3'],['Расход','−2.7'],['ROI','×3.1']])+
       kpiGroup('Контент', [['Посты','74'],['Видео','9'],['Изображения','120'],['Озвучки','14'],['Кампании','3']])+
       kpiGroup('Лиды', [['Новые','37'],['Квалиф.','12'],['Закрыто','5'],['Конверсия','13.5%']])+
-      kpiGroup('Коллаборации', [['Партнёры','8'],['Инфлюенсеры','5'],['Компании','3'],['Кампании','2']]);
+      kpiGroup('Коллаборации', [['Партнёры','8'],['Инфлюенсеры','5'],['Компании','3'],['Кампании','2']])+
+      '<div style="font-weight:800;margin:14px 0 6px;color:#cfe6f7">🧠 Аналитика отвечает на вопросы</div>'+
+      [['Какие каналы растут?','@deepinside +8% / нед · #promo стагнирует'],['Какие публикации окупаются?','видео-тизеры ×2.4 ROI · тексты ×0.9'],['Какой AI эффективнее?','Grok Imagine — лучший ROI на визуал'],['Стоимость ролика?','≈ 0.9 USDT (Research+Image+Voice+FFmpeg)'],['Стоимость подписчика?','≈ 0.06 USDT · тренд ↓'],['Какие клиенты приносят деньги?','DEEP INSIDE · NOVIKOVA — топ-2']].map(q=>'<div class="pcard"><div class="pt">'+q[0]+'</div><div class="pmeta">'+q[1]+'</div></div>').join('');
     if(name==='channels') return '<h3>📢 Каналы</h3><div class="sub">каналы · папки · модерация</div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>@deepinside</div><div class="pmeta">активен · 3 поста в очереди</div></div>'+
       '<div class="pcard"><div class="pt"><span class="sd r" style="width:9px;height:9px;border-radius:50%"></span>#promo</div><div class="pmeta"><b>rate-limited</b> · публикации приостановлены</div></div>';
