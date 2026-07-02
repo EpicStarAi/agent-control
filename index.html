@@ -730,9 +730,12 @@
       '<div class="pcard"><div class="pt"><span class="sd w" style="width:9px;height:9px;border-radius:50%"></span>@buchiha_ops</div><div class="pmeta">proxy <b>degraded</b> · session OK · risk MED · 6 каналов</div></div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>@epic_publisher</div><div class="pmeta">MTProxy OK · session OK · risk LOW</div></div>';
     if(name==='network') return '<h3>🌐 Инфраструктура</h3><div class="sub">нижний слой OS · Connect Service · runtime · хранилища · безопасность</div>'+
-      '<div style="font-weight:800;margin:2px 0 6px;color:#cfe6f7">Connect Service · провайдеры коммуникаций</div>'+
-      '<div class="capgrid">'+[['📱 Telegram','🟢 подключён · demo'],['📞 WhatsApp','Connect'],['💬 Discord','Connect'],['📸 Instagram','Connect'],['✖ X','Connect'],['✉️ Email','Connect']].map(x=>'<div class="pcard" style="margin:0"><div class="pt">'+x[0]+'</div><div class="pmeta">'+x[1]+'</div></div>').join('')+'</div>'+
-      '<div class="pmeta" style="margin:6px 0 12px">Все подключаются одинаково. Router видит только <b>Communication Provider</b> — Telegram не особенный.</div>'+
+      '<div style="font-weight:800;margin:2px 0 6px;color:#cfe6f7">Universal Connect Layer · один адаптер на всё</div>'+
+      '<div class="pmeta" style="margin-bottom:6px">Communication Providers</div>'+
+      '<div class="capgrid">'+[['📱 Telegram','✅ TDLib · demo'],['📞 WhatsApp','🔌 Connect'],['💬 Discord','🔌 Connect'],['✉️ Email','🔌 Connect'],['💼 Slack','🔌 Connect'],['👔 Teams','🔌 Connect']].map(x=>'<div class="pcard" style="margin:0"><div class="pt">'+x[0]+'</div><div class="pmeta">'+x[1]+'</div></div>').join('')+'</div>'+
+      '<div class="pmeta" style="margin:8px 0 6px">Media Providers</div>'+
+      '<div class="capgrid">'+[['▶ YouTube','🔌 Connect'],['🎵 TikTok','🔌 Connect'],['📸 Instagram','🔌 Connect'],['👍 Facebook','🔌 Connect'],['✖ X','🔌 Connect'],['🧵 Threads','🔌 Connect'],['🎮 Twitch','🔌 Connect'],['💼 LinkedIn','🔌 Connect'],['📌 Pinterest','🔌 Connect'],['🤖 Reddit','🔌 Connect']].map(x=>'<div class="pcard" style="margin:0"><div class="pt">'+x[0]+'</div><div class="pmeta">'+x[1]+'</div></div>').join('')+'</div>'+
+      '<div class="pmeta" style="margin:6px 0 12px">Все подключаются одинаково. Router видит только <b>Provider</b> (Communication / Media) — Telegram не центр, а первый адаптер.</div>'+
       '<div style="font-weight:800;margin:6px 0 6px;color:#cfe6f7">Инфраструктура</div>'+
       '<div class="capgrid">'+[['📱 Telegram','TDLib · demo'],['👛 Wallet','TON Connect'],['🛡 VPN','HideMyName · OK'],['🗄 Storage','медиа · файлы'],['📚 RAG','база знаний'],['⚙ Runtime','сессии · очереди'],['🔌 API','ключи скрыты'],['📝 Logs','аудит'],['💾 Backups','ежедневно (сим)'],['📈 Monitoring','SSE · uptime']].map(x=>'<div class="pcard" style="margin:0"><div class="pt">'+x[0]+'</div><div class="pmeta">'+x[1]+'</div></div>').join('')+'</div>'+
       '<div style="font-weight:800;margin:12px 0 6px;color:#cfe6f7">Сеть · живой статус</div>'+
@@ -753,7 +756,10 @@
       kpiGroup('Лиды', [['Новые','37'],['Квалиф.','12'],['Закрыто','5'],['Конверсия','13.5%']])+
       kpiGroup('Коллаборации', [['Партнёры','8'],['Инфлюенсеры','5'],['Компании','3'],['Кампании','2']])+
       '<div style="font-weight:800;margin:14px 0 6px;color:#cfe6f7">🧠 Аналитика отвечает на вопросы</div>'+
-      [['Какие каналы растут?','@deepinside +8% / нед · #promo стагнирует'],['Какие публикации окупаются?','видео-тизеры ×2.4 ROI · тексты ×0.9'],['Какой AI эффективнее?','Grok Imagine — лучший ROI на визуал'],['Стоимость ролика?','≈ 0.9 USDT (Research+Image+Voice+FFmpeg)'],['Стоимость подписчика?','≈ 0.06 USDT · тренд ↓'],['Какие клиенты приносят деньги?','DEEP INSIDE · NOVIKOVA — топ-2']].map(q=>'<div class="pcard"><div class="pt">'+q[0]+'</div><div class="pmeta">'+q[1]+'</div></div>').join('');
+      [['Какие каналы растут?','@deepinside +8% / нед · #promo стагнирует'],['Какие публикации окупаются?','видео-тизеры ×2.4 ROI · тексты ×0.9'],['Какой AI эффективнее?','Grok Imagine — лучший ROI на визуал'],['Стоимость ролика?','≈ 0.9 USDT (Research+Image+Voice+FFmpeg)'],['Стоимость подписчика?','≈ 0.06 USDT · тренд ↓'],['Какие клиенты приносят деньги?','DEEP INSIDE · NOVIKOVA — топ-2']].map(q=>'<div class="pcard"><div class="pt">'+q[0]+'</div><div class="pmeta">'+q[1]+'</div></div>').join('')+
+      '<div style="font-weight:800;margin:14px 0 6px;color:#cfe6f7">📊 Media Analytics · THE ШАРФ · все площадки</div>'+
+      kpiGroup('', [['Instagram','1.2M'],['TikTok','3.8M'],['YouTube','840k'],['Telegram','210k'],['Facebook','350k'],['X','120k']])+
+      '<div class="pcard"><div class="pmeta">AI отвечает по всей медиасистеме, не по одной площадке: «TikTok — самая быстрорастущая», «YouTube даёт 67% дохода», «Telegram — лучший LTV».</div></div>';
     if(name==='channels') return '<h3>📢 Каналы</h3><div class="sub">каналы · папки · модерация</div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>@deepinside</div><div class="pmeta">активен · 3 поста в очереди</div></div>'+
       '<div class="pcard"><div class="pt"><span class="sd r" style="width:9px;height:9px;border-radius:50%"></span>#promo</div><div class="pmeta"><b>rate-limited</b> · публикации приостановлены</div></div>';
