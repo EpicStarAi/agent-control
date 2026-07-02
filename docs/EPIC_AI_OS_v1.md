@@ -17,6 +17,17 @@ Services = Telegram · Email · WhatsApp · Discord · X · Instagram · VPN · 
 - **Economy** central chain: Revenue → Costs → ROI → Growth → Forecast; funnel Organization → Project → Channel → Content → Lead → Client → Revenue.
 - The operator answers "which channel makes money?", not "how many views?".
 
+## Build order & key abstractions (fixed 2026-07-02)
+Revised development order — Telegram is NOT special, it comes after the business core:
+```
+Identity → Workspace → Organization → Projects → Memory → Economy → (Connect Service) → Telegram/…
+```
+- **Project = the core unit of work** (introduced before Telegram). Org → Project → { channels · AI · wallets · docs · team · CRM · leads · analytics }. E.g. Hide My Name → RU · EN · Ads · Support · Affiliate · Media, each isolated.
+- **Connect Service** (not "Telegram Login"): every provider connects identically — Telegram · WhatsApp · Instagram · Discord · X · Email all just `Connect`. Router only ever sees a **Communication Provider**; it doesn't know it's Telegram. New channels attach with zero architecture change.
+- **Workflow Engine** — separate from model selection: owns chains · pipelines · automation. "Создать ролик" = one user action → Router builds ChatGPT(text)→Grok Imagine(image)→Veo(video)→Grok Voice(voice)→FFmpeg(edit)→publish(TG/IG/YT/TikTok).
+- **Digital Twin** — each Organization has a twin that knows sales · costs · staff · KPI · clients · docs · memory · connections. AI talks to the Twin, not a raw DB. Enables NL business questions: "почему прибыль упала на этой неделе?", "какие каналы дают лучший ROI?", "за что мы переплачиваем в AI?", "какие публикации дали больше лидов?", "какие проекты требуют внимания сегодня?" — answered across memory+economy+analytics+comms+projects at once.
+- North-star: not "AI умеет работать с Telegram" but "AI понимает весь бизнес как единую цифровую систему" — an **operating system for running a digital business**.
+
 ## Concept hierarchy (earlier direction, superseded by the stack above)
 ```
 Identity → Organization → Department → Operator → Mission → Execution → Audit
