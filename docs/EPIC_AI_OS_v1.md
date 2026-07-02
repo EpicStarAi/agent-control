@@ -4,7 +4,20 @@ Not a Telegram client. Not just an AI OS. An **AI Company OS**: the user doesn't
 they come to build a **digital organization**. Humans and AI are equal participants; Telegram is
 one execution provider among many (GitHub, Gmail, Wallet, Notion…).
 
-## Concept hierarchy (direction)
+## Finalized layer stack (fixed 2026-07-02)
+The canonical full stack. Modules attach to Identity + Workspace, never to a "user":
+```
+Identity → Organization → Workspace → Projects → Memory → Knowledge
+        → Business Intelligence → Economy → Router AI → AI Operator → Services
+Services = Telegram · Email · WhatsApp · Discord · X · Instagram · VPN · Storage · Wallet · CRM · Voice · Vision · Research · Publishing
+```
+- **Identity owns the system** (not "user owns modules"). Telegram is just one module of the Identity.
+- **Organization** is first-class: Hide My Name / DEEP INSIDE / NOVIKOVA / THE ШАРФ / clients — each with own staff, AI, budgets, Telegrams, channels, docs. Isolated per org.
+- **Business Intelligence** is its own layer above Economy: answers "what is profitable / which channel pays / cost per lead / per subscriber / per video / per post / per GPT-Grok-ElevenLabs call / storage / proxy". Router AI decides using these numbers (cost-aware routing).
+- **Economy** central chain: Revenue → Costs → ROI → Growth → Forecast; funnel Organization → Project → Channel → Content → Lead → Client → Revenue.
+- The operator answers "which channel makes money?", not "how many views?".
+
+## Concept hierarchy (earlier direction, superseded by the stack above)
 ```
 Identity → Organization → Department → Operator → Mission → Execution → Audit
 ```
