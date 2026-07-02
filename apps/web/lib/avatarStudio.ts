@@ -33,12 +33,14 @@ export interface AvatarPassport {
   profileJson: Record<string, unknown>; identityNotes: string; styleNotes: string;
   forbiddenRules: string[]; createdAt: string; updatedAt: string;
 }
-export interface RenderPack { id: string; name: string; description: string; scenes: string[]; engine: string; }
+export interface RenderPack { id: string; name: string; description: string; scenes: string[]; engine: string; preferredProvider?: string; }
 export interface RenderJob {
   id: string; workspaceId: string; avatarId: string; packId: string; engine: string;
   status: JobStatus; sceneKey: string; prompt: string; resultUrl: string; error: string;
   attempts: number; maxAttempts: number; startedAt: string; completedAt: string;
   lastError: string; batchId: string; priority: number;
+  providerId: string; providerJobId: string; providerStatus: string; providerError: string;
+  selectedBy: string; capabilitiesSnapshot: string;
   createdAt: string; updatedAt: string;
 }
 export interface AvatarAsset {
@@ -65,7 +67,7 @@ export const PACKS: RenderPack[] = [
     scenes: ["lifestyle_cafe", "street_style", "mirror_selfie_style", "rooftop_evening", "casual_day_out"] },
   { id: "business", name: "Business Pack", description: "Деловые портреты", engine: "grok_imagine_ui",
     scenes: ["executive_headshot", "office_portrait", "conference_speaker", "premium_lobby", "linkedin_profile"] },
-  { id: "cyber", name: "Cyber Pack", description: "Neon / AI-оператор", engine: "grok_imagine_ui",
+  { id: "cyber", name: "Cyber Pack", description: "Neon / AI-оператор", engine: "grok_imagine_ui", preferredProvider: "mock_grok_imagine",
     scenes: ["neon_city", "ai_operator_room", "holographic_dashboard", "dark_cyber_portrait", "epicgram_operator"] },
   { id: "travel", name: "Travel Pack", description: "Путешествия", engine: "grok_imagine_ui",
     scenes: ["airport_lounge", "hotel_lobby", "paris_street", "dubai_skyline", "beach_resort"] },
@@ -159,6 +161,9 @@ export function normalizeJob(workspaceId: string, i: Partial<RenderJob>): Render
     prompt: clip(i.prompt, 2000), resultUrl: clip(i.resultUrl, 400), error: clip(i.error, 400),
     attempts: num(i.attempts, 0), maxAttempts: num(i.maxAttempts, 3), startedAt: clip(i.startedAt, 40), completedAt: clip(i.completedAt, 40),
     lastError: clip(i.lastError, 400), batchId: clip(i.batchId, 60), priority: num(i.priority, 0),
+    providerId: clip(i.providerId, 40) || "mock_grok_imagine", providerJobId: clip(i.providerJobId, 80),
+    providerStatus: clip(i.providerStatus, 40), providerError: clip(i.providerError, 400),
+    selectedBy: clip(i.selectedBy, 20), capabilitiesSnapshot: clip(i.capabilitiesSnapshot, 120),
     createdAt: i.createdAt || now, updatedAt: now };
 }
 export function newBatchId(): string { return nid("batch"); }

@@ -33,6 +33,8 @@ export async function setJob(ws: string, id: string, patch: Partial<RenderJob>):
   if (patch.status) j.status = patch.status; if (patch.resultUrl != null) j.resultUrl = patch.resultUrl; if (patch.error != null) j.error = patch.error;
   if (patch.attempts != null) j.attempts = patch.attempts; if (patch.startedAt != null) j.startedAt = patch.startedAt;
   if (patch.completedAt != null) j.completedAt = patch.completedAt; if (patch.lastError != null) j.lastError = patch.lastError;
+  if (patch.providerJobId != null) j.providerJobId = patch.providerJobId; if (patch.providerStatus != null) j.providerStatus = patch.providerStatus;
+  if (patch.providerError != null) j.providerError = patch.providerError;
   j.updatedAt = new Date().toISOString(); save(db); return j; }
 export async function listAssets(ws: string, avatarId?: string): Promise<AvatarAsset[]> {
   const a = bucket(load(), ws).assets; return desc(avatarId ? a.filter(x => x.avatarId === avatarId) : a); }

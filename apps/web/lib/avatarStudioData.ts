@@ -1,6 +1,7 @@
 import * as db from "@/lib/avatarStudioDb";
 import * as store from "@/lib/avatarStudioStore";
-import { getAdapter, type Avatar, type AvatarPassport, type RenderJob, type AvatarAsset } from "@/lib/avatarStudio";
+import type { Avatar, AvatarPassport, RenderJob, AvatarAsset } from "@/lib/avatarStudio";
+import { getProvider, DEFAULT_PROVIDER } from "@/lib/renderProviders";
 
 // P27.1 facade: Postgres when available, else fs. Carries source: "db"|"fallback".
 type Src = "db" | "fallback";
@@ -30,15 +31,23 @@ export async function runQueueOnce(ws: string): Promise<{ processed: number; res
   for (const job of queued) {
     const attempts = job.attempts + 1;
     await setJob(ws, job.id, { status: "running", startedAt: new Date().toISOString(), attempts });
+    const provider = getProvider(job.providerId) || getProvider(DEFAULT_PROVIDER)!;
     try {
-      const r = await getAdapter(job.engine).createJob({ avatarId: job.avatarId, sceneKey: job.sceneKey, prompt: job.prompt });
-      if (r.status === "done") {
-        await setJob(ws, job.id, { status: "done", resultUrl: r.resultUrl, completedAt: new Date().toISOString() });
-        await createAsset(ws, { avatarId: job.avatarId, jobId: job.id, assetType: "image", imageUrl: r.resultUrl, prompt: job.prompt, status: "pending_review" });
+      if (!provider.enabled()) {
+        await setJob(ws, job.id, { status: "failed", lastError: `NOT_CONFIGURED: ${provider.id}`, providerStatus: "not_configured", providerError: "NOT_CONFIGURED" });
+        results.push({ id: job.id, status: "failed" }); continue;
+      }
+      const created = await provider.createJob({ avatarId: job.avatarId, sceneKey: job.sceneKey, prompt: job.prompt });
+      // poll status once (mock returns terminal immediately)
+      const r = created.providerJobId ? await provider.getJobStatus(created.providerJobId) : created;
+      const url = r.resultUrl || created.resultUrl;
+      if ((r.status === "done" || created.status === "done") && url) {
+        await setJob(ws, job.id, { status: "done", resultUrl: url, completedAt: new Date().toISOString(), providerJobId: created.providerJobId, providerStatus: r.providerStatus || "succeeded" });
+        await createAsset(ws, { avatarId: job.avatarId, jobId: job.id, assetType: "image", imageUrl: url, prompt: job.prompt, status: "pending_review" });
         results.push({ id: job.id, status: "done" });
       } else {
         const next = attempts < job.maxAttempts ? "queued" : "failed";
-        await setJob(ws, job.id, { status: next, lastError: r.error || "mock not done" });
+        await setJob(ws, job.id, { status: next, lastError: r.error || created.error || "not done", providerStatus: r.providerStatus, providerError: r.error });
         results.push({ id: job.id, status: next });
       }
     } catch (e) {

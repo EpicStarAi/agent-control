@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 // P27.1 AI Avatar Studio — base UI (mock-safe). Requires a referral session.
 type Avatar = { id: string; name: string; status: string; sourceImageUrl: string; consentConfirmed: boolean };
 type Pack = { id: string; name: string; description: string; scenes: string[]; engine: string };
-type Job = { id: string; avatarId: string; packId: string; engine: string; status: string; sceneKey: string; prompt: string; resultUrl: string; batchId?: string; attempts?: number; maxAttempts?: number };
+type Job = { id: string; avatarId: string; packId: string; engine: string; status: string; sceneKey: string; prompt: string; resultUrl: string; batchId?: string; attempts?: number; maxAttempts?: number; providerId?: string; selectedBy?: string };
+type Prov = { id: string; name: string; mode: string; capabilities: string[]; enabled: boolean };
 
 const box = "rounded-xl border border-white/10 bg-white/5 p-4";
 const btn = "rounded-lg px-3 py-1.5 text-[13px] font-semibold";
@@ -16,6 +17,8 @@ export default function AvatarStudioPage() {
   const [avatars, setAvatars] = useState<Avatar[]>([]);
   const [packs, setPacks] = useState<Pack[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [providers, setProviders] = useState<Prov[]>([]);
+  const [providerId, setProviderId] = useState<string>("");
   const [sel, setSel] = useState<string>("");
   const [packId, setPackId] = useState<string>("profile");
   const [name, setName] = useState(""); const [url, setUrl] = useState(""); const [consent, setConsent] = useState(false);
@@ -27,6 +30,7 @@ export default function AvatarStudioPage() {
     if (r.status === 401) { setAuthed(false); return; }
     const d = await r.json(); setAvatars(d.avatars || []); setSource(d.source || "");
     const p = await fetch("/api/avatar-studio/packs").then(x => x.json()).catch(() => ({ packs: [] })); setPacks(p.packs || []);
+    const pr = await fetch("/api/avatar-studio/providers").then(x => x.json()).catch(() => ({ providers: [] })); setProviders(pr.providers || []);
     const j = await fetch("/api/avatar-studio/render-jobs").then(x => x.json()).catch(() => ({ jobs: [] })); setJobs(j.jobs || []);
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -46,7 +50,7 @@ export default function AvatarStudioPage() {
   async function createJobs() {
     if (!sel) return; setBusy(true);
     await fetch("/api/avatar-studio/render-jobs", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ avatarId: sel, packId }) });
+      body: JSON.stringify({ avatarId: sel, packId, providerId: providerId || undefined }) });
     setBusy(false); load();
   }
   async function act(id: string, kind: "approve" | "reject" | "regenerate" | "cancel") {
@@ -113,6 +117,13 @@ export default function AvatarStudioPage() {
             </button>
           ))}
         </div>
+        <div className="mt-3 flex items-center gap-2 flex-wrap">
+          <span className="text-[12px] text-slate-400">Провайдер (Render Router):</span>
+          <select className="rounded-lg bg-black/40 border border-white/10 px-2 py-1 text-[12px] text-white" value={providerId} onChange={e => setProviderId(e.target.value)}>
+            <option value="">Auto (Router)</option>
+            {providers.map(p => <option key={p.id} value={p.id} disabled={!p.enabled}>{p.name} · {p.mode}{p.enabled ? "" : " · not configured"}</option>)}
+          </select>
+        </div>
         <button className={btn + " bg-emerald-500 text-black mt-3"} disabled={!sel || busy} onClick={createJobs}>⚡ Создать Render Jobs</button>
         {!sel && <span className="ml-2 text-[12px] text-slate-500">выбери аватар</span>}
       </div>
@@ -134,7 +145,8 @@ export default function AvatarStudioPage() {
                 <span className="w-36 truncate font-mono text-slate-300">{j.sceneKey}</span>
                 <span className={"px-2 py-0.5 rounded " + c}>{j.status}</span>
                 <span className="text-slate-500">try {j.attempts ?? 0}/{j.maxAttempts ?? 3}</span>
-                <span className="text-slate-600 truncate w-24" title={j.batchId}>{(j.batchId || "").slice(-6)}</span>
+                <span className="text-[10px] text-violet-300 truncate w-28" title={(j.providerId || "") + " · " + (j.selectedBy || "")}>{j.providerId}</span>
+                <span className="text-slate-600 truncate w-20" title={j.batchId}>{(j.batchId || "").slice(-6)}</span>
                 <span className="flex-1 truncate text-slate-500">{j.resultUrl}</span>
                 {canApprove && <button className={btn + " bg-emerald-600/40 text-white"} onClick={() => act(j.id, "approve")}>approve</button>}
                 {canReject && <button className={btn + " bg-rose-600/40 text-white"} onClick={() => act(j.id, "reject")}>reject</button>}
