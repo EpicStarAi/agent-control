@@ -35,7 +35,12 @@ export default function GatePage() {
       <h2 style={{ margin: "16px 0 4px", fontSize: 22 }}>Доступ открыт</h2>
       <div style={{ color: "#9fc0da", fontSize: 14 }}>{sess.user?.displayName} · {sess.user?.role}<br />{sess.workspace?.title}</div>
       <div style={{ color: "#6f93b0", fontSize: 12, marginTop: 10 }}>источник: {sess.source} · сессия httpOnly · Telegram/TDLib подключается внутри</div>
-      <button style={{ ...btn, background: "transparent", color: "#9fc0da", border: "1px solid rgba(255,255,255,.12)" }} onClick={doLogout}>Выйти</button>
+      <a href="/avatar-studio" style={{ ...btn, display: "block", textDecoration: "none" }}>Войти в рабочее пространство →</a>
+      <div style={{ display: "flex", gap: 8, marginTop: 10, justifyContent: "center", flexWrap: "wrap" }}>
+        <a href="/client" style={{ color: "#9fc0da", fontSize: 12, textDecoration: "none", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, padding: "8px 12px" }}>Telegram Client</a>
+        <a href="/agents" style={{ color: "#9fc0da", fontSize: 12, textDecoration: "none", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, padding: "8px 12px" }}>Панель / Agents</a>
+        <button style={{ background: "transparent", color: "#8aa", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, padding: "8px 12px", fontSize: 12, cursor: "pointer" }} onClick={doLogout}>Выйти</button>
+      </div>
     </div></div>
   );
 
