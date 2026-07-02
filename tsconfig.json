@@ -21,5 +21,11 @@
     }
   },
   "include": ["next-env.d.ts", "apps/web/**/*.ts", "apps/web/**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "apps/web/EPICGRAM-AUTOMEDIA-BACKEND/**/*",
+    "apps/web/GROK-AUTOMEDIA-CONTENT-FACTORY/**/*",
+    "apps/web/**/v2-backend-pack/**/*",
+    "_incoming-backend-packs/**/*"
+  ]
 }

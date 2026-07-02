@@ -12,6 +12,9 @@ export type BusEventType =
   | "mission.status.changed"
   | "mission.updated"
   | "approval.requested"
+  | "approval.approved"
+  | "approval.rejected"
+  | "approval.cancelled"
   | "audit.logged";
 
 export type BusEvent = { id: string; type: BusEventType; ts: string; payload: unknown };
