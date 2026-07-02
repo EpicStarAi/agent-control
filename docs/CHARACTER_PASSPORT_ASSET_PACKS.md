@@ -52,3 +52,64 @@ typed inputs it pulls from. Scales to any new character: swap pack contents, con
 3. Then v2.0: expand Template-Card categories → Emotion/Wardrobe/Environment packs; add Voice
    provider → Voice pack; add Video provider → Motion/Performance packs; wire the passport view.
 Nothing here is built before 1.0. NOVIKOVA is the reference passport; every other character copies it.
+
+---
+
+# Character Passport v2 (fixed 2026-07-02 by EPIC⭐STAR)
+
+Refines v1 into a full digital-actor tree and adds the **Provider Assets** pack — the piece that
+turns a character from "content for one engine" into a **portable digital asset**.
+
+## Passport tree
+```
+CHARACTER
+├── Identity          Photos · Face ID · Body · Identity Lock
+├── Personality       Character · Memory · Biography · Goals · Relationships
+├── Visual Assets     Emotions · Wardrobe · Environment · Props · Hairstyles
+├── Audio Assets      Voice · Laugh · Cry · Singing · Languages
+├── Motion Assets     Idle · Walk · Gestures · Dance · Actions
+├── Knowledge         Facts · Skills · Profession · Interests
+├── Social            Telegram · Instagram · TikTok · YouTube · X
+└── Provider Assets   per-engine optimized derivatives (NEW)
+```
+Mapping to build is unchanged from v1: Identity=Identity Sources · Personality/Knowledge=Character
+Profile · Visual=Template-Card categories · Audio/Motion=provider leaves · Social=`AvatarSocialAccount`
+registry. v2 only **groups** them and adds the Provider Assets layer on top.
+
+## The new pack — Provider Assets
+The character is authored **once** (Identity + Personality + Visual/Audio/Motion source packs).
+Provider Assets are **derived, per-engine optimized versions** of those source packs — the character
+is not re-created per platform:
+
+| Provider | Optimized derivative it consumes |
+|---|---|
+| 🦊 Grok Imagine | best reference images (image identity) |
+| 🎬 Veo | cinematic prompt + style refs |
+| 🌊 Kling | motion reference clips |
+| 🎞 Runway | shot/style refs |
+| 🧑‍🎤 HeyGen | avatar package (talking-head) |
+| 🙂 LivePortrait | facial-motion driver refs |
+| 🎙 ElevenLabs | voice profile |
+
+Result: **NOVIKOVA is a transferable digital asset** — move her between AI platforms without
+re-authoring the character. Source packs are the master; Provider Assets are renders/exports of them.
+
+## Implementation rule (still freeze-safe, still no new entity)
+Provider Assets = **existing AvatarAsset tagged by provider** (reuse the Render-Pack / candidate-asset
+pattern we already have), keyed off the source pack. This is exactly how render outputs are already
+stored — a Provider Asset is "a source pack, rendered/exported for engine X." **No new table, no new
+entity.** The Render Router already produces per-provider outputs; v2 just names that layer and makes
+it addressable per character.
+
+## Canonical lifecycle (post–1.0 target)
+```
+Identity → Personality → Visual → Audio → Motion → Performance → Story
+        → Provider Assets (per-engine)
+        → Ready for autonomous content generation
+```
+Every new character runs this same lifecycle. The conveyor is fixed; only pack contents change.
+
+## Discipline (unchanged)
+v2 becomes the official EPIC💀GRAM character architecture **after P30.1 (first real Grok asset) is
+closed and Release 1.0 ships.** Provider Assets specifically can only be proven once ≥1 real provider
+(Grok) actually produces an asset — so P30.1 is a hard prerequisite, not just a formality.
