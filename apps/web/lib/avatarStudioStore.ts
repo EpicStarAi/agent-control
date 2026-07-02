@@ -40,6 +40,18 @@ export async function listAssets(ws: string, avatarId?: string): Promise<AvatarA
   const a = bucket(load(), ws).assets; return desc(avatarId ? a.filter(x => x.avatarId === avatarId) : a); }
 export async function createAsset(ws: string, input: Partial<AvatarAsset>): Promise<AvatarAsset> {
   const db = load(); const b = bucket(db, ws); const n = normalizeAsset(ws, input); b.assets.push(n); save(db); return n; }
+export async function getAsset(ws: string, id: string): Promise<AvatarAsset | null> { return bucket(load(), ws).assets.find(a => a.id === id) ?? null; }
+export async function listAssetsByJob(ws: string, jobId: string): Promise<AvatarAsset[]> { return bucket(load(), ws).assets.filter(a => a.jobId === jobId); }
+export async function setAssetQuality(ws: string, id: string, patch: Partial<AvatarAsset>): Promise<AvatarAsset | null> {
+  const db = load(); const b = bucket(db, ws); const a = b.assets.find(x => x.id === id); if (!a) return null;
+  if (patch.qualityStatus != null) a.qualityStatus = patch.qualityStatus;
+  if (patch.qualityScore !== undefined) a.qualityScore = patch.qualityScore;
+  if (patch.identityScore !== undefined) a.identityScore = patch.identityScore;
+  if (patch.styleScore !== undefined) a.styleScore = patch.styleScore;
+  if (patch.artifactScore !== undefined) a.artifactScore = patch.artifactScore;
+  if (patch.qualityNotes != null) a.qualityNotes = patch.qualityNotes;
+  if (patch.status != null) a.status = patch.status;
+  a.updatedAt = new Date().toISOString(); save(db); return a; }
 export async function setAssetStatusByJob(ws: string, jobId: string, status: string): Promise<void> {
   const db = load(); const b = bucket(db, ws); let ch = false;
   for (const a of b.assets) if (a.jobId === jobId) { a.status = status as AvatarAsset["status"]; a.updatedAt = new Date().toISOString(); ch = true; }

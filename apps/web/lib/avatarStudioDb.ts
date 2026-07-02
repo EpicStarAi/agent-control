@@ -49,12 +49,22 @@ async function ensureInit(p: PgPool): Promise<void> {
     await p.query(`ALTER TABLE avatar_render_jobs ADD COLUMN IF NOT EXISTS provider_error text`);
     await p.query(`ALTER TABLE avatar_render_jobs ADD COLUMN IF NOT EXISTS selected_by text`);
     await p.query(`ALTER TABLE avatar_render_jobs ADD COLUMN IF NOT EXISTS capabilities_snapshot text`);
+    await p.query(`ALTER TABLE avatar_render_jobs ADD COLUMN IF NOT EXISTS candidate_index integer DEFAULT 0`);
     await p.query(`CREATE INDEX IF NOT EXISTS avatar_jobs_status ON avatar_render_jobs(workspace_id, status)`);
     await p.query(`CREATE TABLE IF NOT EXISTS avatar_assets (
       id text PRIMARY KEY, workspace_id text NOT NULL, avatar_id text, job_id text, asset_type text,
       image_url text, prompt text, status text,
       created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())`);
     await p.query(`CREATE INDEX IF NOT EXISTS avatar_assets_ws ON avatar_assets(workspace_id)`);
+    // P27.4 quality gate + candidate columns.
+    await p.query(`ALTER TABLE avatar_assets ADD COLUMN IF NOT EXISTS quality_status text DEFAULT 'unchecked'`);
+    await p.query(`ALTER TABLE avatar_assets ADD COLUMN IF NOT EXISTS quality_score numeric`);
+    await p.query(`ALTER TABLE avatar_assets ADD COLUMN IF NOT EXISTS identity_score numeric`);
+    await p.query(`ALTER TABLE avatar_assets ADD COLUMN IF NOT EXISTS style_score numeric`);
+    await p.query(`ALTER TABLE avatar_assets ADD COLUMN IF NOT EXISTS artifact_score numeric`);
+    await p.query(`ALTER TABLE avatar_assets ADD COLUMN IF NOT EXISTS quality_notes text`);
+    await p.query(`ALTER TABLE avatar_assets ADD COLUMN IF NOT EXISTS scene_key text`);
+    await p.query(`ALTER TABLE avatar_assets ADD COLUMN IF NOT EXISTS candidate_index integer DEFAULT 0`);
   })();
   return g.__epicAvatarInit;
 }
@@ -74,10 +84,14 @@ function jobRow(r: any): RenderJob { return { id: r.id, workspaceId: r.workspace
   attempts: Number(r.attempts ?? 0), maxAttempts: Number(r.max_attempts ?? 3), startedAt: r.started_at ?? "", completedAt: r.completed_at ?? "",
   lastError: r.last_error ?? "", batchId: r.batch_id ?? "", priority: Number(r.priority ?? 0),
   providerId: r.provider_id ?? "mock_grok_imagine", providerJobId: r.provider_job_id ?? "", providerStatus: r.provider_status ?? "",
-  providerError: r.provider_error ?? "", selectedBy: r.selected_by ?? "", capabilitiesSnapshot: r.capabilities_snapshot ?? "",
+  providerError: r.provider_error ?? "", selectedBy: r.selected_by ?? "", capabilitiesSnapshot: r.capabilities_snapshot ?? "", candidateIndex: Number(r.candidate_index ?? 0),
   createdAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString() }; }
+function nn(v: unknown): number | null { if (v === null || v === undefined) return null; const n = Number(v); return Number.isFinite(n) ? n : null; }
 function assetRow(r: any): AvatarAsset { return { id: r.id, workspaceId: r.workspace_id, avatarId: r.avatar_id ?? "", jobId: r.job_id ?? "",
-  assetType: r.asset_type ?? "image", imageUrl: r.image_url ?? "", prompt: r.prompt ?? "", status: r.status ?? "draft",
+  assetType: r.asset_type ?? "image", imageUrl: r.image_url ?? "", prompt: r.prompt ?? "", status: r.status ?? "pending_review",
+  qualityStatus: r.quality_status ?? "unchecked", qualityScore: nn(r.quality_score), identityScore: nn(r.identity_score),
+  styleScore: nn(r.style_score), artifactScore: nn(r.artifact_score), qualityNotes: r.quality_notes ?? "",
+  sceneKey: r.scene_key ?? "", candidateIndex: Number(r.candidate_index ?? 0),
   createdAt: new Date(r.created_at).toISOString(), updatedAt: new Date(r.updated_at).toISOString() }; }
 
 export async function listAvatars(ws: string): Promise<Avatar[]> {
@@ -104,9 +118,9 @@ export async function getJob(ws: string, id: string): Promise<RenderJob | null> 
   const p = await db(); const r = (await p.query(`SELECT * FROM avatar_render_jobs WHERE workspace_id=$1 AND id=$2`, [ws, id])).rows[0]; return r ? jobRow(r) : null; }
 export async function createJob(ws: string, input: Partial<RenderJob>): Promise<RenderJob> {
   const p = await db(); const n = normalizeJob(ws, input);
-  const r = await p.query(`INSERT INTO avatar_render_jobs(id,workspace_id,avatar_id,pack_id,engine,status,scene_key,prompt,result_url,error,attempts,max_attempts,started_at,completed_at,last_error,batch_id,priority,provider_id,provider_job_id,provider_status,provider_error,selected_by,capabilities_snapshot,created_at,updated_at)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING *`,
-    [n.id, ws, n.avatarId, n.packId, n.engine, n.status, n.sceneKey, n.prompt, n.resultUrl, n.error, n.attempts, n.maxAttempts, n.startedAt, n.completedAt, n.lastError, n.batchId, n.priority, n.providerId, n.providerJobId, n.providerStatus, n.providerError, n.selectedBy, n.capabilitiesSnapshot, n.createdAt, n.updatedAt]);
+  const r = await p.query(`INSERT INTO avatar_render_jobs(id,workspace_id,avatar_id,pack_id,engine,status,scene_key,prompt,result_url,error,attempts,max_attempts,started_at,completed_at,last_error,batch_id,priority,provider_id,provider_job_id,provider_status,provider_error,selected_by,capabilities_snapshot,candidate_index,created_at,updated_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26) RETURNING *`,
+    [n.id, ws, n.avatarId, n.packId, n.engine, n.status, n.sceneKey, n.prompt, n.resultUrl, n.error, n.attempts, n.maxAttempts, n.startedAt, n.completedAt, n.lastError, n.batchId, n.priority, n.providerId, n.providerJobId, n.providerStatus, n.providerError, n.selectedBy, n.capabilitiesSnapshot, n.candidateIndex, n.createdAt, n.updatedAt]);
   return jobRow(r.rows[0]); }
 export async function listJobsByStatus(ws: string, status: string, limit = 20): Promise<RenderJob[]> {
   const p = await db();
@@ -130,9 +144,22 @@ export async function listAssets(ws: string, avatarId?: string): Promise<AvatarA
   return q.rows.map(assetRow); }
 export async function createAsset(ws: string, input: Partial<AvatarAsset>): Promise<AvatarAsset> {
   const p = await db(); const n = normalizeAsset(ws, input);
-  const r = await p.query(`INSERT INTO avatar_assets(id,workspace_id,avatar_id,job_id,asset_type,image_url,prompt,status,created_at,updated_at)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-    [n.id, ws, n.avatarId, n.jobId, n.assetType, n.imageUrl, n.prompt, n.status, n.createdAt, n.updatedAt]);
+  const r = await p.query(`INSERT INTO avatar_assets(id,workspace_id,avatar_id,job_id,asset_type,image_url,prompt,status,quality_status,quality_score,identity_score,style_score,artifact_score,quality_notes,scene_key,candidate_index,created_at,updated_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+    [n.id, ws, n.avatarId, n.jobId, n.assetType, n.imageUrl, n.prompt, n.status, n.qualityStatus, n.qualityScore, n.identityScore, n.styleScore, n.artifactScore, n.qualityNotes, n.sceneKey, n.candidateIndex, n.createdAt, n.updatedAt]);
   return assetRow(r.rows[0]); }
+export async function getAsset(ws: string, id: string): Promise<AvatarAsset | null> {
+  const p = await db(); const r = (await p.query(`SELECT * FROM avatar_assets WHERE workspace_id=$1 AND id=$2`, [ws, id])).rows[0]; return r ? assetRow(r) : null; }
+export async function listAssetsByJob(ws: string, jobId: string): Promise<AvatarAsset[]> {
+  const p = await db(); return (await p.query(`SELECT * FROM avatar_assets WHERE workspace_id=$1 AND job_id=$2`, [ws, jobId])).rows.map(assetRow); }
+export async function setAssetQuality(ws: string, id: string, patch: Partial<AvatarAsset>): Promise<AvatarAsset | null> {
+  const p = await db(); const now = new Date().toISOString();
+  const r = await p.query(`UPDATE avatar_assets SET
+      quality_status=COALESCE($3,quality_status), quality_score=COALESCE($4,quality_score), identity_score=COALESCE($5,identity_score),
+      style_score=COALESCE($6,style_score), artifact_score=COALESCE($7,artifact_score), quality_notes=COALESCE($8,quality_notes),
+      status=COALESCE($9,status), updated_at=$10
+    WHERE workspace_id=$1 AND id=$2 RETURNING *`,
+    [ws, id, patch.qualityStatus ?? null, patch.qualityScore ?? null, patch.identityScore ?? null, patch.styleScore ?? null, patch.artifactScore ?? null, patch.qualityNotes ?? null, patch.status ?? null, now]);
+  return r.rows[0] ? assetRow(r.rows[0]) : null; }
 export async function setAssetStatusByJob(ws: string, jobId: string, status: string): Promise<void> {
   const p = await db(); await p.query(`UPDATE avatar_assets SET status=$3,updated_at=$4 WHERE workspace_id=$1 AND job_id=$2`, [ws, jobId, status, new Date().toISOString()]); }

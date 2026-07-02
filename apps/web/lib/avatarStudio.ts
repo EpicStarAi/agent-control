@@ -6,8 +6,10 @@
 export type AvatarStatus = "draft" | "active" | "archived";
 export type JobStatus = "queued" | "running" | "done" | "failed" | "approved" | "rejected" | "regenerate_requested" | "cancelled";
 export type AssetStatus = "pending_review" | "approved" | "rejected" | "published";
+export type QualityStatus = "unchecked" | "passed" | "failed" | "needs_review";
 export const JOB_STATUSES: JobStatus[] = ["queued", "running", "done", "failed", "approved", "rejected", "regenerate_requested", "cancelled"];
 export const ASSET_STATUSES: AssetStatus[] = ["pending_review", "approved", "rejected", "published"];
+export const QUALITY_STATUSES: QualityStatus[] = ["unchecked", "passed", "failed", "needs_review"];
 
 // P27.2 status transition guard. Only these moves are allowed.
 const TRANSITIONS: Record<JobStatus, JobStatus[]> = {
@@ -40,12 +42,16 @@ export interface RenderJob {
   attempts: number; maxAttempts: number; startedAt: string; completedAt: string;
   lastError: string; batchId: string; priority: number;
   providerId: string; providerJobId: string; providerStatus: string; providerError: string;
-  selectedBy: string; capabilitiesSnapshot: string;
+  selectedBy: string; capabilitiesSnapshot: string; candidateIndex: number;
   createdAt: string; updatedAt: string;
 }
 export interface AvatarAsset {
   id: string; workspaceId: string; avatarId: string; jobId: string; assetType: string;
-  imageUrl: string; prompt: string; status: AssetStatus; createdAt: string; updatedAt: string;
+  imageUrl: string; prompt: string; status: AssetStatus;
+  qualityStatus: QualityStatus; qualityScore: number | null; identityScore: number | null;
+  styleScore: number | null; artifactScore: number | null; qualityNotes: string;
+  sceneKey: string; candidateIndex: number;
+  createdAt: string; updatedAt: string;
 }
 
 // Always-on safety rules injected into every prompt.
@@ -163,7 +169,7 @@ export function normalizeJob(workspaceId: string, i: Partial<RenderJob>): Render
     lastError: clip(i.lastError, 400), batchId: clip(i.batchId, 60), priority: num(i.priority, 0),
     providerId: clip(i.providerId, 40) || "mock_grok_imagine", providerJobId: clip(i.providerJobId, 80),
     providerStatus: clip(i.providerStatus, 40), providerError: clip(i.providerError, 400),
-    selectedBy: clip(i.selectedBy, 20), capabilitiesSnapshot: clip(i.capabilitiesSnapshot, 120),
+    selectedBy: clip(i.selectedBy, 20), capabilitiesSnapshot: clip(i.capabilitiesSnapshot, 120), candidateIndex: num(i.candidateIndex, 0),
     createdAt: i.createdAt || now, updatedAt: now };
 }
 export function newBatchId(): string { return nid("batch"); }
@@ -172,5 +178,16 @@ export function normalizeAsset(workspaceId: string, i: Partial<AvatarAsset>): Av
   return { id: i.id || nid("asset"), workspaceId, avatarId: clip(i.avatarId, 60), jobId: clip(i.jobId, 60),
     assetType: clip(i.assetType, 40) || "image", imageUrl: clip(i.imageUrl, 400), prompt: clip(i.prompt, 2000),
     status: ((ASSET_STATUSES as string[]).includes(String(i.status)) ? (String(i.status) as AssetStatus) : "pending_review"),
+    qualityStatus: ((QUALITY_STATUSES as string[]).includes(String(i.qualityStatus)) ? (String(i.qualityStatus) as QualityStatus) : "unchecked"),
+    qualityScore: score(i.qualityScore), identityScore: score(i.identityScore), styleScore: score(i.styleScore), artifactScore: score(i.artifactScore),
+    qualityNotes: clip(i.qualityNotes, 600), sceneKey: clip(i.sceneKey, 60), candidateIndex: num(i.candidateIndex, 0),
     createdAt: i.createdAt || now, updatedAt: now };
+}
+export function normalizeQuality(s: unknown): QualityStatus { return (QUALITY_STATUSES as string[]).includes(String(s)) ? (String(s) as QualityStatus) : "unchecked"; }
+export function score(v: unknown): number | null { if (v === null || v === undefined || v === "") return null; const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : null; }
+// Approval gate: an asset may be approved only when its job is done, it is pending_review,
+// and quality passed — OR an explicit operator override reason is supplied.
+export function canApproveAsset(a: Pick<AvatarAsset, "status" | "qualityStatus">, override?: string): boolean {
+  if (a.status !== "pending_review") return false;
+  return a.qualityStatus === "passed" || Boolean(override && override.trim());
 }

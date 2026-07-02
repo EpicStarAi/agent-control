@@ -21,6 +21,9 @@ export const createJob = (ws: string, i: Partial<RenderJob>) => pick(() => db.cr
 export const setJob = (ws: string, id: string, patch: Partial<RenderJob>) => pick(() => db.setJob(ws, id, patch), () => store.setJob(ws, id, patch));
 export const listAssets = (ws: string, aid?: string) => pick(() => db.listAssets(ws, aid), () => store.listAssets(ws, aid));
 export const createAsset = (ws: string, i: Partial<AvatarAsset>) => pick(() => db.createAsset(ws, i), () => store.createAsset(ws, i));
+export const getAsset = (ws: string, id: string) => pick(() => db.getAsset(ws, id), () => store.getAsset(ws, id));
+export const listAssetsByJob = (ws: string, jobId: string) => pick(() => db.listAssetsByJob(ws, jobId), () => store.listAssetsByJob(ws, jobId));
+export const setAssetQuality = (ws: string, id: string, patch: Partial<AvatarAsset>) => pick(() => db.setAssetQuality(ws, id, patch), () => store.setAssetQuality(ws, id, patch));
 export const setAssetStatusByJob = (ws: string, jobId: string, status: string) => pick(() => db.setAssetStatusByJob(ws, jobId, status), () => store.setAssetStatusByJob(ws, jobId, status));
 export const listJobsByStatus = (ws: string, status: string, limit = 20) => pick(() => db.listJobsByStatus(ws, status, limit), () => store.listJobsByStatus(ws, status, limit));
 
@@ -43,7 +46,7 @@ export async function runQueueOnce(ws: string): Promise<{ processed: number; res
       const url = r.resultUrl || created.resultUrl;
       if ((r.status === "done" || created.status === "done") && url) {
         await setJob(ws, job.id, { status: "done", resultUrl: url, completedAt: new Date().toISOString(), providerJobId: created.providerJobId, providerStatus: r.providerStatus || "succeeded" });
-        await createAsset(ws, { avatarId: job.avatarId, jobId: job.id, assetType: "image", imageUrl: url, prompt: job.prompt, status: "pending_review" });
+        await createAsset(ws, { avatarId: job.avatarId, jobId: job.id, assetType: "image", imageUrl: url, prompt: job.prompt, status: "pending_review", sceneKey: job.sceneKey, candidateIndex: job.candidateIndex });
         results.push({ id: job.id, status: "done" });
       } else {
         const next = attempts < job.maxAttempts ? "queued" : "failed";

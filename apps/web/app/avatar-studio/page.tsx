@@ -6,6 +6,7 @@ type Avatar = { id: string; name: string; status: string; sourceImageUrl: string
 type Pack = { id: string; name: string; description: string; scenes: string[]; engine: string };
 type Job = { id: string; avatarId: string; packId: string; engine: string; status: string; sceneKey: string; prompt: string; resultUrl: string; batchId?: string; attempts?: number; maxAttempts?: number; providerId?: string; selectedBy?: string };
 type Prov = { id: string; name: string; mode: string; capabilities: string[]; enabled: boolean };
+type Asset = { id: string; jobId: string; avatarId: string; imageUrl: string; status: string; qualityStatus: string; qualityScore: number | null; identityScore: number | null; sceneKey: string; candidateIndex: number; qualityNotes: string };
 
 const box = "rounded-xl border border-white/10 bg-white/5 p-4";
 const btn = "rounded-lg px-3 py-1.5 text-[13px] font-semibold";
@@ -19,6 +20,8 @@ export default function AvatarStudioPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [providers, setProviders] = useState<Prov[]>([]);
   const [providerId, setProviderId] = useState<string>("");
+  const [candCount, setCandCount] = useState<number>(1);
+  const [assets, setAssets] = useState<Asset[]>([]);
   const [sel, setSel] = useState<string>("");
   const [packId, setPackId] = useState<string>("profile");
   const [name, setName] = useState(""); const [url, setUrl] = useState(""); const [consent, setConsent] = useState(false);
@@ -32,6 +35,7 @@ export default function AvatarStudioPage() {
     const p = await fetch("/api/avatar-studio/packs").then(x => x.json()).catch(() => ({ packs: [] })); setPacks(p.packs || []);
     const pr = await fetch("/api/avatar-studio/providers").then(x => x.json()).catch(() => ({ providers: [] })); setProviders(pr.providers || []);
     const j = await fetch("/api/avatar-studio/render-jobs").then(x => x.json()).catch(() => ({ jobs: [] })); setJobs(j.jobs || []);
+    const as = await fetch("/api/avatar-studio/assets").then(x => x.json()).catch(() => ({ assets: [] })); setAssets(as.assets || []);
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -50,11 +54,23 @@ export default function AvatarStudioPage() {
   async function createJobs() {
     if (!sel) return; setBusy(true);
     await fetch("/api/avatar-studio/render-jobs", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ avatarId: sel, packId, providerId: providerId || undefined }) });
+      body: JSON.stringify({ avatarId: sel, packId, providerId: providerId || undefined, candidateCount: candCount }) });
     setBusy(false); load();
   }
   async function act(id: string, kind: "approve" | "reject" | "regenerate" | "cancel") {
-    await fetch(`/api/avatar-studio/render-jobs/${id}/${kind}`, { method: "POST" }); load();
+    const r = await fetch(`/api/avatar-studio/render-jobs/${id}/${kind}`, { method: "POST" });
+    if (kind === "approve" && r.status === 409) {
+      const reason = window.prompt("Quality gate: ассет не прошёл. Причина override для approve (или Cancel):");
+      if (reason) await fetch(`/api/avatar-studio/render-jobs/${id}/approve`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ override: true, reason }) });
+    }
+    load();
+  }
+  async function qAct(assetId: string, status: "passed" | "failed" | "needs_review") {
+    await fetch(`/api/avatar-studio/assets/${assetId}/quality`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) }); load();
+  }
+  async function qNotes(assetId: string) {
+    const notes = window.prompt("Quality notes:"); if (notes == null) return;
+    await fetch(`/api/avatar-studio/assets/${assetId}/quality`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "needs_review", notes }) }); load();
   }
   async function runQueue() { setBusy(true); await fetch("/api/avatar-studio/render-jobs/run-once", { method: "POST" }); setBusy(false); load(); }
 
@@ -68,7 +84,6 @@ export default function AvatarStudioPage() {
     </div>
   );
 
-  const assets = jobs.filter(j => j.resultUrl);
   return (
     <div className="min-h-screen bg-[#05070f] text-slate-100 p-5">
       <div className="mb-3 flex items-center gap-3">
@@ -123,6 +138,10 @@ export default function AvatarStudioPage() {
             <option value="">Auto (Router)</option>
             {providers.map(p => <option key={p.id} value={p.id} disabled={!p.enabled}>{p.name} · {p.mode}{p.enabled ? "" : " · not configured"}</option>)}
           </select>
+          <span className="text-[12px] text-slate-400 ml-2">Кандидатов/сцена:</span>
+          <select className="rounded-lg bg-black/40 border border-white/10 px-2 py-1 text-[12px] text-white" value={candCount} onChange={e => setCandCount(Number(e.target.value))}>
+            {[1, 2, 3, 4].map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
         </div>
         <button className={btn + " bg-emerald-500 text-black mt-3"} disabled={!sel || busy} onClick={createJobs}>⚡ Создать Render Jobs</button>
         {!sel && <span className="ml-2 text-[12px] text-slate-500">выбери аватар</span>}
@@ -160,14 +179,24 @@ export default function AvatarStudioPage() {
       </div>
 
       <div className={box + " mt-4"}>
-        <div className="font-bold mb-2">Asset Library ({assets.length})</div>
-        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-          {assets.map(j => (
-            <div key={j.id} className="aspect-square rounded-lg bg-white/5 border border-white/10 grid place-items-center text-center p-2">
-              <div className="text-[10px] text-slate-400">{j.sceneKey}<br /><span className="text-slate-600">{j.status}</span></div>
-            </div>
-          ))}
-          {!assets.length && <div className="text-[12px] text-slate-500">Пусто.</div>}
+        <div className="font-bold mb-2">Asset Library · Quality Gate ({assets.length})</div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {assets.map(x => {
+            const qc = x.qualityStatus === "passed" ? "text-emerald-300" : x.qualityStatus === "failed" ? "text-rose-300" : x.qualityStatus === "needs_review" ? "text-amber-300" : "text-slate-400";
+            return (
+              <div key={x.id} className="rounded-lg bg-white/5 border border-white/10 p-2 text-[11px]">
+                <div className="aspect-square rounded bg-black/30 grid place-items-center text-center mb-1"><span className="text-[10px] text-slate-500">{x.sceneKey}<br />#{x.candidateIndex}<br />mock</span></div>
+                <div className="flex items-center justify-between"><span className="text-slate-400">{x.status}</span><span className={qc}>{x.qualityStatus}{x.qualityScore != null ? " " + x.qualityScore : ""}</span></div>
+                <div className="flex gap-1 mt-1 flex-wrap">
+                  <button className="rounded bg-emerald-600/40 px-2 py-0.5" onClick={() => qAct(x.id, "passed")}>pass</button>
+                  <button className="rounded bg-rose-600/40 px-2 py-0.5" onClick={() => qAct(x.id, "failed")}>fail</button>
+                  <button className="rounded bg-white/10 px-2 py-0.5" onClick={() => act(x.jobId, "regenerate")}>regen</button>
+                  <button className="rounded bg-white/10 px-2 py-0.5" onClick={() => qNotes(x.id)}>notes</button>
+                </div>
+              </div>
+            );
+          })}
+          {!assets.length && <div className="text-[12px] text-slate-500">Пусто — создай пак и Run Queue Once.</div>}
         </div>
       </div>
     </div>
