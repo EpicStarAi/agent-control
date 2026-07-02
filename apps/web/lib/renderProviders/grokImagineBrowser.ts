@@ -12,6 +12,8 @@ import type { RenderProviderAdapter, ProviderJobResult } from "@/lib/renderProvi
 //   EPIC_GROK_BROWSER_DRY_RUN=1      open + verify reachable, do NOT submit
 //   EPIC_GROK_IMAGINE_URL=...        target page (default https://grok.com/imagine)
 //   EPIC_GROK_PROFILE_DIR=...        persistent Chromium profile (default .local/grok-profile)
+//   EPIC_GROK_RESULT_TIMEOUT_MS=...  how long to wait for a Grok result (default 240000 = 4 min)
+//   EPIC_GROK_BROWSER_LOG=0          silence step logs (default: step logs ON for P30.1b debugging)
 
 const FLAG = () => process.env.EPIC_GROK_BROWSER === "1";
 const DRY = () => process.env.EPIC_GROK_BROWSER_DRY_RUN === "1";
@@ -19,6 +21,8 @@ const HEADLESS = () => process.env.EPIC_GROK_BROWSER_HEADLESS !== "0";
 const TARGET_URL = () => process.env.EPIC_GROK_IMAGINE_URL || "https://grok.com/imagine";
 const PROFILE_DIR = () => process.env.EPIC_GROK_PROFILE_DIR || ".local/grok-profile";
 const RENDER_DIR = ".local/avatar-renders";
+const RESULT_TIMEOUT = () => { const n = Number(process.env.EPIC_GROK_RESULT_TIMEOUT_MS); return Number.isFinite(n) && n > 0 ? n : 240000; };
+const LOG = (...a: any[]) => { if (process.env.EPIC_GROK_BROWSER_LOG !== "0") { try { console.log("[grok]", ...a); } catch { /* ignore */ } } };
 
 // Error taxonomy — clear, non-sensitive.
 export const GROK_ERRORS = {
@@ -101,6 +105,19 @@ async function captureResult(page: any, jobRef: string): Promise<string> {
   } catch { return ""; }
 }
 
+// P30.1b — on timeout/selector failure, dump a screenshot + page HTML for debugging (never committed, no secrets printed).
+async function saveDebug(page: any, jobRef: string): Promise<string> {
+  try {
+    const fs = await import("node:fs/promises"); const path = await import("node:path");
+    await fs.mkdir(RENDER_DIR, { recursive: true });
+    const png = path.join(RENDER_DIR, `${jobRef}.debug.png`);
+    const html = path.join(RENDER_DIR, `${jobRef}.debug.html`);
+    await page.screenshot({ path: png, fullPage: true }).catch(() => {});
+    try { const content = await page.content(); await fs.writeFile(html, content); } catch { /* ignore */ }
+    return png;
+  } catch { return ""; }
+}
+
 export const grokImagineBrowser: RenderProviderAdapter = {
   id: "grok_imagine_browser", name: "Grok Imagine (browser)", mode: "browser", capabilities: ["image", "video"],
   enabled() { return FLAG(); },
@@ -117,22 +134,30 @@ export const grokImagineBrowser: RenderProviderAdapter = {
       const page = ctx.pages()[0] || (await ctx.newPage());
       await page.goto(TARGET_URL(), { waitUntil: "domcontentloaded", timeout: 30000 });
 
-      if (await isLoggedOut(page)) { await ctx.close(); return fail("login_required", GROK_ERRORS.LOGIN_REQUIRED); }
+      LOG(ref, "page opened", TARGET_URL(), "headless=" + HEADLESS());
+      if (await isLoggedOut(page)) { LOG(ref, "LOGIN_REQUIRED (run headful EPIC_GROK_BROWSER_HEADLESS=0 and log in once)"); await ctx.close(); return fail("login_required", GROK_ERRORS.LOGIN_REQUIRED); }
       if (DRY()) { await ctx.close(); return { providerJobId: ref, status: "failed", resultUrl: "", error: GROK_ERRORS.DRY_RUN_OK, providerStatus: "dry_run_ok" }; }
 
       const promptBox = await firstVisible(page, SELECTORS.promptInput, 15000);
-      if (!promptBox) { await ctx.close(); return fail("selector_changed", GROK_ERRORS.PROMPT_INPUT_NOT_FOUND); }
+      if (!promptBox) { LOG(ref, "prompt input NOT found — selector changed"); await saveDebug(page, ref); await ctx.close(); return fail("selector_changed", GROK_ERRORS.PROMPT_INPUT_NOT_FOUND); }
+      LOG(ref, "prompt input found");
       await promptBox.fill(String(input.prompt || "").slice(0, 1000));
+      LOG(ref, "prompt filled");
 
       const genBtn = await firstVisible(page, SELECTORS.generateButton, 4000);
       if (genBtn) { await genBtn.click().catch(() => promptBox.press("Enter")); } else { await promptBox.press("Enter"); }
+      LOG(ref, "generate clicked");
 
-      // wait for a result to appear
-      const media = await firstVisible(page, SELECTORS.result, 120000);
-      if (!media) { await ctx.close(); return fail("result_timeout", GROK_ERRORS.GENERATION_TIMEOUT); }
+      // wait for a result to appear (configurable; default 4 min)
+      const timeoutMs = RESULT_TIMEOUT();
+      LOG(ref, "result wait started", timeoutMs + "ms");
+      const media = await firstVisible(page, SELECTORS.result, timeoutMs);
+      if (!media) { LOG(ref, "GENERATION_TIMEOUT — saving debug artifact"); const dbg = await saveDebug(page, ref); await ctx.close(); return { providerJobId: ref, status: "failed", resultUrl: "", error: GROK_ERRORS.GENERATION_TIMEOUT, providerStatus: dbg ? "timeout; debug=" + dbg : "timeout" }; }
+      LOG(ref, "media detected");
       const url = await captureResult(page, ref);
       await ctx.close();
-      if (!url) return fail("result_not_found", GROK_ERRORS.RESULT_NOT_FOUND);
+      if (!url) { LOG(ref, "RESULT_NOT_FOUND — media present but no resolvable src"); return fail("result_not_found", GROK_ERRORS.RESULT_NOT_FOUND); }
+      LOG(ref, "asset saved", url.slice(0, 80));
       return { providerJobId: ref, status: "done", resultUrl: url, error: "", providerStatus: "succeeded" };
     } catch (e: any) {
       try { if (ctx) await ctx.close(); } catch { /* ignore */ }
