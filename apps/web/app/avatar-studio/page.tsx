@@ -6,7 +6,7 @@ type Avatar = { id: string; name: string; status: string; sourceImageUrl: string
 type Pack = { id: string; name: string; description: string; scenes: string[]; engine: string };
 type Job = { id: string; avatarId: string; packId: string; engine: string; status: string; sceneKey: string; prompt: string; resultUrl: string; batchId?: string; attempts?: number; maxAttempts?: number; providerId?: string; selectedBy?: string };
 type Prov = { id: string; name: string; mode: string; capabilities: string[]; enabled: boolean; status?: string };
-type Asset = { id: string; jobId: string; avatarId: string; imageUrl: string; status: string; qualityStatus: string; qualityScore: number | null; identityScore: number | null; sceneKey: string; candidateIndex: number; qualityNotes: string };
+type Asset = { id: string; jobId: string; avatarId: string; imageUrl: string; status: string; qualityStatus: string; qualityScore: number | null; identityScore: number | null; sceneKey: string; candidateIndex: number; qualityNotes: string; createdAt?: string };
 
 const box = "rounded-xl border border-white/10 bg-white/5 p-4";
 const btn = "rounded-lg px-3 py-1.5 text-[13px] font-semibold";
@@ -73,6 +73,12 @@ export default function AvatarStudioPage() {
     const notes = window.prompt("Quality notes:"); if (notes == null) return;
     await fetch(`/api/avatar-studio/assets/${assetId}/quality`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "needs_review", notes }) }); load();
   }
+  async function regenGroup(jobId: string) {
+    setBusy(true);
+    const r = await fetch("/api/avatar-studio/candidates/regenerate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobId, candidateCount: candCount }) }).then(x => x.json()).catch(() => ({}));
+    setBusy(false);
+    if (r && r.reason) window.alert("Regenerate недоступен: " + r.reason); else load();
+  }
   async function runQueue() { setBusy(true); await fetch("/api/avatar-studio/render-jobs/run-once", { method: "POST" }); setBusy(false); load(); }
   async function checkGrok() { setGrokStatus("…"); const r = await fetch("/api/avatar-studio/grok/check", { method: "POST" }).then(x => x.json()).catch(() => ({ status: "error" })); setGrokStatus((r.status || "?") + (r.detail ? " · " + r.detail : "")); }
   async function runGrok() { setBusy(true); const r = await fetch("/api/avatar-studio/render-jobs/run-grok-once", { method: "POST" }).then(x => x.json()).catch(() => ({})); setBusy(false); if (r.error) setGrokStatus(r.status + " · " + r.error); load(); }
@@ -87,6 +93,10 @@ export default function AvatarStudioPage() {
     </div>
   );
 
+  const jobsById: Record<string, Job> = {}; jobs.forEach(j => { jobsById[j.id] = j; });
+  const groupsMap: Record<string, Asset[]> = {};
+  assets.forEach(a => { const k = a.avatarId + "::" + a.sceneKey; (groupsMap[k] = groupsMap[k] || []).push(a); });
+  const groupList = Object.keys(groupsMap).map(k => ({ key: k, scene: groupsMap[k][0]?.sceneKey || "—", list: groupsMap[k].slice().sort((x, y) => x.candidateIndex - y.candidateIndex) }));
   return (
     <div className="min-h-screen bg-[#05070f] text-slate-100 p-5">
       <div className="mb-3 flex items-center gap-3">
@@ -182,6 +192,43 @@ export default function AvatarStudioPage() {
             );
           })}
           {!jobs.length && <div className="text-[12px] text-slate-500">Джобов нет — создай из пака, затем Run Queue Once.</div>}
+        </div>
+      </div>
+
+      <div className={box + " mt-4"}>
+        <div className="font-bold mb-1">Candidate Groups · Quality Gate ({groupList.length} сцен)</div>
+        <div className="text-[11px] text-slate-500 mb-2">1 сцена → кандидаты → сравни → выбери лучший (passed) → approve. Группировка: avatar + scene.</div>
+        <div className="space-y-3">
+          {groupList.map(g => (
+            <div key={g.key} className="rounded-lg border border-white/10 bg-black/20 p-2">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="font-mono text-[12px] text-slate-300">{g.scene}</span>
+                <span className="text-[11px] text-slate-500">{g.list.length} кандидат(ов)</span>
+                <button className={btn + " bg-white/10 text-white ml-auto"} disabled={busy} onClick={() => regenGroup(g.list[0].jobId)}>♻ Regenerate candidates</button>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {g.list.map(x => {
+                  const jb = jobsById[x.jobId]; const approvable = x.status === "pending_review" && x.qualityStatus === "passed";
+                  const qc = x.qualityStatus === "passed" ? "bg-emerald-500/20 text-emerald-300" : x.qualityStatus === "failed" ? "bg-rose-500/20 text-rose-300" : x.qualityStatus === "needs_review" ? "bg-amber-500/20 text-amber-300" : "bg-white/10 text-slate-400";
+                  return (
+                    <div key={x.id} className={"rounded-lg border p-2 text-[11px] " + (x.qualityStatus === "passed" ? "border-emerald-400/50 bg-emerald-400/5" : "border-white/10 bg-white/5")}>
+                      <div className="aspect-square rounded bg-black/30 grid place-items-center text-center mb-1"><span className="text-[10px] text-slate-500">#{x.candidateIndex}<br />{x.imageUrl ? "mock" : "—"}</span></div>
+                      <div className="text-slate-400 truncate" title={x.id}>{x.id.slice(-6)} · {jb?.providerId || "?"}</div>
+                      <div className="text-slate-500 truncate">{jb?.packId || ""} · {x.status}</div>
+                      <div className="mt-1"><span className={"px-2 py-0.5 rounded " + qc}>{x.qualityStatus}{x.qualityScore != null ? " " + x.qualityScore : ""}</span></div>
+                      <div className="flex gap-1 mt-1 flex-wrap">
+                        <button className="rounded bg-cyan-600/50 px-2 py-0.5" onClick={() => qAct(x.id, "passed")}>★ pick best</button>
+                        <button className="rounded bg-rose-600/40 px-2 py-0.5" onClick={() => qAct(x.id, "failed")}>fail</button>
+                        <button className="rounded bg-white/10 px-2 py-0.5" onClick={() => qNotes(x.id)}>notes</button>
+                        <button className={"rounded px-2 py-0.5 " + (approvable ? "bg-emerald-600/60" : "bg-white/5 text-slate-600 cursor-not-allowed")} disabled={!approvable} title={approvable ? "" : "нужно quality passed + pending_review"} onClick={() => approvable && act(x.jobId, "approve")}>approve</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          {!groupList.length && <div className="text-[12px] text-slate-500">Групп нет — создай пак, Run Queue Once.</div>}
         </div>
       </div>
 
