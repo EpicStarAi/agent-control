@@ -225,6 +225,9 @@ no stored credentials, non-destructive migrations, Telegram = one provider not t
 
 ## 13. Perception OS (capability layer under AI Operator)
 
+> Full track detail: `docs/AI_PERCEPTION_OS_v1.md` (module map A–G, provider seams,
+> P30.1–P30.9 roadmap, numbering reconciliation). This section is the summary.
+
 The next layer after LLM-only operators: the operator that **sees, hears and understands
 context** in real time. Perception is NOT a new paradigm to invent and NOT a replacement
 for the Project/Cast spine — it is a **provider/adapter family + a fused World Model** that
