@@ -370,7 +370,8 @@ export default function AvatarStudioPage() {
                       </div>
                     ))}
                   </div>
-                  <div className="text-[10px] text-slate-500 mt-1">Канон: no_vikovaforever (YouTube: NOVIKOVAFOREVER). Только отображение — авто-подключения соцсетей нет.</div>
+                  <div className="text-[10px] text-amber-300/80 mt-1">⚠ Manual verification required before marking as official (см. docs/NOVIKOVA_SOCIAL_VERIFICATION_CHECKLIST.md).</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Канон: no_vikovaforever (YouTube: NOVIKOVAFOREVER). Только отображение — авто-подключения соцсетей нет.</div>
                 </div>
               );
             })()}
