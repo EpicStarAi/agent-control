@@ -208,11 +208,12 @@ export default function AvatarStudioPage() {
     if (!window.confirm("Удалить сцену?")) return;
     await fetch(`/api/avatar-studio/scenes/${id}`, { method: "DELETE" }); if (selScene === id) setSelScene(""); load();
   }
-  async function runScene() {
+  async function runScene(runProvider: string) {
     if (!selScene) return; setBusy(true); setRunInfo("");
-    const r = await fetch(`/api/avatar-studio/scenes/${selScene}/run`, { method: "POST" }).then(x => x.json()).catch(() => ({}));
+    const r = await fetch(`/api/avatar-studio/scenes/${selScene}/run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ providerId: runProvider }) }).then(x => x.json()).catch(() => ({}));
     setBusy(false);
     if (r && r.reason) { setRunInfo("Run недоступен: " + r.reason); }
+    else if (r && r.mode === "real_browser_queued") { setRunInfo(`🦊 ${r.imageJobs} real grok job(s) в очереди. Жми «Run One Real Grok Job» ниже (EPIC_GROK_BROWSER=1 + ручной логин). Авто-рендера нет.`); }
     else if (r && r.ok) { setRunInfo(`▶ ${r.imageJobs} image job(s) → Candidate Groups (pending_review). Video/Voice/Caption/Publish — placeholder.`); }
     load();
   }
@@ -432,9 +433,10 @@ export default function AvatarStudioPage() {
                 {["draft", "ready", "generating", "done"].map(s => <option key={s} value={s}>{s}</option>)}
               </select>
               <button className={btn + " bg-sky-500 text-black"} disabled={busy} onClick={saveScene}>Сохранить</button>
-              <button className={btn + " bg-emerald-500 text-black ml-auto"} disabled={busy || !scEdit.cast.length} title={scEdit.cast.length ? "" : "добавь персонажей в cast"} onClick={runScene}>▶ Run Scene</button>
+              <button className={btn + " bg-emerald-500 text-black ml-auto"} disabled={busy || !scEdit.cast.length} title={scEdit.cast.length ? "" : "добавь персонажей в cast"} onClick={() => runScene("mock_grok_imagine")}>▶ Run Scene (mock)</button>
+              <button className={btn + " bg-violet-600/60 text-white"} disabled={busy || !scEdit.cast.length} title="ставит real grok job(ы) в очередь; исполняется по одному через Run One Real Grok Job" onClick={() => runScene("grok_imagine_browser")}>🦊 Run Scene (real Grok)</button>
             </div>
-            <div className="text-[10px] text-slate-500 mt-1">Pipeline: Scene → Character Context → Prompt → Image(Quality Gate) → Video/Voice/Caption/Publish (placeholder). Картинки появятся в Candidate Groups ниже.</div>
+            <div className="text-[10px] text-slate-500 mt-1">Pipeline: Scene → Character Context → Prompt → Image(Quality Gate) → Video/Voice/Caption/Publish (placeholder). Mock — сразу в Candidate Groups. Real Grok — в очередь, затем «Run One Real Grok Job» (operator-side).</div>
             {runInfo && <div className="text-[11px] text-emerald-300 mt-1">{runInfo}</div>}
           </div>
         )}

@@ -57,7 +57,10 @@ export const createIdentitySource = (ws: string, aid: string, i: Partial<AvatarI
 
 // P27.2 mock queue runner — one pass over queued jobs. NO external calls (mock adapter only).
 export async function runQueueOnce(ws: string): Promise<{ processed: number; results: { id: string; status: string }[]; source: Src }> {
-  const { data: queued, source } = await listJobsByStatus(ws, "queued", 10);
+  const { data: allQueued, source } = await listJobsByStatus(ws, "queued", 20);
+  // P30.1 — the mock queue NEVER runs real-browser jobs. grok_imagine_browser is
+  // operator-side and processed exactly ONE at a time via runGrokOnce().
+  const queued = allQueued.filter(j => j.providerId !== "grok_imagine_browser");
   const results: { id: string; status: string }[] = [];
   for (const job of queued) {
     const attempts = job.attempts + 1;
