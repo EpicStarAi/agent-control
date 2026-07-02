@@ -188,7 +188,7 @@
 </head>
 <body>
 <div id="bg"><div class="glow g1"></div><div class="glow g2"></div><div id="bubs"></div></div>
-<div class="brandline">EPIC💀GRAM · AI OPERATOR</div>
+<div class="brandline">EPIC💀GRAM · AI COMPANY OS</div>
 <div class="badge">● LIVE PREVIEW · DEMO</div>
 <div class="scan"></div>
 
@@ -196,8 +196,8 @@
   <!-- AUTH: phone -->
   <div class="card" id="s-phone">
     <div class="logo"><span class="gradtext">EPIC</span><span class="skull">💀</span><span class="gradtext">GRAM</span></div>
-    <div class="ttl">Вход в клиент</div>
-    <div class="desc">AI Operator Client · демо-режим.<br>Это имитация — реальный Telegram и авторизация не используются.</div>
+    <div class="ttl">Вход в систему</div>
+    <div class="desc">Ты входишь не в Telegram — в свою цифровую компанию.<br>Демо-режим · имитация, реальная авторизация не используется.</div>
     <div class="fld"><label>Номер телефона</label><input class="inp" id="phone" value="+7 999 315-00-00" inputmode="tel"></div>
     <button class="btn" id="toCode">Продолжить</button>
   </div>
@@ -233,24 +233,25 @@
     <aside class="rail">
       <div class="rhead"><span class="sk">💀</span> EPIC<span class="gradtext">GRAM</span></div>
       <nav id="nav">
-        <div class="nav-item active" data-view="operator"><span class="ni">💬</span>AI-Оператор <span class="online" style="margin-left:auto"></span></div>
-        <div class="nav-item" data-view="workspace"><span class="ni">🖥</span>Рабочий стол</div>
-        <div class="nav-item" data-view="missions"><span class="ni">📋</span>Центр миссий</div>
-        <div class="nav-item" data-view="approvals"><span class="ni">✅</span>Подтверждения <span class="badge2" id="navApr">1</span></div>
-        <div class="nav-item" data-view="economy"><span class="ni">💳</span>Экономика · Кошелёк</div>
+        <div class="nav-item active" data-view="operator"><span class="ni">🏠</span>Командный центр <span class="online" style="margin-left:auto"></span></div>
+        <div class="nav-item" data-view="org"><span class="ni">👤</span>Организация</div>
+        <div class="nav-item" data-view="agents"><span class="ni">🤖</span>AI Операторы</div>
+        <div class="nav-item" data-view="missions"><span class="ni">📋</span>Центр миссий <span class="badge2" id="navApr">1</span></div>
+        <div class="nav-item" data-view="workspace"><span class="ni">💬</span>Telegram</div>
         <div class="nav-item" data-view="accounts"><span class="ni">👥</span>Аккаунты</div>
         <div class="nav-item" data-view="channels"><span class="ni">📢</span>Каналы</div>
-        <div class="nav-item" data-view="publisher"><span class="ni">📤</span>AI-Публикатор</div>
-        <div class="nav-item" data-view="analytics"><span class="ni">📈</span>Аналитика</div>
-        <div class="nav-item" data-view="agents"><span class="ni">🤖</span>AI-Агенты</div>
-        <div class="nav-item" data-view="security"><span class="ni">🛡</span>Безопасность</div>
-        <div class="nav-item" data-view="network"><span class="ni">🌐</span>Сеть</div>
-        <div class="nav-item" data-view="runtime"><span class="ni">⚙</span>Среда · Runtime</div>
-        <div class="nav-item" data-view="knowledge"><span class="ni">📚</span>База знаний</div>
+        <div class="nav-item" data-view="aiservices"><span class="ni">🧠</span>AI Сервисы</div>
+        <div class="nav-item" data-view="economy"><span class="ni">💰</span>Экономика</div>
+        <div class="nav-item" data-view="wallet"><span class="ni">💳</span>Кошелёк</div>
+        <div class="nav-item" data-view="marketplace"><span class="ni">🛒</span>Marketplace</div>
+        <div class="nav-item" data-view="analytics"><span class="ni">📊</span>Аналитика</div>
+        <div class="nav-item" data-view="network"><span class="ni">🌐</span>Инфраструктура</div>
+        <div class="nav-item" data-view="security"><span class="ni">🔐</span>Безопасность</div>
+        <div class="nav-item" data-view="settings"><span class="ni">⚙</span>Настройки</div>
       </nav>
     </aside>
     <section class="main">
-      <div class="mhead"><div class="av op" id="mhIcon">AI</div><div><div class="nm" id="mhTitle">AI-Оператор</div><div class="st" id="mhSub">● онлайн · ТОЛЬКО РУЧНОЕ ПОДТВЕРЖДЕНИЕ</div></div></div>
+      <div class="mhead"><div class="av op" id="mhIcon">AI</div><div><div class="nm" id="mhTitle">Командный центр</div><div class="st" id="mhSub">● онлайн · ТОЛЬКО РУЧНОЕ ПОДТВЕРЖДЕНИЕ</div></div></div>
       <div class="view on" id="view-operator">
         <div class="msgs" id="msgs"></div>
         <div class="quick" id="quick"></div>
@@ -262,7 +263,7 @@
       <div class="view" id="view-panel"><div class="panel" id="panelBody"></div></div>
     </section>
     <aside class="sys">
-      <h4>Обзор состояния</h4>
+      <h4>Оперативная сводка</h4>
       <div id="saBoard"></div>
       <h4>Очередь</h4>
       <div class="sysrow"><span class="l">Заявки</span><span class="v w" id="sysApprovals">1 в ожидании</span></div>
@@ -487,20 +488,23 @@
 
   // ===== P27.1 Unified Shell: навигация по модулям + Situation Awareness =====
   const MODVIEW={
-    operator:{icon:'AI',title:'AI-Оператор',sub:'● онлайн · ТОЛЬКО РУЧНОЕ ПОДТВЕРЖДЕНИЕ'},
-    workspace:{icon:'🖥',title:'Рабочий стол',sub:'чаты · каналы · папки · TDLib · AI'},
+    operator:{icon:'AI',title:'Командный центр',sub:'● онлайн · ТОЛЬКО РУЧНОЕ ПОДТВЕРЖДЕНИЕ'},
+    org:{icon:'👤',title:'Организация',sub:'цифровая компания · направление'},
+    agents:{icon:'🤖',title:'AI Операторы',sub:'команда AI-агентов'},
     missions:{icon:'📋',title:'Центр миссий',sub:'жизненный цикл задач'},
-    approvals:{icon:'✅',title:'Центр подтверждений',sub:'только ручное подтверждение'},
-    economy:{icon:'💳',title:'Экономика · Кошелёк',sub:'TON Connect · платежи · лимиты'},
+    workspace:{icon:'💬',title:'Telegram',sub:'один из модулей исполнения'},
     accounts:{icon:'👥',title:'Аккаунты',sub:'аккаунты · сессии · риск'},
     channels:{icon:'📢',title:'Каналы',sub:'каналы · папки · модерация'},
-    publisher:{icon:'📤',title:'AI-Публикатор',sub:'контент · очередь'},
-    analytics:{icon:'📈',title:'Аналитика',sub:'метрики платформы'},
-    agents:{icon:'🤖',title:'Реестр AI-агентов',sub:'операторы-агенты'},
-    security:{icon:'🛡',title:'Безопасность',sub:'risk engine · аудит'},
-    network:{icon:'🌐',title:'Сеть',sub:'VPN · прокси · гео'},
-    runtime:{icon:'⚙',title:'Telegram Runtime',sub:'TDLib · сессии'},
-    knowledge:{icon:'📚',title:'База знаний',sub:'RAG'} };
+    aiservices:{icon:'🧠',title:'AI Сервисы',sub:'каталог AI-возможностей'},
+    economy:{icon:'💰',title:'Экономика',sub:'бюджеты · платежи · лимиты'},
+    wallet:{icon:'💳',title:'Кошелёк',sub:'TON Connect · баланс'},
+    marketplace:{icon:'🛒',title:'Marketplace',sub:'App Store AI-возможностей'},
+    analytics:{icon:'📊',title:'Аналитика',sub:'метрики платформы'},
+    network:{icon:'🌐',title:'Инфраструктура',sub:'VPN · прокси · runtime · гео'},
+    security:{icon:'🔐',title:'Безопасность',sub:'risk engine · аудит'},
+    settings:{icon:'⚙',title:'Настройки',sub:'язык · звук · тема'},
+    approvals:{icon:'✅',title:'Центр подтверждений',sub:'только ручное подтверждение'},
+    publisher:{icon:'📤',title:'AI-Публикатор',sub:'контент · очередь'} };
 
   // ---- Situation Awareness state ----
   const SA=[
@@ -617,10 +621,33 @@
     if(name==='channels') return '<h3>📢 Каналы</h3><div class="sub">каналы · папки · модерация</div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>@deepinside</div><div class="pmeta">активен · 3 поста в очереди</div></div>'+
       '<div class="pcard"><div class="pt"><span class="sd r" style="width:9px;height:9px;border-radius:50%"></span>#promo</div><div class="pmeta"><b>rate-limited</b> · публикации приостановлены</div></div>';
-    const P={publisher:'Ideas · Generator · Planner · Queue · Approval · Publish',runtime:'TDLib · Accounts · Sessions · Auth · Folders · Chats',knowledge:'RAG · Telegram · TDLib · Bot API · TON · Project Docs'};
+    if(name==='org') return '<h3>👤 Организация</h3><div class="sub">цифровая компания · люди + AI как равные участники · Telegram — один из модулей</div>'+
+      '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>EPIC⭐STAR</div><div class="pmeta">владелец · Personal Workspace · single-tenant (активно)</div></div>'+
+      '<div class="planned" style="text-align:left;border-color:rgba(255,211,77,.35);color:#ffd34d;margin:10px 0">🗺 Направление (в коде пока не вводим): Организация → Отделы → Команды. Сначала — рабочий персональный Workspace.</div>'+
+      '<div style="font-weight:800;margin:8px 0 6px">Отделы (план)</div>'+
+      ['Маркетинг','Продажи','Медиа','Разработка','Безопасность','Финансы','Поддержка'].map(d=>'<div class="pcard"><div class="pt"><span class="sd b" style="width:9px;height:9px;border-radius:50%"></span>'+d+'</div><div class="pmeta">свой Telegram · AI · кошелёк · бюджет · KPI — позже</div></div>').join('');
+    if(name==='aiservices') return '<h3>🧠 AI Сервисы</h3><div class="sub">каталог AI-возможностей · подключаются к миссиям · оплата через лимиты</div>'+
+      [['Research','исследование ниши и данных','ready'],['Copywriter','тексты и объявления','ready'],['Vision','анализ и генерация изображений','ready'],['Voice','озвучка и распознавание','ready'],['Publisher','контент и очередь публикаций','ready'],['Analytics','метрики и отчёты','ready'],['SEO','оптимизация и ключи','ready'],['Translation','перевод и локализация','ready']].map(a=>'<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>'+a[0]+'</div><div class="pmeta">'+a[1]+' · 🟢 '+a[2]+'</div></div>').join('');
+    if(name==='wallet') return '<h3>💳 Кошелёк</h3><div class="sub">TON Connect · баланс · источник: demo (fallback)</div>'+
+      '<div class="planned" style="border-color:rgba(255,211,77,.45);color:#ffd34d;text-align:left;margin-bottom:12px">🔐 Ключи и seed не хранятся · списаний нет · всё через ручное подтверждение (симуляция).</div>'+
+      '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>'+WALLET.provider+' · connected</div><div class="pmeta">'+WALLET.account+' · '+WALLET.addr+'</div></div>'+
+      '<div class="pcard"><div class="pt">Баланс</div><div class="pmeta"><b>'+WALLET.bal.TON+' TON</b> · <b>'+WALLET.bal.USDT+' USDT</b> · <b>'+WALLET.bal.XTR+' ⭐</b><br>сегодня −2.7 · доход +15.3</div></div>'+
+      '<div class="pmeta" style="margin-top:8px">Платежи и лимиты агентов — в разделе <b>Экономика</b>.</div>';
+    if(name==='marketplace') return '<h3>🛒 Marketplace</h3><div class="sub">App Store AI-возможностей · учёт затрат (без реальных денег)</div>'+
+      '<div class="pmeta" style="margin-bottom:10px">Каждая карточка: сервис · стоимость запуска. Позже — внешние провайдеры (OpenAI · Anthropic · Gemini · xAI · local).</div>'+
+      MARKET.map(s=>'<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>'+s[0]+' AI</div><div class="pmeta">запуск · <b style="color:'+(s[1]==="internal"?"#8fb3cf":"var(--grn)")+'">'+s[1]+'</b> · ★★★★★</div></div>').join('')+
+      '<div class="pcard"><div class="pmeta" style="margin-bottom:8px">Собрать связку агентов под задачу:</div><button class="mini app" data-mk="campaign">⚡ Собрать рекламную кампанию</button></div>';
+    if(name==='settings') return '<h3>⚙ Настройки</h3><div class="sub">язык · звук · тема · режим</div>'+
+      '<div class="pcard"><div class="pt">Язык интерфейса</div><div class="pmeta">Русский (активно) · English · Українська — позже</div></div>'+
+      '<div class="pcard"><div class="pt">8D-музыка</div><div class="pmeta">переключается кнопкой внизу справа</div></div>'+
+      '<div class="pcard"><div class="pt">Тема</div><div class="pmeta">Neon Dark (активно)</div></div>'+
+      '<div class="pcard"><div class="pt">Режим подтверждений</div><div class="pmeta"><b style="color:var(--grn)">MANUAL_APPROVAL_ONLY</b> · заблокирован</div></div>';
+    const P={publisher:'Ideas · Generator · Planner · Queue · Approval · Publish'};
     return '<h3>'+MODVIEW[name].icon+' '+MODVIEW[name].title+'</h3><div class="sub">'+MODVIEW[name].sub+'</div><div class="planned">Модуль в дорожной карте P27.<br><span style="color:#9fc0da">'+(P[name]||'')+'</span><br><br>Слот готов — подключается после Unified Shell.</div>';
   }
-  function wirePanel(name){ if(name==='workspace'){ wireWorkspace(); return; } if(name==='economy'){ wireEconomy(); return; } if(name!=='approvals') return;
+  function wirePanel(name){ if(name==='workspace'){ wireWorkspace(); return; } if(name==='economy'){ wireEconomy(); return; }
+    if(name==='marketplace'){ const mk=$('panelBody').querySelector('[data-mk]'); if(mk) mk.onclick=()=>runCampaign(); return; }
+    if(name!=='approvals') return;
     $('panelBody').querySelectorAll('[data-ap]').forEach(b=>b.onclick=()=>{ const it=APITEMS.find(x=>x.id===b.dataset.ap); if(it&&it.status==='waiting_approval'){ it.status='approved'; sysApprovals=Math.max(0,sysApprovals-1); sysExecuted++; sysMissions++; updateSys(); toast('одобрено · симуляция'); $('panelBody').innerHTML=renderPanel('approvals'); wirePanel('approvals'); } });
     $('panelBody').querySelectorAll('[data-rj]').forEach(b=>b.onclick=()=>{ const it=APITEMS.find(x=>x.id===b.dataset.rj); if(it&&it.status==='waiting_approval'){ it.status='rejected'; sysApprovals=Math.max(0,sysApprovals-1); updateSys(); toast('отклонено'); $('panelBody').innerHTML=renderPanel('approvals'); wirePanel('approvals'); } }); }
   function setView(name){ const m=MODVIEW[name]||MODVIEW.operator;
