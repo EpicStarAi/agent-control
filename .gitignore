@@ -22,3 +22,5 @@ build-*.log
 .mission-data.json
 
 .approval-data.json
+
+.wallet-data.json
