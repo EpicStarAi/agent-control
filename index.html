@@ -95,6 +95,24 @@
   .sd.g{background:#39ff14;box-shadow:0 0 8px #39ff14}.sd.w{background:#ffd34d;box-shadow:0 0 8px #ffd34d}.sd.r{background:#ff5470;box-shadow:0 0 8px #ff5470}.sd.b{background:#22e3ff;box-shadow:0 0 8px #22e3ff}
   .saAsk{margin:12px 16px;padding:10px;border:1px solid rgba(255,211,77,.5);background:rgba(255,211,77,.08);color:#ffd34d;font-weight:700;border-radius:10px;cursor:pointer;font-size:13px}
   .saAsk:hover{background:rgba(255,211,77,.16)}
+  .panel.nopad{padding:0}
+  .ws{display:grid;grid-template-columns:210px 1fr;height:100%;min-height:0}
+  .wschats{border-right:1px solid var(--line);overflow-y:auto;min-height:0;background:rgba(11,17,34,.5)}
+  .wsfold{display:flex;gap:6px;padding:10px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+  .wsfold span{font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:#9fc0da;cursor:pointer}
+  .wsfold span.on{color:#fff;border-color:var(--cyan);background:rgba(34,227,255,.12)}
+  .wsitem{display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer}
+  .wsitem:hover{background:rgba(34,227,255,.06)} .wsitem.on{background:rgba(34,227,255,.10);box-shadow:inset 3px 0 0 var(--cyan)}
+  .wsitem .nm{font-weight:700;font-size:13px} .wsitem .sb{font-size:11px;color:#8fb3cf}
+  .wsconv{display:flex;flex-direction:column;min-height:0}
+  .wshd{padding:12px 14px;border-bottom:1px solid var(--line);font-weight:800;font-size:14px;display:flex;align-items:center;gap:8px}
+  .wsmsgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px}
+  .wsb{max-width:78%;padding:8px 12px;border-radius:14px;font-size:13px;line-height:1.35}
+  .wsb.in{align-self:flex-start;background:rgba(255,255,255,.06);border-top-left-radius:4px}
+  .wsb.out{align-self:flex-end;background:linear-gradient(92deg,var(--pur),var(--mag));color:#fff;border-top-right-radius:4px}
+  .aihint{margin:0 14px 8px;font-size:12px;color:var(--cyan);cursor:pointer;align-self:flex-start;border:1px solid rgba(34,227,255,.35);border-radius:999px;padding:5px 12px;background:rgba(34,227,255,.06)}
+  .wscomp{border-top:1px solid var(--line);padding:10px 14px;display:flex;gap:8px}
+  .wscomp input{flex:1;background:#070b17;border:1px solid var(--line);border-radius:999px;padding:9px 13px;color:#fff;font-size:13px;outline:none}
   .main{display:flex;flex-direction:column;min-height:0;background:linear-gradient(180deg,#070b17,#0a1020)}
   .mhead{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
   .mhead .nm{font-weight:800}.mhead .st{font-size:12px;color:var(--grn)}
@@ -216,6 +234,7 @@
       <div class="rhead"><span class="sk">💀</span> EPIC<span class="gradtext">GRAM</span></div>
       <nav id="nav">
         <div class="nav-item active" data-view="operator"><span class="ni">💬</span>AI Operator <span class="online" style="margin-left:auto"></span></div>
+        <div class="nav-item" data-view="workspace"><span class="ni">🖥</span>Telegram Workspace</div>
         <div class="nav-item" data-view="missions"><span class="ni">📋</span>Mission Center</div>
         <div class="nav-item" data-view="approvals"><span class="ni">✅</span>Approvals <span class="badge2" id="navApr">1</span></div>
         <div class="nav-item" data-view="economy"><span class="ni">💳</span>Economy · Wallet</div>
@@ -469,6 +488,7 @@
   // ===== P27.1 Unified Shell: навигация по модулям + Situation Awareness =====
   const MODVIEW={
     operator:{icon:'AI',title:'AI Operator',sub:'● онлайн · MANUAL_APPROVAL_ONLY'},
+    workspace:{icon:'🖥',title:'Telegram Workspace',sub:'чаты · каналы · папки · TDLib · AI'},
     missions:{icon:'📋',title:'Mission Center',sub:'жизненный цикл задач'},
     approvals:{icon:'✅',title:'Approval Center',sub:'MANUAL_APPROVAL_ONLY'},
     economy:{icon:'💳',title:'Economy · Wallet',sub:'TON Connect · payments · limits'},
@@ -518,7 +538,8 @@
     {id:'pr-tip',title:'Донат автору контента',amount:2,cur:'USDT',target:'@creator',agent:'AI-Publisher',risk:'low',status:'approved'} ];
   // [id,label,balance,limit,cur,enabled,spent,risk] — каждый агент = экономический субъект
   const AWAL=[ ['AI-Growth','Growth AI',67,5,'USDT',true,1.2,'medium'],['AI-Publisher','Publisher AI',25,3,'USDT',true,1.2,'low'],['AI-Operator','Operator AI',0,0,'USDT',false,0,'none'] ];
-  const MARKET=['Vision','Voice','Translation','Research','SEO','Analytics','Copywriter','Image'];
+  // service registry: [name, price] — учёт затрат, без реальных денег
+  const MARKET=[['Vision','0.03 USDT'],['Voice','0.01 USDT'],['Translation','0.01 USDT'],['Research','0.02 USDT'],['SEO','0.02 USDT'],['Copywriter','0.01 USDT'],['Image','0.02 USDT'],['Analytics','internal'],['Publisher','internal']];
   function payWaiting(){ return PAY.filter(p=>p.status==='waiting_approval').length; }
   function ecoSync(){ const ep=$('ecoPending'); if(ep){ ep.textContent=payWaiting(); } }
   function renderEconomy(){ const col=s=>({g:'grn',w:'cyan',r:'mag'}[stCol(s)]||'cyan');
@@ -531,7 +552,8 @@
       '<div style="font-weight:800;margin:14px 0 6px">Агенты как экономические субъекты</div>'+
       AWAL.map(a=>'<div class="pcard"><div class="pt"><span class="sd '+(a[5]?'g':'r')+'" style="width:9px;height:9px;border-radius:50%"></span>'+a[1]+'</div><div class="pmeta">баланс <b>'+a[2]+' '+a[4]+'</b> · лимит '+a[3]+'/сутки · потрачено '+a[6]+' · остаток '+(a[3]-a[6]).toFixed(1)+' · риск '+a[7]+' · '+(a[5]?'enabled':'disabled')+'</div></div>').join('')+
       '<div style="font-weight:800;margin:14px 0 6px">AI Marketplace</div>'+
-      '<div class="pcard"><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+MARKET.map(s=>'<span class="pill">'+s+'</span>').join('')+'</div>'+
+      '<div class="pcard"><div class="pmeta" style="margin-bottom:8px">Реестр сервисов · учёт затрат (без реальных денег). Позже — внешние AI-провайдеры.</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+MARKET.map(s=>'<span class="pill">'+s[0]+' · <b style="color:'+(s[1]==="internal"?"#8fb3cf":"var(--grn)")+'">'+s[1]+'</b></span>').join('')+'</div>'+
       '<div class="pmeta" style="margin-bottom:8px">Агенты кооперируются под задачу. Оплата услуг — через Approval + лимиты.</div>'+
       '<button class="mini app" data-mk="campaign">⚡ Собрать рекламную кампанию</button></div>';
   }
@@ -545,7 +567,29 @@
     $('panelBody').querySelectorAll('[data-prj]').forEach(b=>b.onclick=()=>{const it=PAY.find(x=>x.id===b.dataset.prj); if(it&&it.status==='waiting_approval'){it.status='rejected'; ecoSync(); toast('платёж отклонён'); auditAmb('Audit','payment '+it.id+' → rejected'); $('panelBody').innerHTML=renderEconomy(); wireEconomy();}});
     const mk=$('panelBody').querySelector('[data-mk]'); if(mk) mk.onclick=()=>runCampaign();
   }
+  // ---- Telegram Workspace (P29) — рабочий стол: папки · чаты · диалог · AI ----
+  const WSCHATS=[
+    {id:'buch',name:'BUCH ☠️',sub:'DEEP INSIDE · ведущий',msgs:[['in','Погнали снимать новый скетч?'],['out','Готовлю сцену в студии ТРИ ПЯТНАДЦАТЬ']],ai:'Предлагаю снять тизер сегодня в 18:00 — свет и реквизит готовы.'},
+    {id:'buchiha',name:'BUCHIHA 😇',sub:'ведущая',msgs:[['in','Что по контенту на сегодня?'],['out','AI Publisher собрал 3 черновика']],ai:'Могу отправить черновики на approve — опубликуем после подтверждения.'},
+    {id:'deepinside',name:'@deepinside',sub:'канал · 22k',msgs:[['in','Новый тизер в очереди'],['out','Публикация после approve']],ai:'Лучшее окно для поста — 19:30 по охвату за неделю.'},
+    {id:'operator',name:'AI Operator',sub:'системный',msgs:[['in','1 заявка ждёт подтверждения'],['out','Открой Approval Center']],ai:'Сейчас 1 approval и 1 payment ждут тебя. Показать?'} ];
+  let wsActive='buch';
+  function wsChat(){ return WSCHATS.find(c=>c.id===wsActive)||WSCHATS[0]; }
+  function renderWorkspace(){ const c=wsChat();
+    const list=WSCHATS.map(x=>'<div class="wsitem'+(x.id===wsActive?' on':'')+'" data-ws="'+x.id+'"><div class="av'+(x.id==='operator'?' op':'')+'" style="width:34px;height:34px;font-size:12px">'+x.name.slice(0,2)+'</div><div><div class="nm">'+x.name+'</div><div class="sb">'+x.sub+'</div></div></div>').join('');
+    const msgs=c.msgs.map(m=>'<div class="wsb '+m[0]+'">'+m[1]+'</div>').join('');
+    return '<div class="ws"><div class="wschats"><div class="wsfold"><span class="on">Все</span><span>Работа</span><span>DEEP INSIDE</span><span>Каналы</span></div>'+list+'</div>'+
+      '<div class="wsconv"><div class="wshd">'+c.name+' <span style="margin-left:auto;font-size:11px;color:#8fb3cf;font-weight:600">TDLib · demo</span></div>'+
+      '<div class="wsmsgs" id="wsmsgs">'+msgs+'</div>'+
+      '<div class="aihint" data-wsai="1">✨ AI: предложить ответ</div>'+
+      '<div class="wscomp"><input placeholder="Сообщение… (демо)"><button class="csend" style="width:38px;height:38px">➤</button></div></div></div>';
+  }
+  function wireWorkspace(){
+    $('panelBody').querySelectorAll('[data-ws]').forEach(b=>b.onclick=()=>{ wsActive=b.dataset.ws; $('panelBody').innerHTML=renderWorkspace(); wireWorkspace(); });
+    const ai=$('panelBody').querySelector('[data-wsai]'); if(ai) ai.onclick=()=>{ const c=wsChat(); c.msgs.push(['out',c.ai]); toast('AI предложил ответ · отправка по твоему действию'); auditAmb('AI Operator','suggested reply · '+c.name); $('panelBody').innerHTML=renderWorkspace(); wireWorkspace(); const m=$('wsmsgs'); if(m)m.scrollTop=m.scrollHeight; };
+  }
   function renderPanel(name){
+    if(name==='workspace') return renderWorkspace();
     if(name==='economy') return renderEconomy();
     if(name==='missions') return '<h3>📋 Mission Center</h3><div class="sub">Draft → In Progress → Waiting Approval → Executed · '+sysMissions+' активных</div>'+
       MISSIONS.map(m=>'<div class="pcard"><div class="pt"><span class="sd '+stCol(m[2])+'" style="width:9px;height:9px;border-radius:50%"></span>'+m[1]+'</div><div class="pmeta">'+m[0]+' · '+m[2]+'</div></div>').join('');
@@ -576,14 +620,14 @@
     const P={publisher:'Ideas · Generator · Planner · Queue · Approval · Publish',runtime:'TDLib · Accounts · Sessions · Auth · Folders · Chats',knowledge:'RAG · Telegram · TDLib · Bot API · TON · Project Docs'};
     return '<h3>'+MODVIEW[name].icon+' '+MODVIEW[name].title+'</h3><div class="sub">'+MODVIEW[name].sub+'</div><div class="planned">Модуль в дорожной карте P27.<br><span style="color:#9fc0da">'+(P[name]||'')+'</span><br><br>Слот готов — подключается после Unified Shell.</div>';
   }
-  function wirePanel(name){ if(name==='economy'){ wireEconomy(); return; } if(name!=='approvals') return;
+  function wirePanel(name){ if(name==='workspace'){ wireWorkspace(); return; } if(name==='economy'){ wireEconomy(); return; } if(name!=='approvals') return;
     $('panelBody').querySelectorAll('[data-ap]').forEach(b=>b.onclick=()=>{ const it=APITEMS.find(x=>x.id===b.dataset.ap); if(it&&it.status==='waiting_approval'){ it.status='approved'; sysApprovals=Math.max(0,sysApprovals-1); sysExecuted++; sysMissions++; updateSys(); toast('одобрено · симуляция'); $('panelBody').innerHTML=renderPanel('approvals'); wirePanel('approvals'); } });
     $('panelBody').querySelectorAll('[data-rj]').forEach(b=>b.onclick=()=>{ const it=APITEMS.find(x=>x.id===b.dataset.rj); if(it&&it.status==='waiting_approval'){ it.status='rejected'; sysApprovals=Math.max(0,sysApprovals-1); updateSys(); toast('отклонено'); $('panelBody').innerHTML=renderPanel('approvals'); wirePanel('approvals'); } }); }
   function setView(name){ const m=MODVIEW[name]||MODVIEW.operator;
     $('mhIcon').textContent=m.icon; $('mhTitle').textContent=m.title; $('mhSub').textContent=m.sub;
     document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===name));
     const op=(name==='operator'); $('view-operator').classList.toggle('on',op); $('view-panel').classList.toggle('on',!op);
-    if(!op){ $('panelBody').innerHTML=renderPanel(name); wirePanel(name); } }
+    if(!op){ const pb=$('panelBody'); pb.className='panel'+(name==='workspace'?' nopad':''); pb.innerHTML=renderPanel(name); wirePanel(name); } }
   document.querySelectorAll('.nav-item').forEach(n=>n.onclick=()=>setView(n.dataset.view));
   const saBtn=$('saAsk'); if(saBtn) saBtn.onclick=()=>{ setView('operator'); setTimeout(()=>typing(()=>attention(),700),150); };
 
