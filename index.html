@@ -54,8 +54,8 @@
   .clog .ok{color:var(--grn)}
 
   /* client */
-  #client{display:none;width:min(96vw,1100px);height:min(90vh,720px);background:rgba(6,10,20,.9);border:1px solid var(--line);
-    border-radius:18px;overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.6);grid-template-columns:280px 1fr}
+  #client{display:none;width:min(97vw,1240px);height:min(90vh,740px);background:rgba(6,10,20,.9);border:1px solid var(--line);
+    border-radius:18px;overflow:hidden;box-shadow:0 30px 90px rgba(0,0,0,.6);grid-template-columns:240px 1fr 268px}
   #client.show{display:grid}
   .rail{background:var(--pan);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
   .rhead{padding:16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;font-weight:800}
@@ -109,11 +109,27 @@
     color:var(--grn);padding:12px 20px;border-radius:12px;font-weight:700;box-shadow:0 0 24px rgba(57,255,20,.3);opacity:0;transition:.3s}
   .toast.show{opacity:1}
   .sound{position:fixed;bottom:16px;right:16px;z-index:60;font-size:12px;color:#7fa6c4;cursor:pointer;border:1px solid var(--line);border-radius:999px;padding:6px 12px;background:rgba(10,15,30,.6)}
+  /* right system panel */
+  .sys{background:var(--pan);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;overflow-y:auto}
+  .sys h4{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#7fa6c4;padding:16px 16px 6px;font-weight:800;margin:0}
+  .sysrow{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;font-size:13px;border-bottom:1px solid rgba(255,255,255,.04)}
+  .sysrow .l{display:flex;align-items:center;gap:8px;color:#cfe6f7}
+  .sysrow .v{font-size:12px;color:#8fb3cf;font-weight:600}
+  .sysrow .v.g{color:var(--grn)}.sysrow .v.c{color:var(--cyan)}.sysrow .v.w{color:#ffd34d}
+  .dot2{width:8px;height:8px;border-radius:50%;background:var(--grn);box-shadow:0 0 8px var(--grn);animation:opulse 2s infinite;flex:none}
+  /* operator answer card */
+  .opcard{border:1px solid rgba(34,227,255,.28);border-radius:14px;padding:12px 14px;background:rgba(34,227,255,.07);font-size:14px;line-height:1.45}
+  .opcard .h{display:flex;align-items:center;gap:8px;font-weight:800;margin-bottom:8px;font-size:13px}
+  .opcard .h .r{margin-left:auto;font-size:10px;color:var(--grn);border:1px solid rgba(57,255,20,.45);border-radius:999px;padding:2px 8px;letter-spacing:.06em}
+  .opcard ul{list-style:none;margin:0;padding:0}
+  .opcard li{padding:3px 0;color:#dceafc}
+  .opcard li .chk{color:var(--grn);margin-right:7px;font-weight:900}
+  .opcard b{color:var(--cyan)}
   /* --- mobile / narrow: single column, chat fills the screen --- */
   @media (max-width:820px){
     #stage{padding:0}
     #client.show{grid-template-columns:1fr;width:100vw;height:100dvh;height:100vh;border-radius:0;border:none}
-    .rail{display:none}
+    .rail,.sys{display:none}
     .mhead{padding:52px 16px 12px}
     .msgs{padding:14px}
     .row{max-width:92%}
@@ -191,6 +207,23 @@
         <button class="csend" id="csend" type="submit">➤</button>
       </form>
     </section>
+    <aside class="sys">
+      <h4>Операторы</h4>
+      <div class="sysrow"><span class="l"><span class="dot2"></span>Operator-Core</span><span class="v g">ready</span></div>
+      <div class="sysrow"><span class="l"><span class="dot2"></span>Guardian</span><span class="v g">ready</span></div>
+      <div class="sysrow"><span class="l"><span class="dot2"></span>Publisher</span><span class="v g">ready</span></div>
+      <div class="sysrow"><span class="l"><span class="dot2"></span>Analytics</span><span class="v g">ready</span></div>
+      <div class="sysrow"><span class="l"><span class="dot2"></span>Live-Ops</span><span class="v g">ready</span></div>
+      <h4>Система</h4>
+      <div class="sysrow"><span class="l">Telegram Runtime</span><span class="v g">connected</span></div>
+      <div class="sysrow"><span class="l">Database</span><span class="v c">Postgres</span></div>
+      <div class="sysrow"><span class="l">Approval Gate</span><span class="v w">manual</span></div>
+      <div class="sysrow"><span class="l">SSE / Audit</span><span class="v g">live</span></div>
+      <h4>Очередь</h4>
+      <div class="sysrow"><span class="l">Approvals</span><span class="v w" id="sysApprovals">1 waiting</span></div>
+      <div class="sysrow"><span class="l">Missions</span><span class="v c" id="sysMissions">6 active</span></div>
+      <div class="sysrow"><span class="l">Executed (sim)</span><span class="v g" id="sysExecuted">0</span></div>
+    </aside>
   </div>
 </div>
 
@@ -311,22 +344,57 @@
     }, 5200);
   }
 
+  // ---- Command Center: система-панель + управляющий цикл ----
+  let sysApprovals=1, sysMissions=6, sysExecuted=0;
+  function updateSys(){ const a=$('sysApprovals'),m=$('sysMissions'),e=$('sysExecuted');
+    if(a){ a.textContent=sysApprovals+' waiting'; a.className='v '+(sysApprovals>0?'w':'g'); }
+    if(m) m.textContent=sysMissions+' active'; if(e) e.textContent=String(sysExecuted); }
+  function opCard(title, lines, voice){
+    const li=lines.map(x=>'<li>'+(x.chk?'<span class="chk">✓</span>':'')+x.t+'</li>').join('');
+    opMsg('<div class="opcard"><div class="h">💀 AI Operator <span class="r">🟢 ready</span></div><div style="font-weight:700;margin-bottom:6px">'+title+'</div><ul>'+li+'</ul></div>', voice); }
+  function auditAmb(who,txt){ const d=document.createElement('div'); d.className='amb'; d.innerHTML='<b>'+who+'</b> · '+txt; msgs().appendChild(d); msgs().scrollTop=msgs().scrollHeight; blip(); }
+  function createApprovalCard(cfg){
+    sysApprovals++; updateSys();
+    const id='ap'+Date.now().toString(36).slice(-4);
+    opMsg('<div class="opcard"><div class="h">🗂 Заявка на подтверждение <span class="r" style="color:#ffd34d;border-color:rgba(255,211,77,.5)">waiting</span></div>'+
+      '<div style="font-weight:700">'+cfg.title+'</div>'+
+      '<ul><li><b>Модуль:</b> '+cfg.module+'</li><li><b>Действие:</b> '+cfg.action+'</li><li><b>Риск:</b> <span class="pill warn">'+cfg.risk+'</span></li></ul>'+
+      '<div class="approw"><button class="mini app" id="A_'+id+'">✓ Approve</button><button class="mini rej" id="R_'+id+'">Reject</button></div></div>',
+      cfg.voice||('Заявка: '+cfg.title+'. Одобряешь?'));
+    setTimeout(()=>{ const A=$('A_'+id),R=$('R_'+id);
+      if(A) A.onclick=()=>{ if(A.disabled)return; A.disabled=R.disabled=true; A.textContent='✓ approved';
+        sysApprovals=Math.max(0,sysApprovals-1); sysExecuted++; sysMissions++; updateSys();
+        meMsg('Approve ✓'); toast('одобрено · миссия в очереди (симуляция)'); auditAmb('Audit','approval '+id+' → approved · executed(sim)');
+        setTimeout(()=>opCard('Готово — действие одобрено', [
+          {chk:1,t:'Approval подтверждён оператором'},{chk:1,t:'Миссия ушла в очередь'},{chk:1,t:'Записано в Audit Log'},
+          {t:'Внешнее действие <b>симулировано</b> — реальная отправка не выполнялась.'} ],
+          'Готово. Одобрено, миссия в очереди, записано в аудит. Действие симулировано.'),450); };
+      if(R) R.onclick=()=>{ if(R.disabled)return; A.disabled=R.disabled=true; R.textContent='rejected';
+        sysApprovals=Math.max(0,sysApprovals-1); updateSys(); meMsg('Reject'); toast('отклонено'); auditAmb('Audit','approval '+id+' → rejected'); }; },60);
+  }
+  function runMissionFlow(){
+    opCard('Создаю миссию', [ {chk:1,t:'AI формирует заявку'},{chk:1,t:'Guardian проверяет риск'},
+      {t:'Дальше нужен твой <b>approve</b> — без него ничего не уйдёт.'} ],
+      'Создаю миссию. Формирую заявку, Guardian проверяет риск. Дальше нужно твоё подтверждение.');
+    setTimeout(()=>createApprovalCard({title:'Публикация поста в @deepinside', module:'AI Publisher', action:'publish.post', risk:'low'}),900);
+  }
+  function isCreateIntent(t){ t=t.toLowerCase(); return /созда|нов(ая|ую)\s*мисс|\/mission|\/approval|заявк.*созд|запусти\s*мисс/.test(t); }
+
   const QUICK=[
-    {q:'Что ты умеешь?', a:()=>{ opMsg('Совет операторов: <b>Operator-Core, Production-Gate, Live-Ops, Analytics, Publisher, Guardian</b>. Каждое действие проходит через <b>Approval Gate</b> и пишется в <b>Audit Log</b>.','Совет операторов из шести ролей. Каждое действие проходит через шлюз подтверждения и пишется в журнал аудита.'); }},
-    {q:'Покажи миссии', a:()=>{ opMsg('<div class="card2"><div class="t">Mission Center</div>'+
-        '<span class="pill">Draft</span><span class="pill">In&nbsp;Progress</span><span class="pill warn">Waiting&nbsp;Approval</span><span class="pill ok">Executed</span>'+
-        '<div style="margin-top:8px;color:#9fc0da">6 миссий · 1 ждёт подтверждения оператора.</div></div>','Открываю Mission Center. Шесть миссий, одна ждёт подтверждения.'); }},
-    {q:'Заявки на подтверждение', a:()=>{ opMsg('<div class="card2"><div class="t">Заявка от AI Publisher</div>'+
-        'Публикация тизера в канал <b>@deepinside</b> · риск <span class="pill warn">low</span>'+
-        '<div class="approw"><button class="mini app" id="apA">✓ Одобрить</button><button class="mini rej" id="apR">Отклонить</button></div></div>',
-        'Есть заявка на публикацию тизера. Одобряешь?');
-        setTimeout(()=>{ const a=$('apA'),r=$('apR'); if(a)a.onclick=()=>{meMsg('Одобряю ✓'); setTimeout(()=>{toast('одобрено · симуляция, без внешних действий'); opMsg('Заявка одобрена. Действие <b>симулировано</b> — реальная отправка не выполнялась.','Заявка одобрена. Действие симулировано, реальная отправка не выполнялась.');},400);};
-          if(r)r.onclick=()=>{meMsg('Отклоняю'); setTimeout(()=>{toast('отклонено'); opMsg('Принято. Заявка отклонена, ничего не выполнено.','Принято. Заявка отклонена.');},400);}; },50); }},
-    {q:'Это безопасно?', a:()=>{ opMsg('Да. Режим <b>MANUAL_APPROVAL_ONLY</b>: я предлагаю и объясняю риск, но <b>исполняю только после твоего «да»</b>. Всё логируется.','Да. Режим только ручного подтверждения. Я предлагаю и объясняю риск, но исполняю только после твоего да.'); }},
+    {q:'⚡ Создать миссию', a:runMissionFlow},
+    {q:'/approval', a:()=>createApprovalCard({title:'Смена профиля рабочего аккаунта', module:'Account Manager', action:'account.update', risk:'medium'})},
+    {q:'/missions', a:()=>opCard('Mission Center', [ {t:'Draft → In Progress → <b>Waiting Approval</b> → Executed'},
+      {chk:1,t:sysMissions+' активных миссий'},{chk:1,t:sysApprovals+' ждёт подтверждения'} ], 'Mission Center. '+sysMissions+' активных миссий.')},
+    {q:'/publisher', a:()=>opCard('AI Publisher', [ {chk:1,t:'Генерация и публикация контента'},{chk:1,t:'Черновик — автоматически'},
+      {t:'Публикация — только после <b>approve</b>.'} ], 'AI Publisher готовит контент, публикация после подтверждения.')},
+    {q:'/security', a:()=>opCard('Security / Risk', [ {chk:1,t:'Guardian сканирует риск действия'},{chk:1,t:'Лимиты и антиспам — Risk Engine'},
+      {chk:1,t:'Всё пишется в Audit Log'} ], 'Guardian сканирует риск, лимиты и антиспам на стороне Risk Engine, всё в аудите.')},
+    {q:'Это безопасно?', a:()=>opCard('Безопасность', [ {chk:1,t:'Режим <b>MANUAL_APPROVAL_ONLY</b>'},{chk:1,t:'Ничего не уходит без твоего «да»'},
+      {chk:1,t:'Полный аудит действий'} ], 'Режим только ручного подтверждения. Ничего не уходит без твоего да.')},
   ];
-  function renderQuick(){ const q=$('quick'); q.innerHTML='';
+  function renderQuick(){ updateSys(); const q=$('quick'); q.innerHTML='';
     QUICK.forEach(item=>{ const c=document.createElement('div');c.className='chip';c.textContent=item.q;
-      c.onclick=()=>{ meMsg(item.q); setTimeout(()=>typing(()=>item.a(),900),250); }; q.appendChild(c); }); }
+      c.onclick=()=>{ meMsg(item.q); setTimeout(()=>typing(()=>item.a(),700),200); }; q.appendChild(c); }); }
 
   // ---- FAQ / общий «мозг» оператора (offline, без ключей) ----
   const FAQ=[
@@ -357,6 +425,7 @@
   if(composer){ composer.addEventListener('submit', e=>{ e.preventDefault();
     const inp=$('cinp'); const q=(inp.value||'').trim(); if(!q) return; inp.value='';
     meMsg(q.replace(/&/g,'&amp;').replace(/</g,'&lt;'));
+    if(isCreateIntent(q)){ setTimeout(()=>typing(()=>runMissionFlow(),700),200); return; }
     const ans=answerFAQ(q); setTimeout(()=>typing(()=>opMsg(ans,ans),800),220);
   }); }
 
