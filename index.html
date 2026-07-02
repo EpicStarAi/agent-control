@@ -165,11 +165,38 @@
   .opcard li{padding:3px 0;color:#dceafc}
   .opcard li .chk{color:var(--grn);margin-right:7px;font-weight:900}
   .opcard b{color:var(--cyan)}
+  /* ===== P32 AI Operator Workspace 2.0 ===== */
+  .opwrap{display:flex;flex:1;min-height:0}
+  .opside{width:188px;flex:none;border-right:1px solid var(--line);background:rgba(9,14,28,.6);display:flex;flex-direction:column;min-height:0;overflow-y:auto}
+  .opside .newchat{margin:12px;padding:10px 12px;border-radius:11px;border:1px solid rgba(34,227,255,.4);background:rgba(34,227,255,.10);color:#eaf6ff;font-weight:800;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px}
+  .opside .newchat:hover{background:rgba(34,227,255,.18)}
+  .opside .oi{padding:9px 14px;display:flex;align-items:center;gap:10px;font-size:13px;color:#bcd6ec;cursor:pointer;border-left:3px solid transparent}
+  .opside .oi:hover{background:rgba(34,227,255,.06)} .opside .oi.on{background:rgba(34,227,255,.10);border-left-color:var(--cyan);color:#fff}
+  .opside .oi .ic{width:18px;text-align:center}
+  .opside h5{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#6f93b0;margin:12px 14px 4px;font-weight:800}
+  .opside .prj{padding:7px 14px;font-size:12.5px;color:#bcd6ec;cursor:pointer;display:flex;align-items:center;gap:8px}
+  .opside .prj:hover{background:rgba(34,227,255,.06)} .opside .prj.on{color:#fff;background:rgba(123,92,255,.14)}
+  .opside .prj .d{width:7px;height:7px;border-radius:50%;background:var(--cyan);flex:none}
+  .opmain{display:flex;flex-direction:column;flex:1;min-height:0}
+  .atttoolbar{display:flex;gap:6px;padding:6px 18px 0;flex-wrap:wrap;align-items:center}
+  .attbtn{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:#cfe6f7;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .attbtn:hover{border-color:var(--cyan);background:rgba(34,227,255,.08)}
+  .attbtn.run{margin-left:auto;width:auto;padding:0 13px;gap:6px;font-size:13px;font-weight:800;color:#04121a;border:none;background:linear-gradient(92deg,var(--cyan),var(--mag))}
+  .capgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+  .capopt{border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:13px;color:#dceafc;cursor:pointer;background:rgba(10,15,30,.5);text-align:left}
+  .capopt:hover{border-color:var(--cyan);background:rgba(34,227,255,.08)}
+  .capopt.warn{border-color:rgba(255,211,77,.5);color:#ffd34d}
+  .routerplan{border:1px solid rgba(123,92,255,.4);border-radius:12px;padding:10px 12px;background:rgba(123,92,255,.08);margin-top:2px;font-size:13px}
+  .routerplan .rh{font-weight:800;margin-bottom:6px;color:#c8b8ff}
+  .routerplan .rs{padding:3px 0;color:#dceafc;opacity:.35;transition:.35s}
+  .routerplan .rs.on{opacity:1} .routerplan .rs .mdl{color:var(--cyan);font-weight:700}
+  .routerplan .rs.on .mdl::before{content:'✓ ';color:var(--grn)}
   /* --- mobile / narrow: single column, chat fills the screen --- */
   @media (max-width:820px){
     #stage{padding:0}
     #client.show{grid-template-columns:1fr;width:100vw;height:100dvh;height:100vh;border-radius:0;border:none}
-    .rail,.sys{display:none}
+    .rail,.sys,.opside{display:none}
+    .atttoolbar{padding:6px 12px 0}
     .mhead{padding:52px 16px 12px}
     .msgs{padding:14px}
     .row{max-width:92%}
@@ -253,12 +280,29 @@
     <section class="main">
       <div class="mhead"><div class="av op" id="mhIcon">AI</div><div><div class="nm" id="mhTitle">Командный центр</div><div class="st" id="mhSub">● онлайн · ТОЛЬКО РУЧНОЕ ПОДТВЕРЖДЕНИЕ</div></div></div>
       <div class="view on" id="view-operator">
-        <div class="msgs" id="msgs"></div>
-        <div class="quick" id="quick"></div>
-        <form class="composer" id="composer" autocomplete="off">
-          <input class="cinp" id="cinp" placeholder="Спроси оператора: что умеешь, что требует внимания…">
-          <button class="csend" id="csend" type="submit">➤</button>
-        </form>
+        <div class="opwrap">
+          <aside class="opside">
+            <div class="newchat" id="opNew">➕ Новый чат</div>
+            <div class="oi on" data-op="chat"><span class="ic">💬</span>Оператор</div>
+            <div class="oi" data-op="history"><span class="ic">🕒</span>История</div>
+            <div class="oi" data-op="files"><span class="ic">📎</span>Файлы</div>
+            <div class="oi" data-op="knowledge"><span class="ic">🧠</span>База знаний</div>
+            <div class="oi" data-op="team"><span class="ic">👥</span>AI Команда</div>
+            <div class="oi" data-op="memory"><span class="ic">📌</span>Память</div>
+            <div class="oi" data-op="settings"><span class="ic">⚙️</span>Настройки</div>
+            <h5>Проекты</h5>
+            <div id="opProjects"></div>
+          </aside>
+          <div class="opmain">
+            <div class="msgs" id="msgs"></div>
+            <div class="quick" id="quick"></div>
+            <div class="atttoolbar" id="atttoolbar"></div>
+            <form class="composer" id="composer" autocomplete="off">
+              <input class="cinp" id="cinp" placeholder="Брось файл или спроси — Router AI сам подберёт модель…">
+              <button class="csend" id="csend" type="submit">➤</button>
+            </form>
+          </div>
+        </div>
       </div>
       <div class="view" id="view-panel"><div class="panel" id="panelBody"></div></div>
     </section>
@@ -365,7 +409,7 @@
       setTimeout(()=>typing(()=>{
         opMsg('Я управляю аккаунтами, каналами, публикациями и аналитикой — но <b>ничего не делаю без твоего подтверждения</b>.',
           'Я управляю аккаунтами, каналами, публикациями и аналитикой, но ничего не делаю без твоего подтверждения.');
-        renderQuick(); startPresence();
+        renderQuick(); renderProjects(); renderAtt(); wireOpside(); startPresence();
       },1200),700);
     },1100), 500);
   }
@@ -481,10 +525,68 @@
   if(composer){ composer.addEventListener('submit', e=>{ e.preventDefault();
     const inp=$('cinp'); const q=(inp.value||'').trim(); if(!q) return; inp.value='';
     meMsg(q.replace(/&/g,'&amp;').replace(/</g,'&lt;'));
+    if(/реклам|кампани/i.test(q)){ setTimeout(()=>typing(()=>runCampaign(),700),200); return; }
     if(isCreateIntent(q)){ setTimeout(()=>typing(()=>runMissionFlow(),700),200); return; }
     if(/внимани|что.*происходит|статус\s*систем|состояни|что.*сейчас/i.test(q)){ setTimeout(()=>typing(()=>attention(),700),200); return; }
     const ans=answerFAQ(q); setTimeout(()=>typing(()=>opMsg(ans,ans),800),220);
   }); }
+
+  // ===== P32 AI Operator Workspace 2.0 =====
+  const PROJECTS=[['Hide My Name VPN','hmn'],['DEEP INSIDE','di'],['NOVIKOVA','nov'],['THE ШАРФ','sharf'],['EPIC💀GRAM','epic'],['Личные','personal']];
+  let curProject='epic';
+  function renderProjects(){ const c=$('opProjects'); if(!c) return;
+    c.innerHTML=PROJECTS.map(p=>'<div class="prj'+(p[1]===curProject?' on':'')+'" data-prj="'+p[1]+'"><span class="d"></span>'+p[0]+'</div>').join('');
+    c.querySelectorAll('[data-prj]').forEach(b=>b.onclick=()=>{ curProject=b.dataset.prj; renderProjects();
+      const name=PROJECTS.find(p=>p[1]===curProject)[0];
+      typing(()=>opCard('Проект · '+name,[{chk:1,t:'История, файлы, промпты, агенты, миссии и бюджет — в контексте проекта'},{t:'Оператор теперь отвечает в рамках <b>'+name+'</b>.'}],'Проект '+name+'. Контекст загружен.'),600); }); }
+  function routerPlan(title, steps, voice){
+    const id='rp'+Date.now().toString(36).slice(-4);
+    opMsg('<div class="routerplan"><div class="rh">🧠 Router AI · '+title+'</div>'+steps.map((s,i)=>'<div class="rs" id="'+id+'_'+i+'"><span class="mdl">'+s[0]+'</span> — '+s[1]+'</div>').join('')+'</div>', voice);
+    steps.forEach((s,i)=>setTimeout(()=>{ const el=$(id+'_'+i); if(el){ el.classList.add('on'); blip(); } }, 420+i*520));
+  }
+  const CAP={
+    image:['Фото',[['улучшить','ChatGPT Vision'],['удалить фон','Local · rembg'],['увеличить качество','Local · upscale'],['баннер / превью','Grok Imagine'],['рекламный визуал','Grok Imagine'],['стиль Grok Imagine','Grok Imagine'],['заменить лицо ⚠','manual approve']]],
+    video:['Видео',[['монтаж','Local · FFmpeg'],['убрать шум','Local'],['стабилизировать','Local · FFmpeg'],['Shorts / вертикаль','Local · FFmpeg'],['субтитры','Whisper'],['озвучить','ElevenLabs'],['перевести','ChatGPT'],['lip sync ⚠','manual approve'],['заменить лицо ⚠','manual approve']]],
+    audio:['Аудио',[['очистить','Local'],['транскрибировать','Whisper'],['перевести','ChatGPT'],['подкаст','Publisher'],['синтез речи','ElevenLabs / Grok Voice'],['клонировать голос ⚠','manual approve']]],
+    doc:['Документ',[['пересказать','ChatGPT'],['найти ошибки','ChatGPT'],['сделать презентацию','ChatGPT + Publisher'],['извлечь таблицы','Local · OCR'],['добавить в RAG','Knowledge'],['подготовить отчёт','ChatGPT']]],
+    link:['Ссылка',[['разобрать страницу','ChatGPT'],['найти тренды','Grok'],['сохранить в RAG','Knowledge'],['сделать пост','Publisher']]],
+    code:['Код / GitHub',[['ревью','Claude'],['починить баг','Claude / ChatGPT'],['написать тесты','Claude'],['объяснить','ChatGPT']]],
+  };
+  function capCard(kind, fname){
+    const c=CAP[kind]; if(!c) return;
+    const opts=c[1].map(o=>'<button class="capopt'+(/⚠/.test(o[0])?' warn':'')+'" data-cap="'+encodeURIComponent(o[0])+'|'+encodeURIComponent(o[1])+'">'+o[0]+'</button>').join('');
+    opMsg('<div class="opcard"><div class="h">📎 '+c[0]+' <span class="r">'+(fname||'demo')+'</span></div><div style="margin-bottom:6px">Нашёл файл. Что сделать? Модель подберётся автоматически.</div><div class="capgrid">'+opts+'</div></div>', 'Нашёл '+c[0].toLowerCase()+'. Что сделать?');
+    setTimeout(()=>{ msgs().querySelectorAll('[data-cap]').forEach(b=>{ if(b._w) return; b._w=1; b.onclick=()=>{ const p=b.dataset.cap.split('|').map(decodeURIComponent); doCap(kind,p[0],p[1],fname); }; }); },60);
+  }
+  function doCap(kind,act,mdl,fname){
+    meMsg(act);
+    if(/⚠/.test(act)){ setTimeout(()=>typing(()=>{ const nm=act.replace('⚠','').trim();
+      opCard('Чувствительная операция',[{t:'<b>'+nm+'</b> затрагивает личность, лицо или голос.'},{t:'В демо это <b>не выполняется</b> — только плейсхолдер.'},{t:'В бою — строго через <b>ручное подтверждение</b> (MANUAL_APPROVAL_ONLY).'}], nm+'. Это чувствительная операция, только через подтверждение.');
+      createApprovalCard({title:nm+' · '+(fname||kind), module:'AI Media', action:kind+'.sensitive', risk:'high'}); },700),200); return; }
+    setTimeout(()=>typing(()=>routerPlan(act, [['Router AI','подобрал исполнителей'],[mdl,'основная модель'],['Local','подготовка файла'],['Audit','операция записана']], act+'. Router AI подобрал '+mdl+'. Результат — демо.'),700),200);
+  }
+  const ATT=[['📎','file','любой файл'],['📷','image','фото'],['🎥','video','видео'],['🎙','audio','аудио'],['📄','doc','документ'],['🌐','link','ссылка'],['💻','code','код / GitHub']];
+  function renderAtt(){ const t=$('atttoolbar'); if(!t) return; t.innerHTML='';
+    ATT.forEach(a=>{ const b=document.createElement('button'); b.type='button'; b.className='attbtn'; b.title=a[2]; b.textContent=a[0];
+      b.onclick=()=>{ const kind=a[1]==='file'?'doc':a[1]; const fname={image:'photo.png',video:'video.mp4',audio:'voice.wav',doc:'report.pdf',link:'https://…',code:'repo/main'}[kind]||'file';
+        meMsg('📎 '+fname); setTimeout(()=>typing(()=>capCard(kind,fname),700),150); }; t.appendChild(b); });
+    const run=document.createElement('button'); run.type='button'; run.className='attbtn run'; run.textContent='⚡ Миссия';
+    run.onclick=()=>{ meMsg('⚡ Запустить миссию'); setTimeout(()=>typing(()=>runMissionFlow(),700),150); }; t.appendChild(run);
+  }
+  const OPVIEWS={
+    history:()=>opCard('История',[{chk:1,t:'Последние диалоги проекта'},{t:'«Рекламная кампания DEEP INSIDE»'},{t:'«Стабилизация Telegram»'},{t:'«Публикация тизера»'}],'История диалогов проекта.'),
+    files:()=>opCard('Файлы',[{chk:1,t:'Загруженные и созданные файлы проекта'},{t:'photo.png · video.mp4 · report.pdf'},{t:'Брось файл на панель под вводом — оператор поймёт тип сам.'}],'Файлы проекта. Брось любой — я пойму тип.'),
+    knowledge:()=>opCard('База знаний · RAG',[{chk:1,t:'Правила проекта, документы, факты'},{chk:1,t:'Операторы отвечают, опираясь на неё'},{t:'Добавить документ — через 📄 → «добавить в RAG».'}],'База знаний. Операторы опираются на неё.'),
+    team:()=>opCard('AI Команда',[{t:'<b>Router AI</b> — дирижёр, выбирает исполнителя под задачу'},{chk:1,t:'Research · Copywriter · Vision · Voice · Publisher · Analytics · Guardian'},{t:'Ты видишь одного оператора — команда работает под капотом.'}],'AI команда. Router AI дирижирует, ты видишь одного оператора.'),
+    memory:()=>opCard('Рабочая память',[{t:'Последние решения · контакты · документы'},{t:'Активные задачи · знания проекта · закладки · медиа'},{chk:1,t:'Это память оператора, а не просто история сообщений.'}],'Рабочая память оператора: решения, задачи, знания.'),
+    settings:()=>opCard('Настройки оператора',[{t:'Язык · Русский'},{t:'Router AI · авто-выбор модели: вкл'},{t:'Режим · MANUAL_APPROVAL_ONLY (заблокирован)'}],'Настройки. Авто-выбор модели включён, режим только с подтверждением.'),
+  };
+  function wireOpside(){
+    const nb=$('opNew'); if(nb) nb.onclick=()=>{ msgs().innerHTML=''; document.querySelectorAll('.opside .oi').forEach(o=>o.classList.toggle('on',o.dataset.op==='chat'));
+      typing(()=>opCard('Новый чат',[{chk:1,t:'Контекст проекта '+PROJECTS.find(p=>p[1]===curProject)[0]+' сохранён'},{t:'Спрашивай или брось файл.'}],'Новый чат. Слушаю.'),500); };
+    document.querySelectorAll('.opside .oi').forEach(o=>o.onclick=()=>{ document.querySelectorAll('.opside .oi').forEach(x=>x.classList.remove('on')); o.classList.add('on');
+      const k=o.dataset.op; if(k==='chat') return; const fn=OPVIEWS[k]; if(fn) typing(()=>fn(),600); });
+  }
 
   // ===== P27.1 Unified Shell: навигация по модулям + Situation Awareness =====
   const MODVIEW={
@@ -562,6 +664,7 @@
       '<button class="mini app" data-mk="campaign">⚡ Собрать рекламную кампанию</button></div>';
   }
   function runCampaign(){ setView('operator');
+    routerPlan('Рекламная кампания', [['ChatGPT','анализ ТЗ'],['Grok','поиск трендов'],['Grok Imagine','баннеры'],['ElevenLabs','озвучка'],['FFmpeg','сборка видео'],['Telegram Publisher','публикация']], 'Router AI собирает кампанию: ChatGPT, Grok, Imagine, ElevenLabs, FFmpeg и Publisher.');
     const steps=[['Research','собрал данные по нише ✓'],['Copywriter','написал текст объявления ✓'],['Image','сгенерировал баннер ✓'],['Publisher','подготовил публикацию ✓']]; let i=0;
     (function next(){ if(i<steps.length){ const s=steps[i++]; setTimeout(()=>typing(()=>{ opCard('AI Marketplace · '+s[0], [{chk:1,t:s[1]}], s[0]+': '+s[1]); next(); },650),120); }
       else { setTimeout(()=>typing(()=>{ PAY.unshift({id:'pr_'+Date.now().toString(36).slice(-4),title:'Публикация рекламной кампании',amount:8,cur:'USDT',target:'@deepinside',agent:'AI-Marketplace',risk:'medium',status:'waiting_approval'}); ecoSync();
