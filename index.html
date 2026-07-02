@@ -260,20 +260,24 @@
     <aside class="rail">
       <div class="rhead"><span class="sk">💀</span> EPIC<span class="gradtext">GRAM</span></div>
       <nav id="nav">
-        <div class="nav-item active" data-view="operator"><span class="ni">🏠</span>Командный центр <span class="online" style="margin-left:auto"></span></div>
-        <div class="nav-item" data-view="org"><span class="ni">👤</span>Организация</div>
-        <div class="nav-item" data-view="agents"><span class="ni">🤖</span>AI Операторы</div>
+        <div class="nav-item" data-view="home"><span class="ni">🏠</span>Главная</div>
+        <div class="nav-item active" data-view="operator"><span class="ni">🤖</span>AI Оператор <span class="online" style="margin-left:auto"></span></div>
+        <div class="nav-item" data-view="workspace"><span class="ni">💬</span>Рабочий стол</div>
         <div class="nav-item" data-view="missions"><span class="ni">📋</span>Центр миссий <span class="badge2" id="navApr">1</span></div>
-        <div class="nav-item" data-view="workspace"><span class="ni">💬</span>Telegram</div>
+        <div class="nav-item" data-view="approvals"><span class="ni">✅</span>Подтверждения</div>
+        <div class="nav-item" data-view="economy"><span class="ni">💰</span>Экономика</div>
+        <div class="nav-item" data-view="wallet"><span class="ni">👛</span>Кошелёк</div>
         <div class="nav-item" data-view="accounts"><span class="ni">👥</span>Аккаунты</div>
         <div class="nav-item" data-view="channels"><span class="ni">📢</span>Каналы</div>
+        <div class="nav-item" data-view="agents"><span class="ni">🤖</span>AI Агенты</div>
         <div class="nav-item" data-view="aiservices"><span class="ni">🧠</span>AI Сервисы</div>
-        <div class="nav-item" data-view="economy"><span class="ni">💰</span>Экономика</div>
-        <div class="nav-item" data-view="wallet"><span class="ni">💳</span>Кошелёк</div>
-        <div class="nav-item" data-view="marketplace"><span class="ni">🛒</span>Marketplace</div>
         <div class="nav-item" data-view="analytics"><span class="ni">📊</span>Аналитика</div>
-        <div class="nav-item" data-view="network"><span class="ni">🌐</span>Инфраструктура</div>
-        <div class="nav-item" data-view="security"><span class="ni">🔐</span>Безопасность</div>
+        <div class="nav-item" data-view="partners"><span class="ni">🤝</span>Партнёры</div>
+        <div class="nav-item" data-view="marketing"><span class="ni">📈</span>Маркетинг</div>
+        <div class="nav-item" data-view="knowledge"><span class="ni">📚</span>База знаний</div>
+        <div class="nav-item" data-view="network"><span class="ni">🌐</span>Сеть</div>
+        <div class="nav-item" data-view="security"><span class="ni">🔒</span>Безопасность</div>
+        <div class="nav-item" data-view="org"><span class="ni">👤</span>Организация</div>
         <div class="nav-item" data-view="settings"><span class="ni">⚙</span>Настройки</div>
       </nav>
     </aside>
@@ -285,6 +289,7 @@
             <div class="newchat" id="opNew">➕ Новый чат</div>
             <div class="oi on" data-op="chat"><span class="ic">💬</span>Оператор</div>
             <div class="oi" data-op="history"><span class="ic">🕒</span>История</div>
+            <div class="oi" data-op="favorites"><span class="ic">⭐</span>Избранное</div>
             <div class="oi" data-op="files"><span class="ic">📎</span>Файлы</div>
             <div class="oi" data-op="knowledge"><span class="ic">🧠</span>База знаний</div>
             <div class="oi" data-op="team"><span class="ic">👥</span>AI Команда</div>
@@ -545,10 +550,10 @@
     steps.forEach((s,i)=>setTimeout(()=>{ const el=$(id+'_'+i); if(el){ el.classList.add('on'); blip(); } }, 420+i*520));
   }
   const CAP={
-    image:['Фото',[['улучшить','ChatGPT Vision'],['удалить фон','Local · rembg'],['увеличить качество','Local · upscale'],['баннер / превью','Grok Imagine'],['рекламный визуал','Grok Imagine'],['стиль Grok Imagine','Grok Imagine'],['заменить лицо ⚠','manual approve']]],
-    video:['Видео',[['монтаж','Local · FFmpeg'],['убрать шум','Local'],['стабилизировать','Local · FFmpeg'],['Shorts / вертикаль','Local · FFmpeg'],['субтитры','Whisper'],['озвучить','ElevenLabs'],['перевести','ChatGPT'],['lip sync ⚠','manual approve'],['заменить лицо ⚠','manual approve']]],
-    audio:['Аудио',[['очистить','Local'],['транскрибировать','Whisper'],['перевести','ChatGPT'],['подкаст','Publisher'],['синтез речи','ElevenLabs / Grok Voice'],['клонировать голос ⚠','manual approve']]],
-    doc:['Документ',[['пересказать','ChatGPT'],['найти ошибки','ChatGPT'],['сделать презентацию','ChatGPT + Publisher'],['извлечь таблицы','Local · OCR'],['добавить в RAG','Knowledge'],['подготовить отчёт','ChatGPT']]],
+    image:['Фото',[['улучшить','ChatGPT Vision'],['upscale','Local · upscale'],['удалить фон','Local · rembg'],['баннер','Grok Imagine'],['превью','Grok Imagine'],['рекламный креатив','Grok Imagine'],['аватар','Grok Imagine'],['style transfer','Grok Imagine'],['заменить лицо ⚠','manual approve']]],
+    video:['Видео',[['монтаж','Local · FFmpeg'],['убрать шум','Local'],['стабилизировать','Local · FFmpeg'],['Shorts','Local · FFmpeg'],['Reels','Local · FFmpeg'],['субтитры','Whisper'],['перевести','ChatGPT'],['озвучить','ElevenLabs'],['почистить звук','Local'],['lip sync ⚠','manual approve'],['заменить лицо ⚠','manual approve']]],
+    audio:['Аудио',[['транскрибировать','Whisper'],['перевести','ChatGPT'],['подкаст','Publisher'],['очистить','Local'],['нормализовать','Local'],['синтез речи','ElevenLabs / Grok Voice'],['клонировать голос ⚠','manual approve']]],
+    doc:['Документ',[['пересказать','ChatGPT'],['перевести','ChatGPT'],['анализ','ChatGPT'],['извлечь таблицы','Local · OCR'],['в базу знаний','Knowledge · RAG'],['сделать презентацию','ChatGPT + Publisher']]],
     link:['Ссылка',[['разобрать страницу','ChatGPT'],['найти тренды','Grok'],['сохранить в RAG','Knowledge'],['сделать пост','Publisher']]],
     code:['Код / GitHub',[['ревью','Claude'],['починить баг','Claude / ChatGPT'],['написать тесты','Claude'],['объяснить','ChatGPT']]],
   };
@@ -565,16 +570,17 @@
       createApprovalCard({title:nm+' · '+(fname||kind), module:'AI Media', action:kind+'.sensitive', risk:'high'}); },700),200); return; }
     setTimeout(()=>typing(()=>routerPlan(act, [['Router AI','подобрал исполнителей'],[mdl,'основная модель'],['Local','подготовка файла'],['Audit','операция записана']], act+'. Router AI подобрал '+mdl+'. Результат — демо.'),700),200);
   }
-  const ATT=[['📎','file','любой файл'],['📷','image','фото'],['🎥','video','видео'],['🎙','audio','аудио'],['📄','doc','документ'],['🌐','link','ссылка'],['💻','code','код / GitHub']];
+  const ATT=[['📎','file','любой файл'],['📷','image','фото'],['🎥','video','видео'],['🎙','audio','аудио'],['📄','doc','документ'],['🌐','link','ссылка'],['💻','code','код / GitHub'],['🗂','folder','папка']];
   function renderAtt(){ const t=$('atttoolbar'); if(!t) return; t.innerHTML='';
     ATT.forEach(a=>{ const b=document.createElement('button'); b.type='button'; b.className='attbtn'; b.title=a[2]; b.textContent=a[0];
-      b.onclick=()=>{ const kind=a[1]==='file'?'doc':a[1]; const fname={image:'photo.png',video:'video.mp4',audio:'voice.wav',doc:'report.pdf',link:'https://…',code:'repo/main'}[kind]||'file';
+      b.onclick=()=>{ const kind=(a[1]==='file'||a[1]==='folder')?'doc':a[1]; const fname={image:'photo.png',video:'video.mp4',audio:'voice.wav',doc:'report.pdf',link:'https://…',code:'repo/main',folder:'project-folder/'}[a[1]]||'file';
         meMsg('📎 '+fname); setTimeout(()=>typing(()=>capCard(kind,fname),700),150); }; t.appendChild(b); });
     const run=document.createElement('button'); run.type='button'; run.className='attbtn run'; run.textContent='⚡ Миссия';
     run.onclick=()=>{ meMsg('⚡ Запустить миссию'); setTimeout(()=>typing(()=>runMissionFlow(),700),150); }; t.appendChild(run);
   }
   const OPVIEWS={
     history:()=>opCard('История',[{chk:1,t:'Последние диалоги проекта'},{t:'«Рекламная кампания DEEP INSIDE»'},{t:'«Стабилизация Telegram»'},{t:'«Публикация тизера»'}],'История диалогов проекта.'),
+    favorites:()=>opCard('Избранное',[{chk:1,t:'Закреплённые промпты, ответы и связки агентов'},{t:'«Сборка рекламной кампании» · «Тизер @deepinside»'},{t:'Быстрый повтор — в один клик.'}],'Избранное: закреплённые промпты и связки.'),
     files:()=>opCard('Файлы',[{chk:1,t:'Загруженные и созданные файлы проекта'},{t:'photo.png · video.mp4 · report.pdf'},{t:'Брось файл на панель под вводом — оператор поймёт тип сам.'}],'Файлы проекта. Брось любой — я пойму тип.'),
     knowledge:()=>opCard('База знаний · RAG',[{chk:1,t:'Правила проекта, документы, факты'},{chk:1,t:'Операторы отвечают, опираясь на неё'},{t:'Добавить документ — через 📄 → «добавить в RAG».'}],'База знаний. Операторы опираются на неё.'),
     team:()=>opCard('AI Команда',[{t:'<b>Router AI</b> — дирижёр, выбирает исполнителя под задачу'},{chk:1,t:'Research · Copywriter · Vision · Voice · Publisher · Analytics · Guardian'},{t:'Ты видишь одного оператора — команда работает под капотом.'}],'AI команда. Router AI дирижирует, ты видишь одного оператора.'),
@@ -590,19 +596,23 @@
 
   // ===== P27.1 Unified Shell: навигация по модулям + Situation Awareness =====
   const MODVIEW={
-    operator:{icon:'AI',title:'Командный центр',sub:'● онлайн · ТОЛЬКО РУЧНОЕ ПОДТВЕРЖДЕНИЕ'},
+    home:{icon:'🏠',title:'Главная',sub:'обзор AI Operating System'},
+    operator:{icon:'AI',title:'AI Оператор',sub:'● онлайн · ТОЛЬКО РУЧНОЕ ПОДТВЕРЖДЕНИЕ'},
+    partners:{icon:'🤝',title:'Партнёры',sub:'компании · инфлюенсеры · клиенты · инвесторы'},
+    marketing:{icon:'📈',title:'Маркетинг',sub:'исследование → кампания → публикация → оптимизация'},
     org:{icon:'👤',title:'Организация',sub:'цифровая компания · направление'},
-    agents:{icon:'🤖',title:'AI Операторы',sub:'команда AI-агентов'},
+    agents:{icon:'🤖',title:'AI Агенты',sub:'команда AI-агентов · экономические субъекты'},
     missions:{icon:'📋',title:'Центр миссий',sub:'жизненный цикл задач'},
-    workspace:{icon:'💬',title:'Telegram',sub:'один из модулей исполнения'},
+    workspace:{icon:'💬',title:'Рабочий стол',sub:'Telegram — один из модулей исполнения'},
     accounts:{icon:'👥',title:'Аккаунты',sub:'аккаунты · сессии · риск'},
     channels:{icon:'📢',title:'Каналы',sub:'каналы · папки · модерация'},
     aiservices:{icon:'🧠',title:'AI Сервисы',sub:'каталог AI-возможностей'},
     economy:{icon:'💰',title:'Экономика',sub:'бюджеты · платежи · лимиты'},
     wallet:{icon:'💳',title:'Кошелёк',sub:'TON Connect · баланс'},
     marketplace:{icon:'🛒',title:'Marketplace',sub:'App Store AI-возможностей'},
-    analytics:{icon:'📊',title:'Аналитика',sub:'метрики платформы'},
-    network:{icon:'🌐',title:'Инфраструктура',sub:'VPN · прокси · runtime · гео'},
+    analytics:{icon:'📊',title:'Аналитика',sub:'AI · Telegram · финансы · контент · лиды'},
+    knowledge:{icon:'📚',title:'База знаний',sub:'единая RAG · Telegram · GitHub · Docs'},
+    network:{icon:'🌐',title:'Сеть',sub:'VPN · прокси · runtime · гео'},
     security:{icon:'🔐',title:'Безопасность',sub:'risk engine · аудит'},
     settings:{icon:'⚙',title:'Настройки',sub:'язык · звук · тема'},
     approvals:{icon:'✅',title:'Центр подтверждений',sub:'только ручное подтверждение'},
@@ -695,6 +705,7 @@
     $('panelBody').querySelectorAll('[data-ws]').forEach(b=>b.onclick=()=>{ wsActive=b.dataset.ws; $('panelBody').innerHTML=renderWorkspace(); wireWorkspace(); });
     const ai=$('panelBody').querySelector('[data-wsai]'); if(ai) ai.onclick=()=>{ const c=wsChat(); c.msgs.push(['out',c.ai]); toast('AI предложил ответ · отправка по твоему действию'); auditAmb('AI Operator','suggested reply · '+c.name); $('panelBody').innerHTML=renderWorkspace(); wireWorkspace(); const m=$('wsmsgs'); if(m)m.scrollTop=m.scrollHeight; };
   }
+  function kpiGroup(title,rows){ return '<div style="font-weight:800;margin:12px 0 6px;color:#cfe6f7">'+title+'</div><div class="capgrid">'+rows.map(r=>'<div class="pcard" style="margin:0"><div class="pmeta" style="font-size:11px">'+r[0]+'</div><div class="pt" style="font-size:17px;margin-top:2px">'+r[1]+'</div></div>').join('')+'</div>'; }
   function renderPanel(name){
     if(name==='workspace') return renderWorkspace();
     if(name==='economy') return renderEconomy();
@@ -717,10 +728,13 @@
       '<div class="pcard"><div class="pt"><span class="sd r" style="width:9px;height:9px;border-radius:50%"></span>Rate limit</div><div class="pmeta">канал #promo достиг лимита публикаций</div></div>';
     if(name==='agents') return '<h3>🤖 Реестр AI-агентов</h3><div class="sub">операторы-агенты · можно запускать отдельно</div>'+
       ['Operator-Core','Guardian','Publisher','Analytics','Growth','Security','Vision','Voice','Knowledge','Router','Scheduler'].map(a=>'<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>'+a+'</div><div class="pmeta">🟢 ready</div></div>').join('');
-    if(name==='analytics') return '<h3>📈 Аналитика</h3><div class="sub">метрики платформы</div>'+
-      '<div class="pcard"><div class="pt">Охват / сутки</div><div class="pmeta">+3.4% ↑ · 22 канала</div></div>'+
-      '<div class="pcard"><div class="pt">Публикации</div><div class="pmeta">за неделю: 74 · approve-rate 96%</div></div>'+
-      '<div class="pcard"><div class="pt">Монетизация</div><div class="pmeta">Stars · Premium · TON — сводка по запросу</div></div>';
+    if(name==='analytics') return '<h3>📊 Аналитика</h3><div class="sub">AI · Telegram · финансы · контент · лиды · коллаборации · демо-данные</div>'+
+      kpiGroup('AI', [['Задач выполнено','128'],['Approve-rate','96%'],['Ср. время','2.3 мин'],['Ср. стоимость','0.04 USDT']])+
+      kpiGroup('Telegram', [['Подписчики','48.2k'],['Просмотры','312k'],['Охват','+3.4% ↑'],['Вовлечённость','7.1%'],['CTR','2.8%']])+
+      kpiGroup('Финансы', [['TON','42.5'],['USDT','130.0'],['Stars','850 ⭐'],['Доход','+15.3'],['Расход','−2.7'],['ROI','×3.1']])+
+      kpiGroup('Контент', [['Посты','74'],['Видео','9'],['Изображения','120'],['Озвучки','14'],['Кампании','3']])+
+      kpiGroup('Лиды', [['Новые','37'],['Квалиф.','12'],['Закрыто','5'],['Конверсия','13.5%']])+
+      kpiGroup('Коллаборации', [['Партнёры','8'],['Инфлюенсеры','5'],['Компании','3'],['Кампании','2']]);
     if(name==='channels') return '<h3>📢 Каналы</h3><div class="sub">каналы · папки · модерация</div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>@deepinside</div><div class="pmeta">активен · 3 поста в очереди</div></div>'+
       '<div class="pcard"><div class="pt"><span class="sd r" style="width:9px;height:9px;border-radius:50%"></span>#promo</div><div class="pmeta"><b>rate-limited</b> · публикации приостановлены</div></div>';
@@ -729,8 +743,8 @@
       '<div class="planned" style="text-align:left;border-color:rgba(255,211,77,.35);color:#ffd34d;margin:10px 0">🗺 Направление (в коде пока не вводим): Организация → Отделы → Команды. Сначала — рабочий персональный Workspace.</div>'+
       '<div style="font-weight:800;margin:8px 0 6px">Отделы (план)</div>'+
       ['Маркетинг','Продажи','Медиа','Разработка','Безопасность','Финансы','Поддержка'].map(d=>'<div class="pcard"><div class="pt"><span class="sd b" style="width:9px;height:9px;border-radius:50%"></span>'+d+'</div><div class="pmeta">свой Telegram · AI · кошелёк · бюджет · KPI — позже</div></div>').join('');
-    if(name==='aiservices') return '<h3>🧠 AI Сервисы</h3><div class="sub">каталог AI-возможностей · подключаются к миссиям · оплата через лимиты</div>'+
-      [['Research','исследование ниши и данных','ready'],['Copywriter','тексты и объявления','ready'],['Vision','анализ и генерация изображений','ready'],['Voice','озвучка и распознавание','ready'],['Publisher','контент и очередь публикаций','ready'],['Analytics','метрики и отчёты','ready'],['SEO','оптимизация и ключи','ready'],['Translation','перевод и локализация','ready']].map(a=>'<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>'+a[0]+'</div><div class="pmeta">'+a[1]+' · 🟢 '+a[2]+'</div></div>').join('');
+    if(name==='aiservices') return '<h3>🧠 AI Сервисы</h3><div class="sub">единый каталог возможностей · Router AI подбирает под задачу · оплата через лимиты</div>'+
+      '<div class="capgrid">'+[['Reasoning','ChatGPT'],['Research','Grok'],['Marketing','internal'],['Trend Search','Grok'],['Knowledge','RAG'],['Vision','ChatGPT Vision'],['Image','Grok Imagine'],['Video','FFmpeg'],['Voice','ElevenLabs'],['Translation','ChatGPT'],['OCR','Local'],['Analytics','internal'],['Publisher','internal'],['Automation','internal'],['Coding','Claude'],['Storage','Local'],['Calendar','internal'],['Marketplace','каталог']].map(a=>'<div class="pcard" style="margin:0"><div class="pt"><span class="sd g" style="width:8px;height:8px;border-radius:50%"></span>'+a[0]+'</div><div class="pmeta">'+a[1]+' · 🟢 ready</div></div>').join('')+'</div>';
     if(name==='wallet') return '<h3>💳 Кошелёк</h3><div class="sub">TON Connect · баланс · источник: demo (fallback)</div>'+
       '<div class="planned" style="border-color:rgba(255,211,77,.45);color:#ffd34d;text-align:left;margin-bottom:12px">🔐 Ключи и seed не хранятся · списаний нет · всё через ручное подтверждение (симуляция).</div>'+
       '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>'+WALLET.provider+' · connected</div><div class="pmeta">'+WALLET.account+' · '+WALLET.addr+'</div></div>'+
@@ -745,11 +759,28 @@
       '<div class="pcard"><div class="pt">8D-музыка</div><div class="pmeta">переключается кнопкой внизу справа</div></div>'+
       '<div class="pcard"><div class="pt">Тема</div><div class="pmeta">Neon Dark (активно)</div></div>'+
       '<div class="pcard"><div class="pt">Режим подтверждений</div><div class="pmeta"><b style="color:var(--grn)">MANUAL_APPROVAL_ONLY</b> · заблокирован</div></div>';
+    if(name==='home') return '<h3>🏠 Главная</h3><div class="sub">EPIC💀GRAM AI Operating System · один оператор · Telegram — модуль</div>'+
+      '<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>Система в норме</div><div class="pmeta">18 аккаунтов онлайн · '+sysMissions+' активных миссий · '+sysApprovals+' ждёт подтверждения</div></div>'+
+      kpiGroup('Сводка', [['Задачи','128'],['Approve-rate','96%'],['Доход','+15.3'],['ROI','×3.1']])+
+      '<div style="font-weight:800;margin:12px 0 6px;color:#cfe6f7">Что требует внимания</div>'+
+      '<div class="pcard"><div class="pt"><span class="sd w" style="width:9px;height:9px;border-radius:50%"></span>'+sysApprovals+' заявк · Подтверждения</div><div class="pmeta">открой ✅ и одобри</div></div>'+
+      '<div class="pcard"><div class="pt"><span class="sd r" style="width:9px;height:9px;border-radius:50%"></span>Канал #promo · лимит</div><div class="pmeta">публикации приостановлены</div></div>'+
+      '<div class="pcard"><div class="pt"><span class="sd w" style="width:9px;height:9px;border-radius:50%"></span>Прокси #3 нестабилен</div><div class="pmeta">рекомендуется ротация · Сеть</div></div>'+
+      '<div class="pmeta" style="margin-top:10px">Начни в <b>AI Оператор</b>: спроси, брось файл или запусти миссию — Router AI подберёт исполнителей.</div>';
+    if(name==='partners') return '<h3>🤝 Партнёры</h3><div class="sub">компании · инфлюенсеры · креаторы · клиенты · инвесторы · агентства</div>'+
+      [['🏢 Компании','Aurora Media · TON Labs','3 активных'],['🌟 Инфлюенсеры','@nova_stream · @grimx','5 в работе'],['🎨 Креаторы','видео · дизайн · музыка','4 контракта'],['💼 Клиенты','DEEP INSIDE · NOVIKOVA','2 проекта'],['💰 Инвесторы','pre-seed конвертация','1 на связи'],['🏛 Агентства','SMM · PR аутсорс','2 партнёра']].map(p=>'<div class="pcard"><div class="pt">'+p[0]+'</div><div class="pmeta">'+p[1]+' · <b style="color:var(--cyan)">'+p[2]+'</b></div></div>').join('')+
+      '<div class="pmeta" style="margin-top:8px">Каждый партнёр хранит: контакты · документы · чат · миссии · платежи · историю.</div>';
+    if(name==='marketing') return '<h3>📈 Маркетинг</h3><div class="sub">исследование → тренды → план → креатив → approve → публикация → аналитика → оптимизация</div>'+
+      ['🔍 Research — сбор данных по нише','📊 Trend Detection — Grok ищет тренды','🗺 Campaign Planning — план и бюджет','🎨 Creative Generation — тексты · баннеры · видео','✅ Approval — ручное подтверждение','📤 Publishing — Telegram Publisher','📈 Analytics — охват · CTR · лиды','⚙ Optimization — правки по данным'].map((s,i)=>'<div class="pcard"><div class="pt"><span class="sd '+(i===4?'w':'g')+'" style="width:9px;height:9px;border-radius:50%"></span>'+s+'</div></div>').join('')+
+      '<button class="mini app" data-mk="campaign" style="margin-top:8px">⚡ Собрать рекламную кампанию</button>';
+    if(name==='knowledge') return '<h3>📚 База знаний</h3><div class="sub">единая RAG · операторы отвечают, опираясь на неё</div>'+
+      [['Telegram','правила, каналы, история'],['GitHub','код и документация репозиториев'],['Project Docs','ТЗ, брифы, гайдлайны'],['PDF','отчёты и материалы'],['Видео','транскрипты роликов'],['Изображения','подписи и теги'],['Голос','расшифровки аудио'],['Заметки','быстрые записи оператора']].map(k=>'<div class="pcard"><div class="pt"><span class="sd g" style="width:9px;height:9px;border-radius:50%"></span>'+k[0]+'</div><div class="pmeta">'+k[1]+'</div></div>').join('')+
+      '<div class="pmeta" style="margin-top:8px">Добавить документ — через 📄 в AI Операторе → «в базу знаний».</div>';
     const P={publisher:'Ideas · Generator · Planner · Queue · Approval · Publish'};
     return '<h3>'+MODVIEW[name].icon+' '+MODVIEW[name].title+'</h3><div class="sub">'+MODVIEW[name].sub+'</div><div class="planned">Модуль в дорожной карте P27.<br><span style="color:#9fc0da">'+(P[name]||'')+'</span><br><br>Слот готов — подключается после Unified Shell.</div>';
   }
   function wirePanel(name){ if(name==='workspace'){ wireWorkspace(); return; } if(name==='economy'){ wireEconomy(); return; }
-    if(name==='marketplace'){ const mk=$('panelBody').querySelector('[data-mk]'); if(mk) mk.onclick=()=>runCampaign(); return; }
+    if(name==='marketplace'||name==='marketing'){ const mk=$('panelBody').querySelector('[data-mk]'); if(mk) mk.onclick=()=>runCampaign(); return; }
     if(name!=='approvals') return;
     $('panelBody').querySelectorAll('[data-ap]').forEach(b=>b.onclick=()=>{ const it=APITEMS.find(x=>x.id===b.dataset.ap); if(it&&it.status==='waiting_approval'){ it.status='approved'; sysApprovals=Math.max(0,sysApprovals-1); sysExecuted++; sysMissions++; updateSys(); toast('одобрено · симуляция'); $('panelBody').innerHTML=renderPanel('approvals'); wirePanel('approvals'); } });
     $('panelBody').querySelectorAll('[data-rj]').forEach(b=>b.onclick=()=>{ const it=APITEMS.find(x=>x.id===b.dataset.rj); if(it&&it.status==='waiting_approval'){ it.status='rejected'; sysApprovals=Math.max(0,sysApprovals-1); updateSys(); toast('отклонено'); $('panelBody').innerHTML=renderPanel('approvals'); wirePanel('approvals'); } }); }
