@@ -3,6 +3,7 @@ import { MEDIA_AGENTS, PROVIDERS, type Provider } from "@/lib/mediaAgents";
 const card = "rounded-2xl border border-white/10 bg-white/5 p-4";
 
 const MODULES = [
+  { href: "/avatar-studio", title: "AI Avatar Studio", desc: "Аватары · Prompt Packs · Render Jobs" },
   { href: "/media-studio/characters", title: "Characters", desc: "Конструктор персонажа" },
   { href: "/media-studio/voices", title: "Voices", desc: "Голосовые провайдеры" },
   { href: "/media-studio/locations", title: "Locations", desc: "Локации / студии" },
