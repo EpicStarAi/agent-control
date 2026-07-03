@@ -105,9 +105,12 @@ def check_deps():
 def embed_all(mods, ref_paths, target_path):
     import numpy as np
     from insightface.app import FaceAnalysis
-    prov = mods["onnxruntime"].get_available_providers()
-    app = FaceAnalysis(name="antelopev2", providers=prov)
-    app.prepare(ctx_id=0, det_size=(640, 640))
+    avail = mods["onnxruntime"].get_available_providers()
+    # Prefer CUDA if present, else CPU. Drop AzureExecutionProvider (stub) which breaks init.
+    order = [p for p in ("CUDAExecutionProvider", "CPUExecutionProvider") if p in avail] or ["CPUExecutionProvider"]
+    ctx = 0 if "CUDAExecutionProvider" in order else -1
+    app = FaceAnalysis(name="antelopev2", providers=order)
+    app.prepare(ctx_id=ctx, det_size=(640, 640))
 
     def embed(path):
         img = mods["cv2"].imread(path)

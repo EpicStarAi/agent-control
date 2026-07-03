@@ -59,4 +59,45 @@ ComfyUI + PuLID/InstantID (SDXL, low-VRAM profile) local implementation:
 3. First local identity-lock generation, auto-scored by this scaffold, across the 3-prompt reproducibility gate.
 
 ---
-**Final status: P30.3a SCORER SCAFFOLD READY** (scoring pending on approved `insightface` install + model-pack download).
+**P30.3a status: SCORER SCAFFOLD READY.**
+
+## P30.3a.1 — Real Identity Score (2026-07-03) — PASS
+
+Ran the scaffold for real against the 3 NOVIKOVA references and the approved P30.2b asset.
+
+- **Dependency install:** `insightface 1.0.1` + `onnxruntime 1.27.0` installed (numpy/opencv already present).
+- **Model-pack download:** `antelopev2` (~352 MB) downloaded to `~/.insightface/models/`. The release zip
+  extracts one level too deep (`antelopev2/antelopev2/*.onnx`) → fixed by moving the 5 `.onnx` files up one level.
+- **Target image source:** **local capture screenshot** `.local/avatar-renders/idrun_mr4t3mtd.result_view.png`
+  (the pristine asset is remote-only on `assets.grok.com`; per environment web-fetch policy it was **not** pulled
+  via curl/python, and the manifest's embedded base64 copy is truncated/unusable). Face detection found **exactly 1
+  face** (bbox ~165×229, det 0.937) = the generated headshot; the composer ref thumbnails were not detected → no
+  cross-contamination.
+- **Scorer model:** `insightface/antelopev2` (ArcFace), CPU provider (see note).
+
+| metric | value |
+|---|---|
+| cos_front | **0.6016** |
+| cos_34 | **0.9420** |
+| cos_alt | **0.5127** |
+| cos_centroid | **0.8046** |
+| cos_min | **0.5127** |
+| calibratedScoreEstimate | **0.9885** |
+| result | **pass** (centroid ≥ 0.60 AND min ≥ 0.50) |
+
+- **JSON report:** `.local/identity-scores/asset_idrun_mr4t3mtd_20260703T110946Z.json` (gitignored runtime).
+
+### Honest caveats
+- **Wide per-reference spread:** `ref_34` cos 0.942 is unusually high (near-duplicate territory for ArcFace),
+  while `ref_alt` is a modest 0.513. The centroid gate passes comfortably, but the identity match is uneven
+  across references rather than uniformly strong.
+- **Generous calibration:** the sigmoid maps cos_centroid 0.80 → 98.85%. The **raw cosine (0.80 centroid /
+  0.51 min) is the honest figure**; do not over-read the 98.85%.
+- **Target is a screenshot,** not the pristine remote asset — screenshot compression/scaling can only *lower*
+  scores, so the true asset score is likely ≥ this. Re-scoring the pristine image is a future refinement.
+- **onnxruntime note:** installing `insightface` pulled CPU `onnxruntime`, which now shadows `onnxruntime-gpu`
+  (providers dropped to Azure/CPU). Scoring on CPU is fine. To restore CUDA for P30.3b: `pip uninstall onnxruntime -y`.
+- **License:** InsightFace/antelopev2 remain non-commercial research — swap embedder before commercial use.
+
+**Final status: P30.3a.1 REAL IDENTITY SCORE PASS** (cos_centroid 0.8046, cos_min 0.5127, calibrated 0.9885;
+target = capture screenshot, uneven per-ref spread noted).
