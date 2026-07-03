@@ -101,3 +101,53 @@ Ran the scaffold for real against the 3 NOVIKOVA references and the approved P30
 
 **Final status: P30.3a.1 REAL IDENTITY SCORE PASS** (cos_centroid 0.8046, cos_min 0.5127, calibrated 0.9885;
 target = capture screenshot, uneven per-ref spread noted).
+
+
+## P30.3a.2 — Pristine Rescore (2026-07-03) — FAIL (integrity finding)
+
+Re-scored against a pristine local target (operator-saved from the operator-owned asset URL after browser
+egress paths were exhausted).
+
+- **Target image source:** operator-saved from `assets.grok.com/.../65903f57-.../content` (the URL recorded as
+  `asset_idrun_mr4t3mtd.found`).
+- **Target local path:** `apps/web/.local/identity-scores/targets/asset_idrun_mr4t3mtd.jpg` (177,152 bytes, 1280×720, readable).
+- **Face detection count:** 1 (det 0.839).
+
+| metric | value |
+|---|---|
+| cos_front | **1.0000** |
+| cos_34 | 0.6004 |
+| cos_alt | 0.6428 |
+| cos_centroid | 0.8777 |
+| cos_min | 0.6004 |
+| calibratedScoreEstimate | 0.9948 |
+| scorer verdict | pass (mechanically) |
+
+- **JSON report:** `.local/identity-scores/asset_idrun_mr4t3mtd_20260703T112702Z.json`
+
+### Integrity finding (why this is a FAIL, not a PASS)
+`cos_front = 1.0000` is a self-comparison signature. Direct byte check confirms it:
+
+```
+tgt  177152 bytes  sha256[:16] e66a315e19c8ad37
+ref_front 177152 bytes  sha256[:16] e66a315e19c8ad37
+PIXEL_MSE 0.0
+```
+
+The "pristine asset" is **byte-identical to `ref_front.jpg`**. Therefore the asset content served at the
+recorded `found` URL (`65903f57`) is a **reference echo — one of the uploaded reference images — not the
+generated headshot.** The score is ref-vs-ref and says nothing about the generated output's likeness.
+
+**Consequence for P30.2b:** the embedded capture that produced `asset_idrun_mr4t3mtd` latched onto a
+reference-image URL, not the generation. The genuine generated business-headshot exists only in the capture
+**screenshot** (`idrun_mr4t3mtd.result_view.png`), which is what P30.3a.1 actually scored
+(cos_centroid 0.8046 — a *distinct* image, cos_front 0.60 / cos_34 0.94).
+
+- The manifest listed a **second** operator-owned candidate `assets.grok.com/.../296662cf-.../content` — a
+  likely candidate for the *true* generated image. Verifying/registering it is a future step (browser egress
+  is currently CSP-blocked; not done here).
+- **No approved asset was modified** (forbidden this phase); the concern is recorded for follow-up.
+
+**Final status: P30.3a.2 PRISTINE RESCORE FAIL** (supplied pristine target is byte-identical to ref_front;
+`cos_front=1.0` is a self-comparison, not a valid generated-image likeness. Best real generated-image score
+remains P30.3a.1 screenshot: cos_centroid 0.8046.)
