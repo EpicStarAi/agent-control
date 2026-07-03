@@ -10,6 +10,16 @@ tracked separately as P30.2 (NOVIKOVA Identity Reference / Seed Consistency).
 **Production build: PASS** (`next build apps/web`, 2026-07-03, base commit `21bb412`) —
 compiled successfully, 58/58 static pages generated, only ESLint warnings (no errors).
 
+**UI verification: PASS** (2026-07-03)
+- `/avatar-studio` renders workspace `ws_p294` (NOVIKOVA · U · S1 · E3).
+- `asset_grokcap_mr4n5grl` visible as `pending_review`.
+- pending_review asset count: 3.
+- API `GET /api/avatar-studio/assets`: `200`, `source=fallback`.
+- Review controls (одобрить / отклонить / перегенерировать, годен / брак) visible and rendered.
+- approve/reject NOT clicked — status preserved as `pending_review`.
+- Screenshot: `.local/avatar-renders/ui_verify_avatar_studio.png`.
+- Note: only a non-blocking React hydration warning observed (`style` attr on `<html>`); page renders correctly.
+
 ## Proven
 - **CDP attach to the real Chrome — PROVEN.** The adapter connects via
   `playwright.chromium.connectOverCDP(EPIC_GROK_CDP_URL)` to the operator's own logged-in
