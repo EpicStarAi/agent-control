@@ -32,9 +32,15 @@ Registered (bootstrap):
   consent `operator_confirmed`, `fileUrl` = the captured real NOVIKOVA passport headshot
   (`asset_grokcap_mr4n5grl`, `assets.grok.com/users/…/preview_image.jpg`).
 
-Reference slots #2 and #3 are reserved for higher-quality operator photos (front + 3/4 + varied
-lighting). Bootstrap self-reference gives weaker likeness than real dedicated photos; adding #2/#3
-before the first run is recommended.
+Real operator references (registered 2026-07-03, type `photo`, status `pending_review`,
+consent `operator_confirmed`, avatar `ava_mr3hy0ta_2a5c1c`):
+- **#2** `idsrc_novikova_ref2_front` — `ref_front.jpg` (front), 177152 B, 1280×720.
+- **#3** `idsrc_novikova_ref3_34` — `ref_34.jpg` (3/4 view), 255385 B, 912×1136.
+- **#4** `idsrc_novikova_ref4_altlight` — `ref_alt.jpg` (alt lighting), 259811 B, 1536×1024.
+
+Files: `apps/web/.local/identity-references/novikova/` (validated: JPEG SOI/EOI OK, dimensions parsed).
+Bootstrap `idsrc_novikova_ref1_bootstrap` retained as bootstrap-only. Total identity sources: 4.
+Real references (#2–#4) are now the primary likeness anchors for the first identity run.
 
 ## Identity-locked prompt template (prepared, not executed)
 - **Identity lock:** "Subject: NOVIKOVA — the SAME person as the attached reference image(s).
