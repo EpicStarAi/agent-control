@@ -177,3 +177,19 @@ Attempted to recover the true generated image from the existing P30.2b run.
 passes integrity (not byte-identical to any ref) + scorer gate.
 
 **Final status: P30.2b CAPTURE INTEGRITY BLOCKED / TRUE GENERATED ASSET NOT RECOVERED** (asset demoted to needs_repair; true candidate 21d8b635 identified but not retrievable via automation).
+
+## P30.2b Integrity Repair — candidate 21d8b635 RETRIEVED & REJECTED (2026-07-03)
+
+Operator manually saved candidate `21d8b635` (via authenticated Chrome). Retrieved and checked:
+
+- **Local target:** `apps/web/.local/identity-scores/targets/asset_idrun_mr4t3mtd_true_generated.jpg`
+  (177/295 KB, 402×536, readable) — now renamed `…​true_generated.REJECTED_starfield_0faces.jpg`.
+- **Integrity vs refs:** distinct — sha ≠ any ref; pixel MSE 13609 / 16246 / 3955 (ref_front / ref_34 / ref_alt). Not a reference echo. ✓
+- **Face detection:** **0 faces.** Visual inspection: the image is a **starfield / nebula (cosmic dust)** — **not a NOVIKOVA headshot at all.** `21d8b635` is an unrelated operator-owned Grok asset the capture also swept up.
+- **Verdict:** **REJECTED** (face count 0 ≠ 1). Scorer report: `.local/identity-scores/asset_idrun_mr4t3mtd_20260703T114839Z.json` (all cosines null, result pending — face not detected).
+- **Asset:** remains `needs_repair` / `failed_integrity`. Candidate list updated: `21d8b635` REJECTED; **`296662cf` (assets.grok.com) is the last untested candidate.**
+- Best valid generated-image score remains **P30.3a.1 screenshot** (cos_centroid 0.8046).
+
+**Finding:** the P30.2b embedded capture swept multiple operator-owned asset URLs, of which two are now known to be NOT the generation (`65903f57` = ref_front echo; `21d8b635` = starfield). The genuine NOVIKOVA business-headshot is confirmed present only in `idrun_mr4t3mtd.result_view.png`. Retrieving `296662cf` (or re-capturing the true asset) is the remaining path.
+
+**Final status: P30.2b TRUE GENERATED RESCORE FAIL** (candidate 21d8b635 is a starfield, 0 faces — not the headshot; asset stays needs_repair; 296662cf untested).
