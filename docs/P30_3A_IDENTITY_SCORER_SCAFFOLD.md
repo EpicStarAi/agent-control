@@ -193,3 +193,33 @@ Operator manually saved candidate `21d8b635` (via authenticated Chrome). Retriev
 **Finding:** the P30.2b embedded capture swept multiple operator-owned asset URLs, of which two are now known to be NOT the generation (`65903f57` = ref_front echo; `21d8b635` = starfield). The genuine NOVIKOVA business-headshot is confirmed present only in `idrun_mr4t3mtd.result_view.png`. Retrieving `296662cf` (or re-capturing the true asset) is the remaining path.
 
 **Final status: P30.2b TRUE GENERATED RESCORE FAIL** (candidate 21d8b635 is a starfield, 0 faces — not the headshot; asset stays needs_repair; 296662cf untested).
+
+## P30.2b Integrity Repair — candidate 296662cf REJECTED; all candidates exhausted (2026-07-03)
+
+Operator saved candidate `296662cf` (912×1136). Checked:
+
+- **Local target:** `apps/web/.local/identity-scores/targets/asset_idrun_mr4t3mtd_true_generated.jpg`
+  (255,385 B, 1136×912, readable; 1 face det 0.896) — renamed `…​true_generated.REJECTED_ref34_echo.jpg`.
+- **Integrity vs refs:** **byte-identical to `ref_34.jpg`** — sha256[:16] `05937fb0ec8d3fa2` == ref_34, **pixel MSE 0.0**.
+  (vs ref_front MSE 10852, vs ref_alt MSE 14143.)
+- **Verdict:** **REJECTED** (rule: byte-identical to a reference). It looks like a business headshot with 1 face only
+  because `ref_34` is itself a NOVIKOVA business-style reference photo. Not scored (would be ref_34-vs-itself, cos=1.0).
+
+### Conclusion — capture integrity failure confirmed
+All three fetchable operator-owned capture candidates are exhausted and **none is the generated image**:
+| candidate | verdict |
+|---|---|
+| `65903f57` | ref_front echo (byte-identical) — REJECTED |
+| `21d8b635` | starfield/nebula, 0 faces — REJECTED |
+| `296662cf` | ref_34 echo (byte-identical) — REJECTED |
+
+The P30.2b embedded capture swept the uploaded references + an unrelated cosmic asset and **never recorded the
+true generated asset URL**. The genuine NOVIKOVA business-headshot exists only in `idrun_mr4t3mtd.result_view.png`
+(P30.3a.1: cos_centroid 0.8046, cos_34 0.94 — distinct from ref_34, i.e. a real separate image, not an echo).
+
+- `asset_idrun_mr4t3mtd` remains **`needs_repair` / `failed_integrity`** (approved count 0). Non-destructive.
+- **Real repair options:** (a) P30.2b **capture-repair rerun** (new generation — separate GO), or (b) proceed to
+  **P30.3b** local deterministic pipeline (ComfyUI + PuLID/InstantID), which avoids capture ambiguity by design.
+- Best valid generated-image score remains **P30.3a.1 screenshot** (cos_centroid 0.8046).
+
+**Final status: P30.2b TRUE GENERATED RESCORE FAIL** (296662cf = ref_34 echo; all capture candidates exhausted; asset stays needs_repair).

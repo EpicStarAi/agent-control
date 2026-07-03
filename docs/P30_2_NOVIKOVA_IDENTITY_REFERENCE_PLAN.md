@@ -126,3 +126,10 @@ resolution, at candidate `imagine-public.x.ai/.../21d8b635` (**402×536**, disti
 - **P30.2b needs a capture-repair rerun (not a new generation):** re-point the asset to the true generated image
   once its bytes are retrievable, then rescore. Details in `docs/P30_3A_IDENTITY_SCORER_SCAFFOLD.md`.
 - P30.1 untouched; no secrets printed.
+
+### Update (2026-07-03): all capture candidates exhausted — none is the generation
+Checked all three fetchable operator-owned capture candidates: `65903f57` = ref_front echo, `21d8b635` = starfield
+(0 faces), `296662cf` = **ref_34 echo (byte-identical, MSE 0.0)**. The P30.2b embedded capture never recorded the
+true generated asset URL; the genuine headshot survives only in `idrun_mr4t3mtd.result_view.png`. `asset_idrun_mr4t3mtd`
+stays `needs_repair`. A true fix now requires a **capture-repair rerun** (new generation, separate GO) or moving to
+**P30.3b** (local deterministic InstantID/PuLID). Full detail in `docs/P30_3A_IDENTITY_SCORER_SCAFFOLD.md`.
