@@ -111,3 +111,18 @@ Machine-readable config: `.local/p30_2_identity_pipeline.json`.
 
 **Final status: P30.2b FIRST REAL IDENTITY RUN PASS → P30.2 COMPLETE → READY FOR P30.3 IDENTITY HARDENING**
 (next: dedicated InstantID/PuLID identity-lock provider for deterministic likeness >90%).
+
+## P30.2b CAPTURE INTEGRITY CORRECTION (2026-07-03)
+
+**The P30.2b PASS above is retracted for the captured asset.** P30.3a.2 proved that the image at the recorded
+`found` URL (`65903f57`) is **byte-identical to `ref_front.jpg`** (sha256[:16] `e66a315e19c8ad37`, pixel MSE 0.0).
+The embedded capture latched onto a **reference echo**, not the generated headshot. The genuine generation exists
+in the capture screenshot (`idrun_mr4t3mtd.result_view.png`, scored in P30.3a.1: cos_centroid 0.8046) and, at full
+resolution, at candidate `imagine-public.x.ai/.../21d8b635` (**402×536**, distinct from all refs).
+
+- `asset_idrun_mr4t3mtd` runtime status: **demoted `approved → needs_repair`** (`qualityStatus=failed_integrity`),
+  history fields recorded (`previousUrlWasReferenceEcho`, `refEchoMatch`, `repairCandidates`, `repairReason`).
+  Non-destructive — refs/identitySources untouched.
+- **P30.2b needs a capture-repair rerun (not a new generation):** re-point the asset to the true generated image
+  once its bytes are retrievable, then rescore. Details in `docs/P30_3A_IDENTITY_SCORER_SCAFFOLD.md`.
+- P30.1 untouched; no secrets printed.

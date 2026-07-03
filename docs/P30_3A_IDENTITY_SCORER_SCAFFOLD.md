@@ -151,3 +151,29 @@ reference-image URL, not the generation. The genuine generated business-headshot
 **Final status: P30.3a.2 PRISTINE RESCORE FAIL** (supplied pristine target is byte-identical to ref_front;
 `cos_front=1.0` is a self-comparison, not a valid generated-image likeness. Best real generated-image score
 remains P30.3a.1 screenshot: cos_centroid 0.8046.)
+
+## P30.2b/P30.3a Integrity Repair (2026-07-03) — TRUE ASSET NOT YET RECOVERED; asset demoted
+
+Attempted to recover the true generated image from the existing P30.2b run.
+
+- **Candidates in manifest:** `assets.grok.com/.../65903f57` (= ref echo, confirmed), `assets.grok.com/.../296662cf`,
+  and public `imagine-public.x.ai/.../21d8b635-...png`.
+- **Identified true generated image:** **`21d8b635`** renders at **402×536** (portrait), a resolution distinct
+  from every reference (ref_front 1280×720, ref_34 912×1136, ref_alt 1536×1024) — consistent with the Grok Imagine
+  headshot aspect. High-confidence this is the real generation.
+- **Retrieval blocked:** every automated egress path from the browser failed — page CSP blocks `fetch` (even
+  same-origin), Chrome Private-Network-Access blocks POST/`sendBeacon` to `127.0.0.1`, programmatic `<a download>`
+  does not persist, and the browser tool blocks base64 return. Per policy no curl/python URL fetch was used.
+  Bytes could not be scored this turn.
+- **Runtime action (integrity):** `asset_idrun_mr4t3mtd` **demoted** `approved → needs_repair`,
+  `qualityStatus = failed_integrity`, with history: `previousUrlWasReferenceEcho=true`,
+  `refEchoMatch=ref_front.jpg (byte-identical)`, `repairCandidates=[296662cf, 21d8b635 402×536]`,
+  `repairReason=P30.3a.2 integrity failure`. Non-destructive (assets 4, identitySources 4, refs untouched;
+  approved count now 0).
+- **Best valid score** remains **P30.3a.1 screenshot** (cos_centroid 0.8046) until the true image is scored.
+
+**Recovery is one step away:** operator saves the already-open `21d8b635` image (tab is on it) to
+`apps/web/.local/identity-scores/targets/asset_idrun_mr4t3mtd_true_generated.jpg`; then rescore + re-promote if it
+passes integrity (not byte-identical to any ref) + scorer gate.
+
+**Final status: P30.2b CAPTURE INTEGRITY BLOCKED / TRUE GENERATED ASSET NOT RECOVERED** (asset demoted to needs_repair; true candidate 21d8b635 identified but not retrievable via automation).
