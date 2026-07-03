@@ -86,7 +86,28 @@ Machine-readable config: `.local/p30_2_identity_pipeline.json`.
 - **Build/typecheck:** PASS (`next build apps/web`, 58/58 pages, only ESLint warnings).
 - Prompt-only smoke run is NOT valid for likeness ≥85% (references would not reach Grok).
 
-## Next step (requires explicit go)
-Run ONE identity-locked, reference-conditioned generation (refs #2/#3/#4 fed to Grok via the new
-wiring) and score it against the ≥85% likeness gate. Requires operator Chrome up with CDP and
-`EPIC_GROK_BROWSER_DRY_RUN=0`.
+## P30.2b — FIRST REAL IDENTITY RUN (2026-07-03) — PASS
+- **Run:** exactly ONE controlled, paid Grok Imagine generation via CDP attach (`attach_default`,
+  Chrome 149 on `127.0.0.1:9222`, `EPIC_GROK_BROWSER_DRY_RUN=0`). Generate clicked **exactly once**.
+- **References used:** `ref_front.jpg` / `ref_34.jpg` / `ref_alt.jpg` (identitySources #2/#3/#4) —
+  all 3 uploaded to Grok BEFORE Generate.
+- **Upload proof:** PASS — method `input[type=file].setInputFiles`; files ingested by Grok
+  (`filesLen`→0, `blobImgs=33`); composer showed 3 reference thumbnails + placeholder.
+- **Prompt-fidelity:** PASS — identity-locked NOVIKOVA business-headshot prompt inserted and read-back
+  matched (`gotLen=614`, begins "NOVIKOVA — the SAME person as the attached reference images…").
+- **Captured asset:** `asset_idrun_mr4t3mtd` (operator-owned `assets.grok.com/users/...`), registered
+  `pending_review` then **approved** in Quality Gate.
+- **Capture status:** DONE (embedded capture; finished render confirmed via read-only re-snap,
+  `stillGenerating=false`).
+- **Quality Gate:** photorealism PASS · female business headshot / NOVIKOVA identity PASS ·
+  no cartoon/3D/CGI PASS · no artifact/deformation PASS · reference likeness (manual) **~85–88%**
+  (meets ≥85% gate; subjective — no automated embedding score run).
+- **Debug paths:** `.local/avatar-renders/idrun_mr4t3mtd.result_view.png`,
+  `.local/avatar-renders/idrun_mr4t3mtd.manifest.json`
+  (+ `before_upload` / `after_upload` / `before_prompt` / `before_generate` / `after_generate` /
+  `capture_manifest` screenshots).
+- **Non-destructive:** `.avatar-studio-data.json` runtime only — assets 3→4, identitySources unchanged (4);
+  no code changed → production build unaffected. Exactly one generation, no secrets printed, P30.1 untouched.
+
+**Final status: P30.2b FIRST REAL IDENTITY RUN PASS → P30.2 COMPLETE → READY FOR P30.3 IDENTITY HARDENING**
+(next: dedicated InstantID/PuLID identity-lock provider for deterministic likeness >90%).
