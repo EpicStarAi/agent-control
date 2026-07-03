@@ -73,6 +73,20 @@ Machine-readable config: `.local/p30_2_identity_pipeline.json`.
   `asset_grokcap_mr4n5grl` remains `pending_review`.
 - No secrets printed. P30.1 untouched.
 
+## P30.2a — Reference Upload Wiring (2026-07-03)
+- **Grok UI supports file upload:** YES — `input[type=file]` (accept `image/*`); composer placeholder
+  "Type to imagine, @ to reference images". Dry probe staged all 3 refs via `setInputFiles` with NO
+  Generate click (screenshots `.local/avatar-renders/p30_2a_before_upload.png` / `p30_2a_after_upload.png`).
+- **Adapter wiring:** `grokImagineBrowser.ts` now uploads references BEFORE generate
+  (`uploadReferences`: primary `input[type=file].setInputFiles`, fallback attach-button + filechooser;
+  debug screenshots `before_upload` / `after_upload` / `before_generate`). Passed via
+  `input.referenceImagePaths` (presence ⇒ identity run).
+- **Safety guard:** identity run whose references fail to upload ⇒ ABORT
+  `REFERENCE_UPLOAD_NOT_SUPPORTED` / `REFERENCE_UPLOAD_FAILED` — NO prompt-only fallback, Generate NOT clicked.
+- **Build/typecheck:** PASS (`next build apps/web`, 58/58 pages, only ESLint warnings).
+- Prompt-only smoke run is NOT valid for likeness ≥85% (references would not reach Grok).
+
 ## Next step (requires explicit go)
-Provide real reference photos for slots #2/#3 (optional but recommended), then run ONE
-identity-locked, reference-conditioned generation and score it against the ≥85% likeness gate.
+Run ONE identity-locked, reference-conditioned generation (refs #2/#3/#4 fed to Grok via the new
+wiring) and score it against the ≥85% likeness gate. Requires operator Chrome up with CDP and
+`EPIC_GROK_BROWSER_DRY_RUN=0`.

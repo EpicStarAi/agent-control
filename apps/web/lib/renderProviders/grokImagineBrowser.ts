@@ -51,6 +51,8 @@ export const GROK_ERRORS = {
   RESULT_NOT_FOUND: "RESULT_NOT_FOUND",
   GENERATION_TIMEOUT: "GENERATION_TIMEOUT",
   SELECTOR_CHANGED: "SELECTOR_CHANGED",
+  REFERENCE_UPLOAD_NOT_SUPPORTED: "REFERENCE_UPLOAD_NOT_SUPPORTED",
+  REFERENCE_UPLOAD_FAILED: "REFERENCE_UPLOAD_FAILED",
   DRY_RUN_OK: "DRY_RUN_OK",
 } as const;
 
@@ -59,6 +61,7 @@ const SELECTORS = {
   promptInput: ["[role='textbox']", "[placeholder*='Imagine' i]", "textarea", "[contenteditable='true']", "input[type='text']"],
   generateButton: ["button:has-text('Generate')", "button:has-text('Imagine')", "[aria-label*='generate' i]", "button[type='submit']"],
   result: ["[data-testid*='image'] img", "img[src^='http']", "video source[src]", "video[src]"],
+  attachButtons: ["button[aria-label*='image' i]", "button[aria-label*='attach' i]", "button[aria-label*='upload' i]", "button[title*='attach' i]", "label[for]"],
 };
 
 function pjid(): string { return `grok_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`; }
@@ -90,7 +93,9 @@ async function collectMedia(page: any): Promise<string[]> {
       document.querySelectorAll("video").forEach((el: any) => { add(el.currentSrc || el.src || ""); add(el.getAttribute("poster") || ""); });
       document.querySelectorAll("source").forEach((el: any) => add(el.src || ""));
       document.querySelectorAll("*").forEach((el: any) => { const bg = getComputedStyle(el).backgroundImage; if (bg && bg.indexOf("url(") === 0) add((bg.match(/url\(["']?(.*?)["']?\)/) || [])[1] || ""); });
-      document.querySelectorAll("canvas").forEach((el: any) => { try { const r = el.getBoundingClientRect(); if (r.width > 64 && r.height > 64) add(el.toDataURL("image/png")); } catch (_) {} });
+      // P30.1 fix: do NOT capture <canvas>. Grok's blurred LOADING placeholders render to canvas
+      // and were detected as false-positive "new media" (done in ~8s, empty result). Real finished
+      // results arrive as <img>/<video> http/blob/data — wait for those instead.
       return out.filter((u: string) => /^(https?:|data:image\/|blob:)/.test(u));
     });
   } catch { return []; }
@@ -134,9 +139,44 @@ async function saveDebug(page: any, jobRef: string): Promise<string> {
   return png;
 }
 
-// Shared DOM flow (P30.2). Works on any Page (attached CDP tab OR launched profile).
+// P30.2a — upload operator reference images into the Grok composer BEFORE generate.
+// Primary: input[type=file].setInputFiles; fallback: attach button + filechooser.
+// Logs only filenames (never full paths / secrets). Returns ok=false on unsupported/failed.
+async function uploadReferences(page: any, ref: string, paths: string[]): Promise<{ ok: boolean; method: string; count: number; reason?: string }> {
+  const fs = await import("node:fs");
+  const exist = paths.filter((p) => { try { return fs.existsSync(p); } catch { return false; } });
+  LOG(ref, "reference upload: " + exist.length + "/" + paths.length + " present :: " + exist.map((p) => p.split(/[\\/]/).pop()).join(","));
+  if (!exist.length) return { ok: false, method: "none", count: 0, reason: GROK_ERRORS.REFERENCE_UPLOAD_FAILED + " no_files_present" };
+  await snap(page, ref, "before_upload");
+  try {
+    const fileInput = page.locator("input[type=file]").first();
+    if ((await fileInput.count()) > 0) {
+      await fileInput.setInputFiles(exist);
+      await page.waitForTimeout(1500);
+      await snap(page, ref, "after_upload");
+      LOG(ref, "reference upload OK via input[type=file] count=" + exist.length);
+      return { ok: true, method: "input[type=file]", count: exist.length };
+    }
+  } catch (e: any) { LOG(ref, "setInputFiles failed: " + String(e?.message || "").slice(0, 80)); }
+  try {
+    const [chooser] = await Promise.all([
+      page.waitForEvent("filechooser", { timeout: 5000 }),
+      firstVisible(page, SELECTORS.attachButtons, 4000).then((b: any) => (b ? b.click() : Promise.reject(new Error("no_attach_button")))),
+    ]);
+    await chooser.setFiles(exist);
+    await page.waitForTimeout(1500);
+    await snap(page, ref, "after_upload");
+    LOG(ref, "reference upload OK via filechooser count=" + exist.length);
+    return { ok: true, method: "filechooser", count: exist.length };
+  } catch (e: any) {
+    await saveDebug(page, ref);
+    return { ok: false, method: "none", count: 0, reason: GROK_ERRORS.REFERENCE_UPLOAD_NOT_SUPPORTED + " " + String(e?.message || "").slice(0, 60) };
+  }
+}
+
+// Shared DOM flow (P30.2 + P30.2a). Works on any Page (attached CDP tab OR launched profile).
 // Never closes the browser/context — the caller owns lifecycle.
-async function runOnPage(page: any, ref: string, wanted: string, wantHash: string): Promise<ProviderJobResult> {
+async function runOnPage(page: any, ref: string, wanted: string, wantHash: string, refs: string[] = []): Promise<ProviderJobResult> {
   await snap(page, ref, "before_prompt");
   const promptBox = await firstVisible(page, SELECTORS.promptInput, 15000);
   if (!promptBox) { LOG(ref, "prompt input NOT found — selector changed"); await saveDebug(page, ref); return fail("selector_changed", GROK_ERRORS.PROMPT_INPUT_NOT_FOUND); }
@@ -151,6 +191,13 @@ async function runOnPage(page: any, ref: string, wanted: string, wantHash: strin
   await snap(page, ref, "after_prompt");
   const okFidelity = Boolean(got) && (gotHash === wantHash || String(got).includes(wanted.slice(0, 40)));
   if (!okFidelity) { LOG(ref, "PROMPT_FIDELITY_MISMATCH — refusing to generate on the wrong prompt"); await saveDebug(page, ref); return fail("prompt_fidelity_mismatch", GROK_ERRORS.PROMPT_FIDELITY_MISMATCH + " want=" + wantHash + " got=" + gotHash); }
+  // P30.2a identity run: upload references BEFORE generate. On failure ABORT (no prompt-only fallback).
+  if (refs && refs.length) {
+    const up = await uploadReferences(page, ref, refs);
+    if (!up.ok) { LOG(ref, "IDENTITY RUN ABORT — " + up.reason); return fail("reference_upload_failed", up.reason || GROK_ERRORS.REFERENCE_UPLOAD_FAILED); }
+    LOG(ref, "identity references uploaded method=" + up.method + " count=" + up.count);
+    await snap(page, ref, "before_generate");
+  }
   const before = await collectResultSrcs(page);
   LOG(ref, "pre-generate gallery size=" + before.size);
   const genBtn = await firstVisible(page, SELECTORS.generateButton, 4000);
@@ -224,6 +271,8 @@ export const grokImagineBrowser: RenderProviderAdapter = {
     const ref = pjid();
     const wanted = String(input.prompt || "").slice(0, 1000);
     const wantHash = promptHash(wanted);
+    // P30.2a — optional identity references (absolute local paths). Presence => identity run.
+    const refs = Array.isArray((input as any).referenceImagePaths) ? ((input as any).referenceImagePaths as string[]) : [];
 
     // --- attach_default (DEFAULT): drive the operator's real Chrome via CDP. ---
     if (MODE() === "attach_default") {
@@ -233,7 +282,7 @@ export const grokImagineBrowser: RenderProviderAdapter = {
       try {
         if (await isLoggedOut(page)) { LOG(ref, "LOGIN_REQUIRED (log into Grok in your real Chrome)"); return fail("login_required", GROK_ERRORS.LOGIN_REQUIRED); }
         if (DRY()) { LOG(ref, "DRY_RUN_OK (attached, not submitting)"); return { providerJobId: ref, status: "failed", resultUrl: "", error: GROK_ERRORS.DRY_RUN_OK, providerStatus: "dry_run_ok" }; }
-        return await runOnPage(page, ref, wanted, wantHash); // never closes the operator's browser
+        return await runOnPage(page, ref, wanted, wantHash, refs); // never closes the operator's browser
       } catch (e: any) {
         return fail("error", "ATTACH_ERROR: " + String(e?.message || "unknown").slice(0, 160));
       }
@@ -248,7 +297,7 @@ export const grokImagineBrowser: RenderProviderAdapter = {
       LOG(ref, "profile page opened", TARGET_URL(), "headless=" + HEADLESS());
       if (await isLoggedOut(page)) { await ctx.close(); return fail("login_required", GROK_ERRORS.LOGIN_REQUIRED); }
       if (DRY()) { await ctx.close(); return { providerJobId: ref, status: "failed", resultUrl: "", error: GROK_ERRORS.DRY_RUN_OK, providerStatus: "dry_run_ok" }; }
-      const res = await runOnPage(page, ref, wanted, wantHash);
+      const res = await runOnPage(page, ref, wanted, wantHash, refs);
       await ctx.close();
       return res;
     } catch (e: any) {
