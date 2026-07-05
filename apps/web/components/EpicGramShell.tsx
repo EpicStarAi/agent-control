@@ -1122,6 +1122,7 @@ function OperatorDock({
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
+  const [intel, setIntel] = useState<Record<string, any> | null>(null);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([{ id: "p_main", name: "Основной" }]);
   const [activeId, setActiveId] = useState("p_main");
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -1170,36 +1171,57 @@ function OperatorDock({
       setFiles([]);
       return;
     }
-    const fnames = files.map((f) => f.name);
-    const mine: OpMsg = { role: "user", text: t, files: fnames };
-    const next = [...msgs, mine];
-    const opHistory = next.slice(-16).map((m) => ({
-      content: (m.files && m.files.length ? "[вложения: " + m.files.join(", ") + "] " : "") + m.text,
-      isOutgoing: m.role === "user"
-    }));
-    const tgContext = {
-      accountId: tgAccountId,
-      chatId: tgChatId,
-      chatTitle: tgChatTitle,
-      messages: (tgMessages || []).slice(-20).map((m) => ({
-        content: (m as { content?: string }).content ?? "",
-        isOutgoing: Boolean((m as { isOutgoing?: boolean }).isOutgoing),
-        ts: (m as { timestamp?: unknown; date?: unknown }).timestamp ?? (m as { date?: unknown }).date ?? null,
-      })),
-    };
-    setMsgs(next);
+    setMsgs((p) => [...p, { role: "user", text: t }]);
     setText("");
     setFiles([]);
+    const cmd = t.toLowerCase();
+
+    // Instant local operator tools (no LLM): /memory, /history — read stored memory.
+    if (cmd === "/memory" || cmd === "/history") {
+      let mem: Record<string, any> | null = (intel?.memory as Record<string, any>) ?? null;
+      if (!mem) {
+        try {
+          const rr = await fetch(`/api/ai/chat-memory?chatId=${encodeURIComponent(tgChatId)}`, { cache: "no-store" });
+          const dd = await rr.json().catch(() => null);
+          mem = dd?.memory ?? null;
+        } catch {}
+      }
+      const txt = mem
+        ? `🧠 Память чата\nТип: ${mem.chatType} · intent: ${mem.intent} · приоритет: ${mem.priority} · риск: ${mem.risk}\nSummary: ${mem.summary || "—"}\nOpen: ${(mem.openQuestions || []).join("; ") || "—"}\nTasks: ${(mem.tasks || []).join("; ") || "—"}\nPromises: ${(mem.promises || []).join("; ") || "—"}\nFacts: ${(mem.facts || []).join("; ") || "—"}`
+        : "🧠 Память пуста — напиши «проанализируй чат».";
+      setMsgs((p) => [...p, { role: "op", text: txt }]);
+      return;
+    }
+
+    const messages = (tgMessages || []).slice(-20).map((mm) => ({
+      content: (mm as { content?: string }).content ?? "",
+      isOutgoing: Boolean((mm as { isOutgoing?: boolean }).isOutgoing),
+    }));
+
     setBusy(true);
     try {
-      const r = await fetch("/api/operator/command", {
+      const r = await fetch("/api/ai/analyze", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text: t, history: opHistory, conversationId: tgChatId, tgContext })
+        body: JSON.stringify({ chatId: tgChatId, chatTitle: tgChatTitle, messages, instruction: t }),
       });
       const d = await r.json().catch(() => null);
-      if (d && d.kind === "pending" && d.action) {
-        setMsgs((p) => [...p, { role: "op", text: d.reply || "Подтвердить действие?", pending: d.action as OpAction }]);
+      if (d && d.ok && d.analysis) {
+        setIntel(d);
+        const a = d.analysis as Record<string, any>;
+        const parts: string[] = [];
+        if (cmd === "/summary") parts.push("📌 " + (a.summary || "—"));
+        else if (cmd === "/draft") parts.push("✍️ Черновик:\n" + (a.suggestedReply || "—"));
+        else if (cmd === "/todo") parts.push("✅ Задачи: " + ([...(a.requiredActions || []), ...(d.memory?.tasks || [])].join("; ") || "—"));
+        else if (cmd === "/intent") parts.push("🎯 intent: " + a.intent + " · тип: " + a.chatType);
+        else if (cmd === "/risk") parts.push("⚠ риск: " + a.riskLevel + " · приоритет: " + a.priority);
+        else if (cmd === "/next") parts.push("▶️ Следующий шаг: " + (a.nextStep || "—"));
+        else {
+          if (a.summary) parts.push("📌 " + a.summary);
+          if (a.suggestedReply) parts.push("✍️ Черновик:\n" + a.suggestedReply);
+          if (a.nextStep) parts.push("▶️ Следующий шаг: " + a.nextStep);
+        }
+        setMsgs((p) => [...p, { role: "op", text: parts.join("\n\n") || "(пусто)" }]);
       } else {
         const reply = (d && (d.text || d.error)) || "⚠ оператор не ответил";
         setMsgs((p) => [...p, { role: "op", text: reply }]);
@@ -1254,6 +1276,20 @@ function OperatorDock({
           <span className="text-amber-400">Нет активного чата — откройте чат слева</span>
         )}
       </div>
+      {intel?.analysis ? (
+        <div className="space-y-0.5 border-b border-tg-line px-4 py-2 text-[11px] text-tg-muted">
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+            <span>🎯 <span className="text-tg-text">{intel.analysis.intent}</span></span>
+            <span>тип: <span className="text-tg-text">{intel.analysis.chatType}</span></span>
+            <span>приоритет: <span className="text-tg-text">{intel.analysis.priority}</span></span>
+            <span>риск: <span className="text-tg-text">{intel.analysis.riskLevel}</span></span>
+          </div>
+          {intel.analysis.summary ? <div className="text-tg-text/90">📌 {intel.analysis.summary}</div> : null}
+          {(intel.memory?.tasks?.length || intel.analysis.openQuestions?.length) ? (
+            <div>🗒 {((intel.memory?.tasks as string[]) || []).slice(0, 3).join("; ") || ((intel.analysis.openQuestions as string[]) || []).slice(0, 3).join("; ")}</div>
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex items-center gap-1 overflow-x-auto border-b border-tg-line px-2 py-2">
         {projects.map((pr) => (
           <button

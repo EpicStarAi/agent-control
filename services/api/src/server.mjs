@@ -1,8 +1,9 @@
 import http from "node:http";
 import { loadLocalEnv } from "./env.mjs";
 import { getAiStatus } from "./ai-runtime.mjs";
-import { generateDraftReply } from "./ai-chat.mjs";
+import { generateDraftReply, analyzeChat } from "./ai-chat.mjs";
 import { getRecentMemory } from "./memory-store.mjs";
+import { getChatMemory } from "./chat-memory.mjs";
 import {
   getConfig,
   getChats,
@@ -211,6 +212,23 @@ const server = http.createServer(async (request, response) => {
       const limit = Number(url.searchParams.get("limit") ?? 20);
       const entries = await getRecentMemory(conversationId, Number.isFinite(limit) ? limit : 20);
       return send(response, 200, { conversationId, count: entries.length, entries });
+    }
+    if (request.method === "POST" && url.pathname === "/ai/analyze") {
+      const payload = await readJson(request);
+      const result = await analyzeChat({
+        conversationId: payload?.conversationId ?? payload?.chatId,
+        chatId: payload?.chatId ?? payload?.conversationId,
+        chatTitle: payload?.chatTitle,
+        chatType: payload?.chatType,
+        messages: Array.isArray(payload?.messages) ? payload.messages : [],
+        instruction: payload?.instruction
+      });
+      return send(response, result.ok ? 200 : result.status ?? 502, result);
+    }
+    if (request.method === "GET" && url.pathname === "/ai/chat-memory") {
+      const chatId = url.searchParams.get("chatId") ?? url.searchParams.get("conversationId");
+      const memory = await getChatMemory(chatId);
+      return send(response, 200, { ok: true, memory });
     }
     if (request.method === "POST" && url.pathname === "/telegram/send") {
       const result = await sendMessage(await readJson(request));
