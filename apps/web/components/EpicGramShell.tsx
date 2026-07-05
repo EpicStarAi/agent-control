@@ -1091,7 +1091,12 @@ export function EpicGramShell({ section }: Props) {
           }}
         />
       )}
-      <OperatorDock />
+      <OperatorDock
+        tgAccountId={activeAccountId}
+        tgChatId={selectedTelegramChatId}
+        tgChatTitle={activeTelegramChat?.title ?? null}
+        tgMessages={telegramMessages}
+      />
     </main>
   );
 }
@@ -1099,7 +1104,17 @@ export function EpicGramShell({ section }: Props) {
 type OpAction = { tool: string; chatId: string; chatTitle: string; text: string };
 type OpMsg = { role: "user" | "op"; text: string; files?: string[]; pending?: OpAction | null };
 
-function OperatorDock() {
+function OperatorDock({
+  tgAccountId = "",
+  tgChatId = "",
+  tgChatTitle = null,
+  tgMessages = [],
+}: {
+  tgAccountId?: string;
+  tgChatId?: string;
+  tgChatTitle?: string | null;
+  tgMessages?: TelegramMessage[];
+}) {
   const [open, setOpen] = useState(true);
   const [msgs, setMsgs] = useState<OpMsg[]>([
     { role: "op", text: "На связи. Я EPIC☠STAR — оператор. Пиши задачу, кидай фото/видео/аудио — разрулю." }
@@ -1148,13 +1163,30 @@ function OperatorDock() {
   async function send() {
     const t = text.trim();
     if (!t && files.length === 0) return;
+    // Telegram Context Agent: operator works with the currently open chat.
+    if (!tgChatId) {
+      setMsgs((p) => [...p, { role: "user", text: t }, { role: "op", text: "⚠ No active chat selected — открой Telegram-чат слева, чтобы оператор работал с его контекстом." }]);
+      setText("");
+      setFiles([]);
+      return;
+    }
     const fnames = files.map((f) => f.name);
     const mine: OpMsg = { role: "user", text: t, files: fnames };
     const next = [...msgs, mine];
-    const history = next.slice(-16).map((m) => ({
+    const opHistory = next.slice(-16).map((m) => ({
       content: (m.files && m.files.length ? "[вложения: " + m.files.join(", ") + "] " : "") + m.text,
       isOutgoing: m.role === "user"
     }));
+    const tgContext = {
+      accountId: tgAccountId,
+      chatId: tgChatId,
+      chatTitle: tgChatTitle,
+      messages: (tgMessages || []).slice(-20).map((m) => ({
+        content: (m as { content?: string }).content ?? "",
+        isOutgoing: Boolean((m as { isOutgoing?: boolean }).isOutgoing),
+        ts: (m as { timestamp?: unknown; date?: unknown }).timestamp ?? (m as { date?: unknown }).date ?? null,
+      })),
+    };
     setMsgs(next);
     setText("");
     setFiles([]);
@@ -1163,7 +1195,7 @@ function OperatorDock() {
       const r = await fetch("/api/operator/command", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text: t, history, conversationId: activeId })
+        body: JSON.stringify({ text: t, history: opHistory, conversationId: tgChatId, tgContext })
       });
       const d = await r.json().catch(() => null);
       if (d && d.kind === "pending" && d.action) {
@@ -1214,6 +1246,13 @@ function OperatorDock() {
         <button onClick={() => setOpen(false)} className="text-tg-muted hover:text-white" title="Свернуть">
           <X className="h-5 w-5" />
         </button>
+      </div>
+      <div className="border-b border-tg-line px-4 py-1.5 text-[11px] text-tg-muted">
+        {tgChatId ? (
+          <span>Контекст чата: <span className="text-tg-text">{tgChatTitle || tgChatId}</span> · {tgMessages?.length ?? 0} сообщ.</span>
+        ) : (
+          <span className="text-amber-400">Нет активного чата — откройте чат слева</span>
+        )}
       </div>
       <div className="flex items-center gap-1 overflow-x-auto border-b border-tg-line px-2 py-2">
         {projects.map((pr) => (

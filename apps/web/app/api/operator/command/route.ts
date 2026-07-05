@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 
-// AI Operator command → REAL LLM runtime.
-// Previously this route returned a hardcoded static string and never called any
-// model (mock). It now proxies the operator's message to the backend AI runtime
-// (`POST /ai/suggest` → generateDraftReply, an OpenAI-compatible brain call) and
-// returns the model's draft. It still NEVER sends to Telegram — sending stays a
-// separate operator-approved action. No streaming (backend uses stream:false).
+// AI Operator command → REAL LLM runtime, as a Telegram Context Agent.
+// The operator works WITH the currently open Telegram chat: the route forwards
+// the chat's recent messages (from tgContext) as history and the operator's
+// command as the instruction to the backend AI runtime (POST /ai/suggest →
+// generateDraftReply). It NEVER sends to Telegram — draft/suggestion only,
+// operator approval stays mandatory. No streaming (backend uses stream:false).
 export const dynamic = "force-dynamic";
 
 const API_BASE_URL = process.env.EPICGRAM_API_BASE_URL ?? "http://127.0.0.1:8788";
+
+type TgMsg = { content?: string; isOutgoing?: boolean; ts?: unknown };
 
 export async function POST(req: Request) {
   let body: any = {};
@@ -24,36 +26,60 @@ export async function POST(req: Request) {
       : typeof body?.command === "string"
         ? body.command
         : "";
-  const history = Array.isArray(body?.history) ? body.history : [];
-  const conversationId =
-    typeof body?.conversationId === "string" && body.conversationId ? body.conversationId : "operator";
+
+  const tg = body?.tgContext ?? null;
+  const chatId = typeof tg?.chatId === "string" && tg.chatId ? tg.chatId : "";
+  const accountId = typeof tg?.accountId === "string" ? tg.accountId : "";
+  const chatTitle = typeof tg?.chatTitle === "string" && tg.chatTitle ? tg.chatTitle : "Telegram chat";
+  const tgMessages: TgMsg[] = Array.isArray(tg?.messages) ? tg.messages : [];
+
+  // Telegram Context Agent requires an open chat to work against.
+  if (!chatId) {
+    console.log(`[AI REQUEST] operator/command ok=false error=no_active_chat`);
+    return NextResponse.json(
+      {
+        ok: false,
+        text: "No active chat selected",
+        error: "no_active_chat",
+        approval_required: true,
+        mode: "MANUAL_APPROVAL_ONLY",
+        can_send: false,
+        auto_send: false,
+      },
+      { status: 200 }
+    );
+  }
+
+  // Chat messages become the conversation context; the operator's command is the instruction.
+  const history = tgMessages
+    .slice(-20)
+    .map((m) => ({ content: String(m?.content ?? ""), isOutgoing: Boolean(m?.isOutgoing) }))
+    .filter((m) => m.content.trim().length > 0);
 
   const started = Date.now();
   try {
     const upstream = await fetch(`${API_BASE_URL}/ai/suggest`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        conversationId,
-        chatTitle: "AI Operator · EPIC☠STAR",
-        history,
-        instruction: text,
-      }),
+      body: JSON.stringify({ conversationId: chatId, chatTitle, history, instruction: text }),
       cache: "no-store",
     });
     const data = await upstream.json().catch(() => null);
     const latency = Date.now() - started;
 
+    // [AI REQUEST] activeChatId + messagesCount + provider/model/latency
+    console.log(
+      `[AI REQUEST] operator/command activeChatId=${chatId} accountId=${accountId} messagesCount=${history.length} model=${data?.model ?? "?"} status=${upstream.status} ok=${Boolean(data?.ok)} latency_ms=${latency}`
+    );
+
     if (upstream.ok && data?.ok && data?.draft) {
-      // [AI REQUEST] provider · model · latency · ok · finish
-      console.log(
-        `[AI REQUEST] operator/command provider=backend model=${data.model ?? "?"} latency_ms=${latency} ok=true finish=stop`
-      );
       return NextResponse.json({
         ok: true,
         text: data.draft,
         model: data.model ?? null,
         latency_ms: latency,
+        activeChatId: chatId,
+        messagesCount: history.length,
         approval_required: true,
         mode: "MANUAL_APPROVAL_ONLY",
         runtime_mode: "READ_ONLY",
@@ -64,11 +90,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // Real, honest error — not a fake static reply.
     const errMsg = data?.error || `Мозг недоступен (HTTP ${upstream.status}).`;
-    console.log(
-      `[AI REQUEST] operator/command provider=backend latency_ms=${latency} ok=false status=${upstream.status} error=${errMsg}`
-    );
     return NextResponse.json(
       {
         ok: false,
@@ -76,6 +98,8 @@ export async function POST(req: Request) {
         error: errMsg,
         provider_status: upstream.status,
         latency_ms: latency,
+        activeChatId: chatId,
+        messagesCount: history.length,
         approval_required: true,
         mode: "MANUAL_APPROVAL_ONLY",
         can_send: false,
@@ -86,7 +110,7 @@ export async function POST(req: Request) {
   } catch (e) {
     const latency = Date.now() - started;
     const msg = e instanceof Error ? e.message : String(e);
-    console.log(`[AI REQUEST] operator/command ok=false latency_ms=${latency} error=backend_unreachable ${msg}`);
+    console.log(`[AI REQUEST] operator/command activeChatId=${chatId} ok=false latency_ms=${latency} error=backend_unreachable ${msg}`);
     return NextResponse.json(
       {
         ok: false,
