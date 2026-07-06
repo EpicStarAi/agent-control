@@ -652,6 +652,11 @@ export function EpicGramShell({ section }: Props) {
     ? telegramChats.find((chat) => chat.id === selectedTelegramChatId) ?? visibleTelegramChats[0] ?? telegramChats[0]
     : null;
   const showTelegramChat = Boolean(activeTelegramChat && (section === "dashboard" || section === "chats"));
+  // P-MOBILE-1a: on narrow screens show ONE pane at a time. Right pane (messages
+  // / settings / accounts) is shown when a chat is open OR the section is not a
+  // chat list section; otherwise the chat list is shown. Desktop (md+) keeps the
+  // full multi-column grid regardless.
+  const mobileRightPane = showTelegramChat || !(section === "dashboard" || section === "chats");
 
   function selectFolder(folder: FolderId) {
     setActiveFolder(folder);
@@ -924,7 +929,7 @@ export function EpicGramShell({ section }: Props) {
           {redButtonNotice}
         </div>
       )}
-      <div className="grid h-full min-h-0 grid-cols-[auto_minmax(300px,380px)_1fr] xl:grid-cols-[auto_380px_1fr_320px]">
+      <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[auto_minmax(300px,380px)_1fr] xl:grid-cols-[auto_380px_1fr_320px]">
         <AccountRail
           className="hidden md:flex"
           accounts={railAccounts}
@@ -934,7 +939,7 @@ export function EpicGramShell({ section }: Props) {
           onAdd={() => setAuthOpen(true)}
           onDelete={(id) => deleteTelegramAccount(id)}
         />
-        <section className="relative flex h-full min-h-0 flex-col border-r border-tg-line bg-tg-panel">
+        <section className={`relative h-full min-h-0 flex-col border-r border-tg-line bg-tg-panel ${mobileRightPane ? "hidden md:flex" : "flex"}`}>
           {menuOpen && (
             <TelegramMenu
               onClose={() => setMenuOpen(false)}
@@ -1000,7 +1005,16 @@ export function EpicGramShell({ section }: Props) {
           </div>
         </section>
 
-        <section className="flex h-full min-h-0 min-w-0 flex-col bg-tg-chat">
+        <section className={`h-full min-h-0 min-w-0 flex-col bg-tg-chat ${mobileRightPane ? "flex" : "hidden md:flex"}`}>
+          {showTelegramChat ? (
+            <button
+              onClick={() => setSelectedTelegramChatId("")}
+              className="flex items-center gap-1 border-b border-tg-line px-4 py-2 text-sm text-tg-muted hover:text-white md:hidden"
+              aria-label="Назад к чатам"
+            >
+              ← Назад к чатам
+            </button>
+          ) : null}
           {showTelegramChat ? <TelegramChatHeader chat={activeTelegramChat as TelegramChat} /> : <SectionHeader section={section} item={activeItem} />}
           <div className="relative min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_20%_10%,rgba(255,45,85,.09),transparent_26%),linear-gradient(135deg,rgba(12,12,18,.96),rgba(7,7,12,.98))] p-6">
             <div className="pointer-events-none absolute inset-0 opacity-[0.05] [background-image:linear-gradient(rgba(255,59,92,.7)_1px,transparent_1px),linear-gradient(90deg,rgba(255,59,92,.7)_1px,transparent_1px)] [background-size:32px_32px]" />
@@ -1091,15 +1105,27 @@ export function EpicGramShell({ section }: Props) {
           }}
         />
       )}
-      <OperatorDock />
+      <OperatorDock
+          activeAccountId={activeAccountId}
+          selectedTelegramChatId={selectedTelegramChatId}
+          telegramMessages={telegramMessages}
+        />
     </main>
   );
 }
 
-type OpAction = { tool: string; chatId: string; chatTitle: string; text: string };
+type OpAction = { tool: string; chatId: string; chatTitle: string; text: string; accountId?: string; auditId?: string; actionType?: string };
 type OpMsg = { role: "user" | "op"; text: string; files?: string[]; pending?: OpAction | null };
 
-function OperatorDock() {
+function OperatorDock({
+  activeAccountId,
+  selectedTelegramChatId,
+  telegramMessages,
+}: {
+  activeAccountId: string;
+  selectedTelegramChatId: string;
+  telegramMessages: any[];
+}) {
   const [open, setOpen] = useState(true);
   const [msgs, setMsgs] = useState<OpMsg[]>([
     { role: "op", text: "На связи. Я EPIC☠STAR — оператор. Пиши задачу, кидай фото/видео/аудио — разрулю." }
@@ -1109,6 +1135,8 @@ function OperatorDock() {
   const [busy, setBusy] = useState(false);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([{ id: "p_main", name: "Основной" }]);
   const [activeId, setActiveId] = useState("p_main");
+  // P3.8b: per-pending-card scheduled datetime (local input value), keyed by msg index.
+  const [scheduleAt, setScheduleAt] = useState<Record<number, string>>({});
   const fileRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -1163,11 +1191,52 @@ function OperatorDock() {
       const r = await fetch("/api/operator/command", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text: t, history, conversationId: activeId })
+        body: JSON.stringify({
+          text: t,
+          command: t,
+          conversationId: selectedTelegramChatId || activeId,
+          chatId: selectedTelegramChatId || activeId,
+          accountId: activeAccountId,
+          chatTitle: selectedTelegramChatId || "Telegram chat",
+          history: telegramMessages.slice(-20).map((m: any) => ({
+            content: String(m?.content ?? m?.text ?? m?.message ?? ""),
+            isOutgoing: Boolean(m?.isOutgoing ?? m?.outgoing ?? m?.is_outgoing),
+          })).filter((m: any) => m.content.trim().length > 0),
+          tgContext: {
+            accountId: activeAccountId,
+            chatId: selectedTelegramChatId || activeId,
+            chatTitle: selectedTelegramChatId || "Telegram chat",
+            messages: telegramMessages.slice(-20).map((m: any) => ({
+              content: String(m?.content ?? m?.text ?? m?.message ?? ""),
+              isOutgoing: Boolean(m?.isOutgoing ?? m?.outgoing ?? m?.is_outgoing),
+            })).filter((m: any) => m.content.trim().length > 0),
+          },
+        })
       });
       const d = await r.json().catch(() => null);
       if (d && d.kind === "pending" && d.action) {
         setMsgs((p) => [...p, { role: "op", text: d.reply || "Подтвердить действие?", pending: d.action as OpAction }]);
+      } else if (d && d.ok && d.readonly) {
+        // P3.4b: read-only Tool Router result — informational only, no send card.
+        setMsgs((p) => [...p, { role: "op", text: String(d.text || "").trim() || "Готово." }]);
+      } else if (d && d.ok && (d.text || d.draft)) {
+        const proposed = String(d.draft || d.text || "").trim();
+        setMsgs((p) => [
+          ...p,
+          {
+            role: "op",
+            text: proposed || "Оператор подготовил ответ.",
+            pending: {
+              tool: "tg_send",
+              accountId: activeAccountId,
+              chatId: selectedTelegramChatId || activeId,
+              chatTitle: selectedTelegramChatId || "Telegram chat",
+              text: proposed,
+              auditId: (d && d.auditId) || undefined,
+              actionType: (d && d.actionType) || undefined,
+            },
+          },
+        ]);
       } else {
         const reply = (d && (d.text || d.error)) || "⚠ оператор не ответил";
         setMsgs((p) => [...p, { role: "op", text: reply }]);
@@ -1181,6 +1250,41 @@ function OperatorDock() {
 
   async function confirmAction(idx: number, action: OpAction) {
     setMsgs((p) => p.map((m, i) => (i === idx ? { ...m, pending: null } : m)));
+
+    if (action.tool === "tg_send") {
+      try {
+        const cleanText = String(action.text || "").trim();
+        if (!cleanText) {
+          setMsgs((p) => [...p, { role: "op", text: "⚠ Пустой текст для отправки" }]);
+          return;
+        }
+
+        const r = await fetch("/api/telegram/send", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            accountId: action.accountId || activeAccountId,
+            chatId: action.chatId || selectedTelegramChatId,
+            text: cleanText,
+            operatorApproved: true,
+            auditId: action.auditId,
+            actionType: action.actionType || "telegram_send",
+          }),
+        });
+
+        const d = await r.json().catch(() => null);
+        if (!r.ok || d?.ok === false || d?.error) {
+          throw new Error(d?.error || d?.message || `Telegram send failed HTTP ${r.status}`);
+        }
+
+        setMsgs((p) => [...p, { role: "op", text: "✅ Отправлено в Telegram оператором" }]);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setMsgs((p) => [...p, { role: "op", text: `⚠ Не удалось отправить в Telegram: ${msg}` }]);
+      }
+      return;
+    }
+
     try {
       const r = await fetch("/api/operator/confirm", {
         method: "POST",
@@ -1191,6 +1295,66 @@ function OperatorDock() {
       setMsgs((p) => [...p, { role: "op", text: (d && d.message) || "Готово" }]);
     } catch {
       setMsgs((p) => [...p, { role: "op", text: "⚠ не удалось выполнить" }]);
+    }
+  }
+
+  // P3.5b: operator dismissed/rejected a proposal. Fire an audit-only beacon.
+  // NEVER sends a Telegram message; only clears the pending card + records reject.
+  function rejectAction(idx: number, action: OpAction | null) {
+    setMsgs((p) => p.map((m, i) => (i === idx ? { ...m, pending: null } : m)));
+    const auditId = action?.auditId;
+    if (!auditId) return;
+    try {
+      void fetch("/api/operator/reject", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          auditId,
+          reason: "operator_dismissed",
+          chatId: action?.chatId || selectedTelegramChatId,
+          chatTitle: action?.chatTitle,
+        }),
+      }).catch(() => {});
+    } catch {}
+  }
+
+  // P3.8b: enqueue the draft into the schedule queue (operator action). This
+  // NEVER sends now and NEVER calls /api/telegram/send — it only enqueues; the
+  // post publishes later via the manual tick. Uses the SELECTED operator chatId.
+  async function scheduleAction(idx: number, action: OpAction | null) {
+    const dueLocal = scheduleAt[idx];
+    const text = String(action?.text || "").trim();
+    const chatId = action?.chatId || selectedTelegramChatId;
+    if (!chatId) { setMsgs((p) => [...p, { role: "op", text: "⚠ Нет выбранного чата — не могу запланировать." }]); return; }
+    if (!dueLocal) { setMsgs((p) => [...p, { role: "op", text: "⚠ Укажи дату и время публикации." }]); return; }
+    if (!text) { setMsgs((p) => [...p, { role: "op", text: "⚠ Пустой текст — нечего планировать." }]); return; }
+    let dueIso = "";
+    const d = new Date(dueLocal);
+    if (isNaN(d.getTime())) { setMsgs((p) => [...p, { role: "op", text: "⚠ Неверная дата/время." }]); return; }
+    dueIso = d.toISOString();
+    try {
+      const r = await fetch("/api/operator/schedule", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          text,
+          dueAt: dueIso,
+          auditId: action?.auditId,
+          actionType: "schedule_post",
+          accountId: action?.accountId || activeAccountId,
+          chatId,
+          chatTitle: action?.chatTitle || chatId,
+        }),
+      });
+      const dd = await r.json().catch(() => null);
+      if (!r.ok || !dd?.ok) throw new Error(dd?.error || dd?.message || `HTTP ${r.status}`);
+      setMsgs((p) =>
+        p.map((m, i) => (i === idx ? { ...m, pending: null } : m))
+          .concat([{ role: "op", text: `⏰ Запланировано: ${dueIso} (${dd.scheduleId || "sch"}). Публикация — по tick.` }]),
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setMsgs((p) => [...p, { role: "op", text: `⚠ Не удалось запланировать: ${msg}` }]);
     }
   }
 
@@ -1239,19 +1403,35 @@ function OperatorDock() {
             {m.files && m.files.length ? <div className="mb-1 text-xs text-tg-muted">📎 {m.files.join(", ")}</div> : null}
             <div className="whitespace-pre-wrap">{m.text}</div>
             {m.pending ? (
-              <div className="mt-2 flex gap-2">
-                <button
-                  onClick={() => confirmAction(i, m.pending as OpAction)}
-                  className="rounded-lg bg-red-600 px-3 py-1 text-xs font-bold text-white hover:bg-red-500"
-                >
-                  ✅ Подтвердить
-                </button>
-                <button
-                  onClick={() => setMsgs((p) => p.map((x, j) => (j === i ? { ...x, pending: null } : x)))}
-                  className="rounded-lg bg-tg-active px-3 py-1 text-xs text-white"
-                >
-                  ✖ Отмена
-                </button>
+              <div className="mt-2 flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => confirmAction(i, m.pending as OpAction)}
+                    className="rounded-lg bg-red-600 px-3 py-1 text-xs font-bold text-white hover:bg-red-500"
+                  >
+                    ✅ Отправить
+                  </button>
+                  <button
+                    onClick={() => rejectAction(i, m.pending as OpAction)}
+                    className="rounded-lg bg-tg-active px-3 py-1 text-xs text-white"
+                  >
+                    ✖ Отмена
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="datetime-local"
+                    value={scheduleAt[i] || ""}
+                    onChange={(e) => setScheduleAt((s) => ({ ...s, [i]: e.target.value }))}
+                    className="rounded-lg border border-tg-line bg-tg-bg px-2 py-1 text-xs text-tg-text"
+                  />
+                  <button
+                    onClick={() => scheduleAction(i, m.pending as OpAction)}
+                    className="rounded-lg bg-tg-active px-3 py-1 text-xs text-white hover:bg-tg-hover"
+                  >
+                    ⏰ Запланировать
+                  </button>
+                </div>
               </div>
             ) : null}
           </div>

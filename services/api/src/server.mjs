@@ -21,6 +21,9 @@ import {
   verify2fa,
   sendMessage
 } from "./telegram-runtime.mjs";
+import { evaluatePolicy } from "./policy.mjs";
+import { appendEvent as auditAppend, sha256 as auditSha, listEvents as auditList } from "./operator-audit.mjs";
+import { enqueueSchedule, tickSchedule, listSchedule } from "./schedule-queue.mjs";
 
 await loadLocalEnv();
 
@@ -198,13 +201,91 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === "POST" && url.pathname === "/ai/suggest") {
       const payload = await readJson(request);
+      const tg = payload?.tgContext ?? {};
+      const instruction = payload?.instruction || payload?.command || payload?.prompt || "";
+      const history =
+        Array.isArray(payload?.history) ? payload.history :
+        Array.isArray(payload?.messages) ? payload.messages :
+        Array.isArray(tg?.messages) ? tg.messages :
+        [];
+      const chatId = payload?.chatId || payload?.conversationId || tg?.chatId || null;
+      const chatTitle = payload?.chatTitle || tg?.chatTitle || tg?.title || null;
       const result = await generateDraftReply({
-        conversationId: payload?.conversationId ?? payload?.chatId,
-        chatTitle: payload?.chatTitle,
-        history: Array.isArray(payload?.history) ? payload.history : [],
-        instruction: payload?.instruction
+        conversationId: chatId,
+        chatTitle,
+        history,
+        instruction
       });
-      return send(response, result.ok ? 200 : result.status ?? 502, result);
+      let auditId = null;
+      const draftText = String(result?.draft || "").trim();
+      if (result?.ok && draftText) {
+        try {
+          const rec = auditAppend({
+            status: "proposed",
+            actor: "ai",
+            source: "ai_suggest",
+            tool: "draft_reply",
+            actionType: "telegram_send",
+            chatId,
+            chatTitle,
+            model: result?.model || null,
+            messageCount: history.length,
+            preview: draftText,
+            textSha256: auditSha(draftText),
+            safety: { executedExternalAction: false, sendBlocked: true, autoSendBlocked: true, approvalRequiredForSend: true },
+            policy: evaluatePolicy({ actionType: "telegram_send", autoSend: false })
+          });
+          auditId = rec.auditId;
+        } catch {}
+      }
+      return send(response, result.ok ? 200 : result.status ?? 502, {
+        ...result,
+        selectedChatId: chatId,
+        selectedChatTitle: chatTitle,
+        messagesCount: history.length,
+        hasInstruction: Boolean(instruction),
+        auditId
+      });
+    }
+    if (request.method === "GET" && url.pathname === "/ai/audit") {
+      const n = Number(url.searchParams.get("n")) || 50;
+      return send(response, 200, { ok: true, events: auditList({ n }) });
+    }
+    if (request.method === "POST" && (url.pathname === "/ai/audit/reject" || url.pathname === "/operator/reject")) {
+      const b = await readJson(request);
+      const actionType = typeof b?.actionType === "string" ? b.actionType : "telegram_send";
+      const rec = auditAppend({
+        auditId: typeof b?.auditId === "string" ? b.auditId : undefined,
+        status: "rejected",
+        actor: "operator",
+        source: "approval_card",
+        tool: typeof b?.tool === "string" ? b.tool : "draft_reply",
+        actionType,
+        chatId: b?.chatId ?? null,
+        chatTitle: b?.chatTitle ?? null,
+        messageCount: 0,
+        reason: typeof b?.reason === "string" ? b.reason : "operator_dismissed",
+        safety: { executedExternalAction: false, sendBlocked: true, autoSendBlocked: true, approvalRequiredForSend: true },
+        policy: evaluatePolicy({ actionType, autoSend: false })
+      });
+      return send(response, 200, { ok: true, auditId: rec.auditId, status: "rejected" });
+    }
+    if (request.method === "POST" && url.pathname === "/ai/route") {
+      const payload = await readJson(request);
+      const { routeCommand } = await import("./tool-router.mjs");
+      const routed = await routeCommand(payload);
+      return send(response, routed.ok ? 200 : (routed.status ?? 200), routed);
+    }
+    if (request.method === "POST" && url.pathname === "/ai/schedule/approve") {
+      const r = enqueueSchedule(await readJson(request));
+      return send(response, r.ok ? 200 : (r.http || 400), r);
+    }
+    if (request.method === "POST" && url.pathname === "/ai/schedule/tick") {
+      const r = await tickSchedule();
+      return send(response, 200, r);
+    }
+    if (request.method === "GET" && url.pathname === "/ai/schedule/list") {
+      return send(response, 200, { ok: true, items: listSchedule() });
     }
     if (request.method === "GET" && url.pathname === "/ai/memory") {
       const conversationId = url.searchParams.get("conversationId") ?? url.searchParams.get("chatId");
@@ -213,7 +294,28 @@ const server = http.createServer(async (request, response) => {
       return send(response, 200, { conversationId, count: entries.length, entries });
     }
     if (request.method === "POST" && url.pathname === "/telegram/send") {
-      const result = await sendMessage(await readJson(request));
+      const sendBody = await readJson(request);
+      const result = await sendMessage(sendBody);
+      try {
+        const executed = result?.status >= 200 && result?.status < 300;
+        const text = String(sendBody?.text || "").trim();
+        const actionType = sendBody?.actionType === "publish_post" ? "publish_post" : "telegram_send";
+        auditAppend({
+          auditId: typeof sendBody?.auditId === "string" ? sendBody.auditId : undefined,
+          status: executed ? "executed" : (result?.status === 412 ? "blocked" : "rejected"),
+          actor: "operator",
+          source: "telegram_send",
+          tool: actionType === "publish_post" ? "prepare_post" : "draft_reply",
+          actionType,
+          chatId: sendBody?.chatId ?? null,
+          chatTitle: sendBody?.chatTitle ?? null,
+          messageCount: 0,
+          preview: text,
+          textSha256: text ? auditSha(text) : null,
+          safety: { executedExternalAction: executed, sendBlocked: !executed, autoSendBlocked: true, approvalRequiredForSend: true },
+          policy: evaluatePolicy({ actionType, autoSend: false })
+        });
+      } catch {}
       return send(response, result.status, result.body);
     }
     if (request.method === "GET" && url.pathname === "/telegram/status") {
