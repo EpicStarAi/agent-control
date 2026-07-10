@@ -15,6 +15,9 @@ import { classifyTask, buildChannelCreationPlan, buildStepsForChannelPlan, quest
 type AnyRec = Record<string, any>;
 
 const LSK = "deepinside.aiOperator.sidebar.v1";
+const WINK = "deepinside.aiOperator.window.v1";
+type WinState = { x: number; y: number; w: number; h: number; minimized: boolean; maximized: boolean };
+const DEFAULT_WIN: WinState = { x: -1, y: 16, w: 380, h: 660, minimized: false, maximized: false };
 const SAFETY = { mode: "MANUAL_ONLY", assistantOnly: true, advisoryOnly: true, oneMessageOnly: true, autoSendAllowed: false, backgroundSendAllowed: false, retryWithoutConfirmAllowed: false, massSendAllowed: false, sendWithoutApprovalAllowed: false, sendWithoutWhitelistAllowed: false, secretsVisible: false, credentialsExportAllowed: false, externalNetworkScanAllowed: false, autonomousActionsAllowed: false };
 
 const OS_SECTIONS = ["command", "operator", "livepilot", "livewizard", "runbook", "dryrun", "postlive", "liveprep", "targets", "ownedaccounts", "opanalytics"];
@@ -42,6 +45,8 @@ export function GlobalAIOperatorSidebar() {
   const [chat, setChat] = useState<AnyRec[]>([]);
   const [toast, setToast] = useState("");
   const [plan, setPlan] = useState<TaskPlan | null>(null);
+  const [win, setWin] = useState<WinState>(DEFAULT_WIN);
+  const dragRef = useRef<{ mode: "move" | "resize"; startX: number; startY: number; win: WinState } | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -49,6 +54,9 @@ export function GlobalAIOperatorSidebar() {
     const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
     setOpen(typeof st.isOpen === "boolean" ? st.isOpen : !isMobile);
     setChat(Array.isArray(st.chatHistory) ? st.chatHistory : []);
+    const savedWin = load<WinState>(WINK, DEFAULT_WIN);
+    const x = savedWin.x >= 0 ? savedWin.x : Math.max(16, window.innerWidth - DEFAULT_WIN.w - 16);
+    setWin({ ...savedWin, x });
     const onHash = () => setTick((t2) => t2 + 1);
     window.addEventListener("hashchange", onHash);
     const id = setInterval(() => setTick((t2) => t2 + 1), 2500);
@@ -61,6 +69,47 @@ export function GlobalAIOperatorSidebar() {
 
   const persist = (patch: AnyRec) => { const cur = load<AnyRec>(LSK, {} as AnyRec); save(LSK, { ...cur, ...patch, mode: "RULE_BASED_LOCAL", safety: SAFETY, lastChangedAt: new Date().toISOString() }); };
   const toggle = () => { const v = !open; setOpen(v); persist({ isOpen: v }); };
+  const persistWin = (patch: Partial<WinState>) => setWin((prev) => { const next = { ...prev, ...patch }; save(WINK, next); return next; });
+
+  // ---- floating window drag / resize (mouse only — this window is a desktop-style overlay) ----
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const dx = e.clientX - d.startX;
+      const dy = e.clientY - d.startY;
+      if (d.mode === "move") {
+        const x = Math.min(Math.max(0, d.win.x + dx), window.innerWidth - 120);
+        const y = Math.min(Math.max(0, d.win.y + dy), window.innerHeight - 40);
+        setWin((prev) => ({ ...prev, x, y }));
+      } else {
+        const w = Math.min(Math.max(300, d.win.w + dx), window.innerWidth - 20);
+        const h = Math.min(Math.max(280, d.win.h + dy), window.innerHeight - 20);
+        setWin((prev) => ({ ...prev, w, h }));
+      }
+    };
+    const onUp = () => { if (dragRef.current) { save(WINK, win); dragRef.current = null; } };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, [win]);
+  const startDrag = (mode: "move" | "resize") => (e: React.MouseEvent) => {
+    e.preventDefault();
+    // Maximized window has no left/top/width/height to drag from — un-maximize first, converting
+    // its current on-screen box back into explicit x/y/w/h so the drag starts from where it visually is.
+    if (win.maximized) {
+      const rect = { x: window.innerWidth - 420 - 12, y: 12, w: 420, h: window.innerHeight - 24 };
+      const next = { ...win, ...rect, maximized: false };
+      setWin(next);
+      save(WINK, next);
+      dragRef.current = { mode, startX: e.clientX, startY: e.clientY, win: next };
+      return;
+    }
+    dragRef.current = { mode, startX: e.clientX, startY: e.clientY, win };
+  };
+  const closeWin = () => { setOpen(false); persist({ isOpen: false }); };
+  const minimizeWin = () => persistWin({ minimized: !win.minimized, maximized: false });
+  const maximizeWin = () => persistWin({ maximized: !win.maximized, minimized: false });
   const flash = (m: string) => { setToast(m); setTimeout(() => setToast(""), 1800); };
   const copy = (txt: string, label: string) => { try { navigator.clipboard.writeText(txt); } catch {} persist({ lastCopiedPrompt: label }); flash(t("sb.copy", loc) + ": " + label); };
 
@@ -307,15 +356,32 @@ export function GlobalAIOperatorSidebar() {
   const card = (title: string, body: any) => <div className="rounded-xl border border-white/10 bg-white/5 p-2"><div className="mb-1 text-[9px] font-black uppercase tracking-wide text-cyan-300/70">{title}</div>{body}</div>;
   const cmdBlock = (label: string, cmd: string) => <div className="rounded-lg border border-white/10 bg-black/50 p-1.5"><div className="mb-0.5 flex items-center justify-between"><span className="text-[9px] text-tg-muted">{label}</span><button onClick={() => copy(cmd, label)} className="rounded bg-white/10 px-1.5 py-0.5 text-[9px] hover:bg-white/20">{t("sb.copy", loc)}</button></div><pre className="overflow-auto whitespace-pre-wrap break-all font-mono text-[9px] text-emerald-200">{cmd}</pre></div>;
 
-  return <aside className="fixed right-0 top-0 z-[130] flex h-full w-[360px] max-w-[92vw] flex-col border-l border-white/10 text-tg-text shadow-2xl backdrop-blur" style={{ background: "linear-gradient(160deg,rgba(7,6,17,.97),rgba(12,10,22,.97))" }}>
-    <header className="flex flex-wrap items-center gap-2 border-b border-white/10 px-3 py-2">
-      <span className="text-sm font-black" style={{ color: headColor }}>🤖 {t("sb.title", loc)}</span>
+  const winStyle: React.CSSProperties = win.maximized
+    ? { right: 12, top: 12, bottom: 12, width: 420 }
+    : { left: win.x, top: win.y, width: win.w, height: win.minimized ? "auto" : win.h };
+
+  return <div
+    className="fixed z-[130] flex flex-col overflow-hidden rounded-xl border border-white/15 text-tg-text shadow-2xl backdrop-blur relative"
+    style={{ ...winStyle, background: "linear-gradient(160deg,rgba(7,6,17,.97),rgba(12,10,22,.97))" }}
+  >
+    {/* window title bar — draggable, macOS-style traffic lights, mirrors a standalone operator app window */}
+    <div onMouseDown={startDrag("move")} className="flex shrink-0 cursor-move items-center gap-2 border-b border-white/10 bg-black/30 px-3 py-1.5 select-none">
+      <div className="flex items-center gap-1.5">
+        <button onClick={(e) => { e.stopPropagation(); closeWin(); }} title="Закрыть" className="h-2.5 w-2.5 rounded-full bg-[#ff5f57] hover:brightness-125" />
+        <button onClick={(e) => { e.stopPropagation(); minimizeWin(); }} title="Свернуть" className="h-2.5 w-2.5 rounded-full bg-[#febc2e] hover:brightness-125" />
+        <button onClick={(e) => { e.stopPropagation(); maximizeWin(); }} title="Развернуть" className="h-2.5 w-2.5 rounded-full bg-[#28c840] hover:brightness-125" />
+      </div>
+      <span className="mx-auto text-[11px] font-bold" style={{ color: headColor }}>🤖 {t("sb.title", loc)} · Оператор</span>
       <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[8px] font-bold text-emerald-300">MANUAL_ONLY</span>
-      <span className="rounded bg-cyan-500/15 px-1.5 py-0.5 text-[8px] font-bold text-cyan-300">{aiMode}</span>
-      <button onClick={toggle} className="ml-auto rounded bg-white/10 px-2 py-0.5 text-[11px] hover:bg-white/20">✕</button>
-      <div className="w-full"><LanguageSwitcher /></div>
-    </header>
-    <div className="min-h-0 flex-1 space-y-2 overflow-auto p-2">
+    </div>
+    {/* tab / address-bar row, like a browser window with a Telegram-client tab open */}
+    <div className="flex shrink-0 items-center gap-2 border-b border-white/10 bg-white/5 px-2 py-1">
+      <span className="flex items-center gap-1 rounded-t bg-white/10 px-2 py-1 text-[10px] font-semibold text-cyan-200">🌐 Браузер · Telegram-клиент</span>
+      <span className="ml-auto rounded bg-cyan-500/15 px-1.5 py-0.5 text-[8px] font-bold text-cyan-300">{aiMode}</span>
+      <button onClick={toggle} className="rounded bg-white/10 px-2 py-0.5 text-[11px] hover:bg-white/20">✕</button>
+    </div>
+    <div className="shrink-0 border-b border-white/10 bg-black/20 px-2 py-1"><LanguageSwitcher /></div>
+    {win.minimized ? null : <div className="min-h-0 flex-1 space-y-2 overflow-auto p-2">
       {toast && <div className="rounded bg-emerald-600/20 p-1.5 text-[10px] text-emerald-200">{toast}</div>}
       {tgReady === false && <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-2 text-[10px] text-rose-200">⚠️ {t("warn.tgNotReady", loc)}</div>}
 
@@ -414,6 +480,9 @@ export function GlobalAIOperatorSidebar() {
       </div>)}
 
       <div className="text-[8px] text-tg-muted">{t("sb.advisory", loc)}</div>
-    </div>
-  </aside>;
+    </div>}
+    {!win.minimized && !win.maximized && (
+      <div onMouseDown={startDrag("resize")} className="absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize opacity-60 hover:opacity-100" style={{ background: "linear-gradient(135deg,transparent 50%,rgba(255,255,255,.35) 50%)" }} />
+    )}
+  </div>;
 }
