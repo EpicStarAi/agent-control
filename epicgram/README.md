@@ -1,5 +1,12 @@
 # EPIC☠️GRAM
 
+> **Replit workspace note:** the `apps/web` Next.js app described below is the
+> **VPS/local production deploy path only** (see `docs/RUNBOOK.md` and
+> `docs/EPIC_GRAM_VPS_P2_REAL_DEPLOY_PLAN.md`). Inside the Replit workspace,
+> the Preview pane runs the `artifacts/epicgram-web` react-vite artifact
+> instead — see `REPLIT_MIGRATION_NOTE.md` at the repo root. Do not run
+> `apps/web` as a Replit workflow.
+
 Lawful Matrix-mode Telegram-style client shell with an AI-agent workspace.
 
 This repository currently contains the first MVP frontend prototype. It starts from a clean Telegram state, includes local AI folders, and does not connect to real Telegram credentials until the official TDLib backend is implemented.

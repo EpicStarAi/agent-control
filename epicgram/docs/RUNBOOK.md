@@ -3,6 +3,13 @@
 Operational runbook for running EPIC GRAM locally and (later) in production.
 Secrets live only in `.env` / `.env.local` — never commit them, never paste in chat.
 
+> **Replit workspace note:** this runbook (and the `apps/web` Next.js app it
+> describes) is the **VPS/local production deploy path only**. Inside the
+> Replit workspace, the Preview pane runs the `artifacts/epicgram-web`
+> react-vite artifact instead — see `REPLIT_MIGRATION_NOTE.md` at the repo
+> root. Do not start `apps/web` as a Replit workflow; it is unreachable
+> through the Preview proxy.
+
 ## Components
 - **Web (canonical):** Next.js `apps/web` — `npm run dev` (port 3000) / `npm run dev:host` (3015).
 - **Backend API:** `services/api/src/server.mjs` — `npm run api:dev` (port 8788).

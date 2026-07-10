@@ -1,5 +1,10 @@
 # EPIC GRAM / TG EPIC STAR — VPS P2 Real Deploy Plan
 
+> **Replit workspace note:** this plan targets the standalone `apps/web`
+> Next.js app for an external VPS deploy. It is unrelated to the Replit
+> workspace's Preview pane, which runs the `artifacts/epicgram-web`
+> react-vite artifact — see `REPLIT_MIGRATION_NOTE.md` at the repo root.
+
 Status: **PLAN ONLY / NO DEPLOY EXECUTED**
 Scope: first real VPS deploy plan for `epic-gram.com` contour.
 This document is an execution plan, not proof that deployment happened.
