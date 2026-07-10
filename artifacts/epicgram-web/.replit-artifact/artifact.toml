@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "EPICGRAM"
+version = "1.0.0"
+id = "artifacts/epicgram-web"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25015
+
+[services.development]
+run = "pnpm --filter @workspace/epicgram-web run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/epicgram-web", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/epicgram-web/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25015"
+BASE_PATH = "/"
