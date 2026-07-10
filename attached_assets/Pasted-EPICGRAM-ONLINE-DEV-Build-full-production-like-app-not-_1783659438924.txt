@@ -1,0 +1,139 @@
+EPICGRAM ONLINE DEV — Build full production-like app, not sandbox demo.
+
+Important correction:
+Do NOT treat this as a small sandbox demo.
+We need a full online development copy of EPICGRAM where we can keep fixing and tuning the real product UI/UX.
+
+Goal:
+Make this Replit project run the complete EPICGRAM web application as a production-like online dev environment.
+
+This app must include:
+- main EPICGRAM landing
+- /login
+- /client
+- /workspace
+- /tma
+- /settings
+- AI Operator panel
+- ChatGPT-like operator sidebar
+- Telegram client UI
+- channel/chat context UI
+- future Channel OS workspace
+- project/tasks/assets/operator history sections
+
+Do not add a big “sandbox demo” experience.
+Do not make the app look like a fake prototype.
+It should look and behave like the actual EPICGRAM product.
+
+Current production checkpoint:
+a1385b checkpoint: harden operator intent router and sidebar shell
+
+Product direction:
+EPICGRAM is a Telegram AI workspace:
+- Telegram-like client
+- AI Operator that performs actions, not just talks
+- Channel OS cards
+- AI-assisted posting workflow
+- admin/team login separation
+- approval-gated sending
+- future Telegram WebApp / Mini App
+
+Required behavior:
+1. App must run in Replit Preview.
+2. /client must load.
+3. /login must load.
+4. /workspace must load.
+5. /tma must load.
+6. AI Operator must appear.
+7. Operator must not behave like an autoresponder.
+8. Operator must support commands:
+   - открыть чат
+   - зайди в канал
+   - проанализируй этот чат
+   - покажи контекст чата
+   - проверь статус отправки
+   - создай карточку канала
+9. If live backend is unavailable, create clean fallback/mock behavior, but keep the UI production-like.
+10. Do not show “demo app” everywhere.
+11. If a status badge is needed, make it small and professional:
+    ONLINE DEV / LIVE SEND LOCKED
+12. Do not use “REPLIT SANDBOX / NO LIVE TELEGRAM SEND” as a huge product label.
+
+Critical safety:
+- Do not copy production secrets.
+- Do not create .env.local with real secrets.
+- Do not use TDLib sessions.
+- Do not send Telegram messages.
+- Do not logout NOVIKOVA.
+- Do not touch production VPS.
+- Do not enable real Telegram send unless explicitly requested later.
+- Keep live send approval-gated/locked.
+
+But:
+- Do build the full web app.
+- Do fix broken routes.
+- Do fix UI problems.
+- Do make the operator panel usable.
+- Do make the client feel like the real product.
+- Do create missing dev fallbacks so the product can be tested online.
+
+Fix priorities:
+A. Make the app run cleanly in Replit.
+B. Make /client usable.
+C. Make AI Operator stable and action-first.
+D. Make operator sidebar like ChatGPT:
+   - left rail
+   - new dialog
+   - search
+   - projects
+   - pinned/context
+   - history
+   - settings
+   - collapsible
+   - close/minimize works
+E. Add Channel OS central panel:
+   For selected channel/chat show:
+   - ID
+   - name
+   - type
+   - account
+   - topic
+   - target audience
+   - admins/roles/bots
+   - subscribers/statistics placeholders
+   - content categories
+   - publication plan
+   - funnels
+   - competitors
+   - assets: photo/video/links/drafts
+   - autoposting status
+   - operator notes
+F. Keep the main Telegram chat view clean.
+   Do not put a huge “context chat” block over the chat.
+   Context should be in Channel OS panel or operator sidebar.
+
+Implementation rules:
+- Inspect the repo.
+- Find the actual app structure.
+- Patch code directly.
+- Run npm install if needed.
+- Run npm run build.
+- Run the correct dev server for Replit.
+- Show changed files.
+- Do not commit automatically.
+- Do not ask the human to debug files manually unless build fails.
+
+Expected result:
+A complete online EPICGRAM dev app running on Replit, ready for iterative UI/product fixes.
+
+Return:
+EPICGRAM ONLINE DEV RESULT
+
+Include:
+- what was fixed
+- run command
+- routes tested
+- changed files
+- build result
+- what still depends on VPS/live backend
+- confirmation live Telegram send remains locked
