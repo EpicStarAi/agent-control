@@ -1,8 +1,13 @@
 
 // TelegramWorkspace — Enterprise Telegram client UI inside EPIC☠STAR CONTROL.
 // Category: COMMUNICATION · Status: ACTIVE
-// READ-ONLY: real data from the existing Telegram Layer (/api/telegram/status, /api/telegram/chats).
-// No sending / deleting / editing / automation. No backend / TDLib / auth changes. No routes changed.
+// Chat browsing stays READ-ONLY: real data from the existing Telegram Layer
+// (/api/telegram/status, /api/telegram/chats). No deleting / editing / automation.
+// The one exception is outgoing sends: an operator can request an AI draft
+// (/api/ai/suggest), review/edit it, then explicitly Approve & Send
+// (/api/telegram/send with operatorApproved=true) or Reject (/api/ai/audit/reject).
+// A blocked/failed send never gets appended to the chat history shown here —
+// see `approveAndSend` below. No backend/TDLib logic is duplicated, only called.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api";
@@ -201,6 +206,15 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
   const [discStatus, setDiscStatus] = useState<"idle" | "discovering" | "indexing" | "building" | "completed" | "error">("idle");
   const [discLog, setDiscLog] = useState<{ t: string; text: string }[]>([]);
   const [index, setIndex] = useState<any>(null);
+
+  // ---- AI DRAFT APPROVAL — the only path that can put a message into a real chat.
+  // A draft is proposed via /ai/suggest (never sent anywhere), reviewed here, and only
+  // reaches Telegram if the operator explicitly clicks "Approve & Send", which sends
+  // operatorApproved=true to /telegram/send. If that call is blocked (412) or fails, the
+  // draft/error stays local to this panel and is NEVER appended to `sentByChat` — so a
+  // send blocked by the approval gate can never appear as if it went out in chat history.
+  const [draftByChat, setDraftByChat] = useState<Record<string, { text: string; auditId: string | null; loading: boolean; error: string | null; sending: boolean }>>({});
+  const [sentByChat, setSentByChat] = useState<Record<string, { text: string; at: string }[]>>({});
   const themeVars = useWorkspaceTheme();
   const { widths: panelW, startDrag: startPanelDrag } = useResizableWidths(
     { nav: 210, list: 320, aside: 280, ccNav: 180 },
@@ -319,6 +333,70 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
     return true;
   }), [dialogs, filter, q]);
 
+  const requestDraft = async () => {
+    if (!selChat) return;
+    const chatId = String(selChat.id);
+    setDraftByChat((d) => ({ ...d, [chatId]: { text: "", auditId: null, loading: true, error: null, sending: false } }));
+    try {
+      const r = await fetch(apiUrl("/ai/suggest"), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId, chatTitle: selChat.title || null, history: [], instruction: "" }),
+      });
+      const j = await r.json().catch(() => null);
+      const draftText = String(j?.draft || "").trim();
+      if (!r.ok || !j?.ok || !draftText) {
+        setDraftByChat((d) => ({ ...d, [chatId]: { text: "", auditId: null, loading: false, error: j?.message || "AI не смог предложить черновик.", sending: false } }));
+        return;
+      }
+      setDraftByChat((d) => ({ ...d, [chatId]: { text: draftText, auditId: j.auditId ?? null, loading: false, error: null, sending: false } }));
+    } catch {
+      setDraftByChat((d) => ({ ...d, [chatId]: { text: "", auditId: null, loading: false, error: "Не удалось получить черновик (сеть/сервер).", sending: false } }));
+    }
+  };
+  const editDraft = (text: string) => {
+    if (!selChat) return;
+    const chatId = String(selChat.id);
+    setDraftByChat((d) => ({ ...d, [chatId]: { ...(d[chatId] || { auditId: null, loading: false, sending: false, error: null }), text } }));
+  };
+  // SAFETY: only this function calls /telegram/send, and only after the operator has
+  // explicitly clicked "Approve & Send" here. It always sets operatorApproved: true —
+  // the earlier gate in telegram-runtime.mjs still enforces the real check server-side.
+  // A blocked/failed result updates only the local error state; nothing is added to
+  // `sentByChat`, so the chat history the operator sees can never show a message that
+  // was actually rejected by the approval gate.
+  const approveAndSend = async () => {
+    if (!selChat || !draftState || !draftState.text.trim() || draftState.sending) return;
+    const chatId = String(selChat.id);
+    const text = draftState.text.trim();
+    setDraftByChat((d) => ({ ...d, [chatId]: { ...d[chatId], sending: true, error: null } }));
+    try {
+      const r = await fetch(apiUrl("/telegram/send"), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId, chatTitle: selChat.title || null, text, operatorApproved: true, auditId: draftState.auditId }),
+      });
+      const j = await r.json().catch(() => null);
+      if (r.ok && j?.sent) {
+        setSentByChat((s) => ({ ...s, [chatId]: [...(s[chatId] || []), { text, at: new Date().toISOString() }] }));
+        setDraftByChat((d) => ({ ...d, [chatId]: { text: "", auditId: null, loading: false, error: null, sending: false } }));
+      } else {
+        setDraftByChat((d) => ({ ...d, [chatId]: { ...d[chatId], sending: false, error: j?.message || "Отправка заблокирована или не удалась." } }));
+      }
+    } catch {
+      setDraftByChat((d) => ({ ...d, [chatId]: { ...d[chatId], sending: false, error: "Сетевая ошибка при отправке." } }));
+    }
+  };
+  const rejectDraft = async () => {
+    if (!selChat || !draftState) return;
+    const chatId = String(selChat.id);
+    try {
+      await fetch(apiUrl("/ai/audit/reject"), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ auditId: draftState.auditId, chatId, chatTitle: selChat.title || null, reason: "operator_dismissed" }),
+      });
+    } catch {}
+    setDraftByChat((d) => ({ ...d, [chatId]: { text: "", auditId: null, loading: false, error: null, sending: false } }));
+  };
+
   const Avatar = ({ name, size = 36 }: { name: string; size?: number }) => (
     <div className="flex shrink-0 items-center justify-center rounded-full font-bold text-white" style={{ width: size, height: size, background: av(name), fontSize: size / 2.6 }}>{ini(name)}</div>
   );
@@ -405,6 +483,8 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
 
   const selChat = chats.find((c) => c.id === chat);
   const selLocalItem = LOCAL_ITEMS.find((i) => i.id === localItem);
+  // ---- AI DRAFT APPROVAL actions (scoped to the currently open chat) ----
+  const draftState = selChat ? draftByChat[String(selChat.id)] : undefined;
   const ownerAgent = account?.owner;
   const ownerMissions = ctx.missions?.filter((m) => m.agentId === ownerAgent?.id) || [];
   const connClr = conn === "connected" ? "#4ade80" : conn === "syncing" ? "#fbbf24" : "#f87171";
@@ -741,12 +821,39 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
                 {preview(selChat) ? (
                   <div className="flex justify-start"><div className="max-w-[70%] rounded-2xl bg-tg-bubble px-3 py-1.5 text-sm">{preview(selChat)}<div className="mt-0.5 text-[10px] text-tg-muted">последнее сообщение</div></div></div>
                 ) : <div className="mx-auto mt-8 text-sm text-tg-muted">История сообщений недоступна в read-only режиме.</div>}
-                <div className="mx-auto w-fit rounded-full bg-tg-bg/60 px-3 py-0.5 text-[10px] text-tg-muted">Только чтение · полная история не загружается</div>
+                {(sentByChat[String(selChat.id)] || []).map((m, i) => (
+                  <div key={i} className="flex justify-end"><div className="max-w-[70%] rounded-2xl bg-tg-active/70 px-3 py-1.5 text-sm text-white">{m.text}<div className="mt-0.5 text-[10px] text-white/70">отправлено оператором · {new Date(m.at).toLocaleTimeString()}</div></div></div>
+                ))}
+                <div className="mx-auto w-fit rounded-full bg-tg-bg/60 px-3 py-0.5 text-[10px] text-tg-muted">Просмотр истории — только чтение · отправка возможна только через AI-черновик с ручным подтверждением</div>
               </div>
-              <div className="flex items-center gap-2 border-t border-tg-line bg-tg-panel px-3 py-2">
-                <span className="text-tg-muted">📎</span>
-                <input disabled placeholder="Отправка отключена — режим только для чтения" className="flex-1 rounded-lg bg-tg-bg px-3 py-1.5 text-sm text-tg-muted outline-none" />
-                <span className="text-tg-muted">🎤</span>
+              {/* AI draft approval panel — the ONLY UI surface that can send a real message.
+                  Nothing here is appended to the visible history above unless /telegram/send
+                  actually returns sent:true; a 412 (approval-gate block) or any failure just
+                  shows an inline error and leaves the chat history untouched. */}
+              <div className="border-t border-tg-line bg-tg-panel px-3 py-2">
+                {!draftState || (!draftState.text && !draftState.loading && !draftState.error) ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-tg-muted">📎</span>
+                    <div className="flex-1 rounded-lg bg-tg-bg px-3 py-1.5 text-sm text-tg-muted">Ручной ввод отключён — сообщения уходят только после проверки AI-черновика оператором</div>
+                    <button onClick={requestDraft} className="rounded-lg bg-tg-active px-3 py-1.5 text-xs font-semibold text-white">🤖 Предложить черновик</button>
+                  </div>
+                ) : draftState.loading ? (
+                  <div className="rounded-lg bg-tg-bg px-3 py-2 text-sm text-tg-muted">Генерирую черновик…</div>
+                ) : draftState.error ? (
+                  <div className="space-y-1.5">
+                    <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">⚠️ {draftState.error}</div>
+                    <button onClick={requestDraft} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs hover:bg-white/20">Попробовать снова</button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="rounded bg-amber-500/15 px-2 py-1 text-[10px] font-bold text-amber-200">Черновик AI · требуется подтверждение оператора перед отправкой</div>
+                    <textarea value={draftState.text} onChange={(e) => editDraft(e.target.value)} rows={3} className="w-full resize-none rounded-lg bg-tg-bg px-3 py-2 text-sm outline-none" />
+                    <div className="flex justify-end gap-2">
+                      <button onClick={rejectDraft} disabled={draftState.sending} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/20 disabled:opacity-50">Отклонить</button>
+                      <button onClick={approveAndSend} disabled={draftState.sending || !draftState.text.trim()} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">{draftState.sending ? "Отправка…" : "✅ Подтвердить и отправить"}</button>
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           ) : <div className="flex flex-1 items-center justify-center text-tg-muted">{loading ? "Синхронизация…" : "Выбери чат · группу · канал · бота"}</div>}

@@ -32,6 +32,11 @@ import { Router, type IRouter, type Request, type Response } from "express";
 //                             no external side effects, audit-logged.
 //   - /ai/schedule/approve    operator approving a queued send — still funnels
 //                             through the same /telegram/send approval gate.
+//   - /ai/suggest             AI proposes a draft reply for operator review —
+//                             never sends anything itself (generateDraftReply
+//                             only returns text + logs an audit "proposed"
+//                             event); the operator UI must still call
+//                             /telegram/send with operatorApproved=true.
 //
 // Everything else mutating (production/live-send toggles, infra actions,
 // docker/ollama control, etc.) remains blocked by default — those are
@@ -55,6 +60,7 @@ const ALLOWED_MUTATING_PATHS = new Set([
   "/ai/audit/reject",
   "/operator/reject",
   "/ai/schedule/approve",
+  "/ai/suggest",
 ]);
 
 // Hop-by-hop / connection-management headers that must not be forwarded verbatim.
