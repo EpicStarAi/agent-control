@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { t, useLocale } from "@/lib/i18n";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { parseOperatorIntent, UI_ACTION_INTENTS } from "@/lib/operatorIntents";
+import { classifyTask, buildChannelCreationPlan, buildStepsForChannelPlan, questionsAnswered, TaskPlan, PlanStep } from "@/lib/operatorPlanner";
 
 type AnyRec = Record<string, any>;
 
@@ -40,6 +41,7 @@ export function GlobalAIOperatorSidebar() {
   const [chatInput, setChatInput] = useState("");
   const [chat, setChat] = useState<AnyRec[]>([]);
   const [toast, setToast] = useState("");
+  const [plan, setPlan] = useState<TaskPlan | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -187,8 +189,108 @@ export function GlobalAIOperatorSidebar() {
     } catch {}
   };
 
-  const send = () => { const q = chatInput.trim(); if (!q) return; pushChat("user", q); setChatInput(""); if (runOperatorCommand(q)) return; const a = answer(q); setTimeout(() => pushChat("ai", a), 60); };
-  const quick = (q: string) => { pushChat("user", q); if (runOperatorCommand(q)) return; const a = answer(q); setTimeout(() => pushChat("ai", a), 60); };
+  // ---- Planner (Phase 1-3): analysis -> plan -> clarifying questions -> execution tree ----
+  // Only produces/executes SAFE prepare_* style steps (no real Telegram writes). Any step that
+  // would need a real mutating action is shown as "manual" and never marked done automatically.
+  // planTokenRef guards every pending timer: it is bumped whenever the plan is reset/replaced so
+  // stale timeouts (running step-advance, question follow-ups) can detect they're obsolete and
+  // no-op instead of mutating chat/plan state after the fact.
+  const planTokenRef = useRef(0);
+  const planTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const schedule = (fn: () => void, ms: number) => { const id = setTimeout(fn, ms); planTimersRef.current.push(id); return id; };
+  const clearPlanTimers = () => { planTimersRef.current.forEach((id) => clearTimeout(id)); planTimersRef.current = []; };
+  useEffect(() => () => clearPlanTimers(), []);
+
+  const runPlanStep = (planId: string, stepId: string, token: number) => {
+    schedule(() => {
+      if (planTokenRef.current !== token) return; // plan was reset/replaced meanwhile — stale, ignore
+      setPlan((prev) => {
+        if (!prev || prev.id !== planId) return prev;
+        return { ...prev, steps: prev.steps.map((s) => (s.id === stepId ? { ...s, status: "done" } : s)) };
+      });
+      advancePlan(planId, token);
+    }, 500 + Math.random() * 400);
+  };
+
+  // Atomically claims the next pending step (marks it "running" in the same update) so concurrent
+  // advancePlan calls can never pick and start the same step twice.
+  const advancePlan = (planId: string, token: number) => {
+    if (planTokenRef.current !== token) return;
+    let claimedStepId: string | null = null;
+    let blockedManual: PlanStep | null = null;
+    setPlan((prev) => {
+      if (!prev || prev.id !== planId) return prev;
+      const next = prev.steps.find((s) => s.status === "pending");
+      if (!next) return prev;
+      if (next.kind === "manual") {
+        blockedManual = next;
+        return { ...prev, steps: prev.steps.map((s) => (s.id === next.id ? { ...s, status: "blocked" } : s)) };
+      }
+      claimedStepId = next.id;
+      return { ...prev, steps: prev.steps.map((s) => (s.id === next.id ? { ...s, status: "running" } : s)) };
+    });
+    if (blockedManual) {
+      const bm = blockedManual as PlanStep;
+      schedule(() => { if (planTokenRef.current === token) pushChat("ai", `Дальше нужно ручное действие: «${bm.label}»${bm.note ? " — " + bm.note : ""}. Автоматические шаги на этом остановлены.`); }, 0);
+      return;
+    }
+    if (claimedStepId) runPlanStep(planId, claimedStepId, token);
+  };
+
+  const resetPlan = () => { planTokenRef.current += 1; clearPlanTimers(); setPlan(null); };
+
+  const startChannelPlan = (rawTask: string) => {
+    planTokenRef.current += 1;
+    clearPlanTimers();
+    const token = planTokenRef.current;
+    const p = buildChannelCreationPlan(rawTask);
+    setPlan(p);
+    pushChat("ai", "Понял задачу. Анализирую...");
+    if (p.questions.length > 0) {
+      pushChat("ai", `Мне нужно уточнить: ${p.questions[0].text}`);
+    } else {
+      const withSteps = { ...p, steps: buildStepsForChannelPlan(p.answers) };
+      setPlan(withSteps);
+      pushChat("ai", "Все данные есть. Строю план выполнения и начинаю с автоматических шагов.");
+      schedule(() => { if (planTokenRef.current === token) advancePlan(withSteps.id, token); }, 100);
+    }
+  };
+
+  const answerPlanQuestion = (text: string) => {
+    const token = planTokenRef.current;
+    setPlan((prev) => {
+      if (!prev || prev.questions.length === 0) return prev;
+      const q = prev.questions[0];
+      const nextAnswers = { ...prev.answers, [q.id]: text.trim() };
+      const remaining = prev.questions.slice(1);
+      const updated: TaskPlan = { ...prev, answers: nextAnswers, questions: remaining };
+      if (remaining.length > 0) {
+        schedule(() => { if (planTokenRef.current === token) pushChat("ai", `Мне нужно уточнить: ${remaining[0].text}`); }, 60);
+        return updated;
+      }
+      const withSteps = { ...updated, steps: buildStepsForChannelPlan(nextAnswers) };
+      schedule(() => {
+        if (planTokenRef.current !== token) return;
+        pushChat("ai", "Все данные есть. Строю план выполнения и начинаю с автоматических шагов.");
+        advancePlan(withSteps.id, token);
+      }, 60);
+      return withSteps;
+    });
+  };
+
+  const runComplexTask = (q: string): boolean => {
+    if (plan && plan.questions.length > 0) { answerPlanQuestion(q); return true; }
+    const cls = classifyTask(q);
+    if (cls.kind === "channel_creation") { startChannelPlan(q); return true; }
+    if (cls.kind === "unsupported_complex") {
+      pushChat("ai", `Пока не умею строить автоматический план для «${cls.hint}» — это в разработке (см. дорожную карту AI Agent Workspace). Сейчас поддержано планирование для создания одного канала ("создай канал про ...").`);
+      return true;
+    }
+    return false;
+  };
+
+  const send = () => { const q = chatInput.trim(); if (!q) return; pushChat("user", q); setChatInput(""); if (runComplexTask(q)) return; if (runOperatorCommand(q)) return; const a = answer(q); setTimeout(() => pushChat("ai", a), 60); };
+  const quick = (q: string) => { pushChat("user", q); if (runComplexTask(q)) return; if (runOperatorCommand(q)) return; const a = answer(q); setTimeout(() => pushChat("ai", a), 60); };
 
   if (!mounted) return null;
 
@@ -264,6 +366,32 @@ export function GlobalAIOperatorSidebar() {
 
       {card(t("sb.safetyInspector", loc), <div className="grid grid-cols-1 gap-0.5 text-[9px]">
         {Object.keys(SAFETY).map((k) => { const v = (SAFETY as AnyRec)[k]; return <div key={k} className="flex items-center justify-between"><span className="text-tg-muted">{k}</span><span style={{ color: (v === false || k === "mode" || ((k === "oneMessageOnly" || k === "assistantOnly" || k === "advisoryOnly") && v === true)) ? "#86efac" : (v === true ? "#fca5a5" : "#86efac") }}>{String(v)}</span></div>; })}
+      </div>)}
+
+      {plan && card("AI AGENT WORKSPACE — " + t("sb.title", loc), <div className="space-y-2">
+        <div className="text-[10px] text-tg-muted">Задача</div>
+        <div className="rounded bg-black/30 p-1.5 text-[11px] text-cyan-100">{plan.task}</div>
+        {plan.questions.length > 0 ? (
+          <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-1.5 text-[10px] text-amber-100">
+            Вопрос: {plan.questions[0].text} <span className="text-tg-muted">(ответь в чате ниже)</span>
+          </div>
+        ) : plan.steps.length > 0 ? (
+          <div className="space-y-1">
+            <div className="text-[10px] text-tg-muted">Выполнение</div>
+            {plan.steps.map((s: PlanStep) => {
+              const icon = s.status === "done" ? "✔" : s.status === "running" ? "▶" : s.status === "blocked" ? "⏸" : "□";
+              const color = s.status === "done" ? "#4ade80" : s.status === "running" ? "#38bdf8" : s.status === "blocked" ? "#fbbf24" : "#9ca3af";
+              return <div key={s.id} className="text-[10px]">
+                <span style={{ color }}>{icon}</span> {s.label} {s.kind === "manual" && <span className="ml-1 rounded bg-white/10 px-1 text-[8px] text-tg-muted">manual</span>}
+                {s.status === "blocked" && s.note && <div className="ml-4 text-[9px] text-amber-300/80">{s.note}</div>}
+              </div>;
+            })}
+            {plan.steps.every((s) => s.status === "done" || s.status === "blocked") && plan.steps.some((s) => s.status === "blocked") && (
+              <div className="text-[10px] text-amber-200">План остановлен на ручном шаге — авто-исполнение дальше не идёт, это не ошибка, а граница текущих возможностей.</div>
+            )}
+          </div>
+        ) : null}
+        <button onClick={resetPlan} className="rounded bg-white/10 px-2 py-0.5 text-[9px] hover:bg-white/20">Закрыть план</button>
       </div>)}
 
       {card(t("sb.chat", loc), <div className="space-y-1">
