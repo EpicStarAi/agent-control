@@ -28,16 +28,16 @@ const NAV: { id: Section; icon: string; label: string }[] = [
 ];
 
 const THEMES = [
-  { id: "cyber-purple", name: "Кибер-фиолетовый", clr: "#a855f7" },
-  { id: "operator-red", name: "Операторский красный", clr: "#ef4444" },
-  { id: "toxic-lime", name: "Токсичный лайм", clr: "#84cc16" },
-  { id: "ice-blue", name: "Ледяной синий", clr: "#38bdf8" },
-  { id: "amber", name: "Янтарный", clr: "#f59e0b" },
+  { id: "classic", name: "Классический Telegram", clr: "#38bdf8", bg: "#0e1621" },
+  { id: "epicgram", name: "EPICGRAM", clr: "#e879f9", bg: "#0b0710" },
+  { id: "light", name: "Светлая", clr: "#2563eb", bg: "#f4f4f6" },
+  { id: "dark", name: "Тёмная", clr: "#22c55e", bg: "#050505" },
 ];
+const THEME_CHANGE_EVENT = "epic:theme-changed";
 
 const LS = "epic_settings_center_v1";
 type Prefs = { theme: string; dark: boolean; compact: boolean; accent: string };
-const DEFAULT_PREFS: Prefs = { theme: "cyber-purple", dark: true, compact: false, accent: "#a855f7" };
+const DEFAULT_PREFS: Prefs = { theme: "classic", dark: true, compact: false, accent: "#38bdf8" };
 
 function loadPrefs(): Prefs {
   try { const v = JSON.parse(localStorage.getItem(LS) || "null"); return v ? { ...DEFAULT_PREFS, ...v } : DEFAULT_PREFS; } catch { return DEFAULT_PREFS; }
@@ -94,7 +94,10 @@ export default function SettingsCenter({ embedded }: { embedded?: boolean }) {
     return () => { alive = false; };
   }, []);
 
-  const setTheme = (id: string, clr: string) => setPrefs((p) => ({ ...p, theme: id, accent: clr }));
+  const setTheme = (id: string, clr: string) => {
+    setPrefs((p) => ({ ...p, theme: id, accent: clr }));
+    try { window.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, { detail: { theme: id } })); } catch {}
+  };
   const activeAccount = status.accounts[0];
 
   function Body() {

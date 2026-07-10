@@ -72,6 +72,8 @@
   --color-tg-line: rgba(255, 255, 255, 0.08);
   --color-tg-accent: #38bdf8;
   --color-tg-active: #1d4ed8;
+  --color-tg-panel: #17212b;
+  --color-tg-bubble: #182533;
 }
 
 /* LIGHT MODE */

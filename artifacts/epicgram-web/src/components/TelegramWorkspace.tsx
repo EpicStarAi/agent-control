@@ -59,6 +59,37 @@ const LOCAL_ITEMS: LocalItem[] = [
     tasks: ["Список разрешенных сценариев", "Политика лимитов", "Human approval UI"] },
 ];
 
+// ---- THEMES ----
+// Real, live-switchable themes driven from SettingsCenter → Оформление. Overrides the same
+// CSS custom properties Tailwind's tg-* utilities already read (--color-tg-*), plus two extra
+// tokens (tg-panel/tg-bubble) for the header/nav/message-bubble surfaces. Pure CSS var override
+// on the workspace root — no backend/data change, purely presentational.
+export const THEME_SETTINGS_KEY = "epic_settings_center_v1";
+export const THEME_CHANGE_EVENT = "epic:theme-changed";
+export type ThemeId = "classic" | "epicgram" | "light" | "dark";
+type ThemeVars = Record<"--color-tg-bg" | "--color-tg-panel" | "--color-tg-bubble" | "--color-tg-line" | "--color-tg-text" | "--color-tg-muted" | "--color-tg-accent" | "--color-tg-active", string>;
+export const THEME_PRESETS: Record<ThemeId, ThemeVars> = {
+  classic: { "--color-tg-bg": "#0e1621", "--color-tg-panel": "#17212b", "--color-tg-bubble": "#182533", "--color-tg-line": "rgba(255,255,255,.08)", "--color-tg-text": "#e6e6ea", "--color-tg-muted": "#8b8f9a", "--color-tg-accent": "#38bdf8", "--color-tg-active": "#1d4ed8" },
+  epicgram: { "--color-tg-bg": "#0b0710", "--color-tg-panel": "#160f22", "--color-tg-bubble": "#22162f", "--color-tg-line": "rgba(216,140,255,.16)", "--color-tg-text": "#f3e8ff", "--color-tg-muted": "#b79ad1", "--color-tg-accent": "#e879f9", "--color-tg-active": "#a21caf" },
+  light: { "--color-tg-bg": "#f4f4f6", "--color-tg-panel": "#ffffff", "--color-tg-bubble": "#eef1f5", "--color-tg-line": "rgba(0,0,0,.08)", "--color-tg-text": "#1c1c1e", "--color-tg-muted": "#6b7280", "--color-tg-accent": "#2563eb", "--color-tg-active": "#2563eb" },
+  dark: { "--color-tg-bg": "#050505", "--color-tg-panel": "#111113", "--color-tg-bubble": "#1a1a1d", "--color-tg-line": "rgba(255,255,255,.06)", "--color-tg-text": "#f5f5f5", "--color-tg-muted": "#9a9a9a", "--color-tg-accent": "#22c55e", "--color-tg-active": "#16a34a" },
+};
+export function readStoredTheme(): ThemeId {
+  try { const v = JSON.parse(localStorage.getItem(THEME_SETTINGS_KEY) || "null"); if (v?.theme && v.theme in THEME_PRESETS) return v.theme; } catch {}
+  return "classic";
+}
+function useWorkspaceTheme() {
+  const [theme, setTheme] = useState<ThemeId>(readStoredTheme);
+  useEffect(() => {
+    const onChange = (e: Event) => { const id = (e as CustomEvent).detail?.theme; if (id && id in THEME_PRESETS) setTheme(id); };
+    const onStorage = (e: StorageEvent) => { if (e.key === THEME_SETTINGS_KEY) setTheme(readStoredTheme()); };
+    window.addEventListener(THEME_CHANGE_EVENT, onChange);
+    window.addEventListener("storage", onStorage);
+    return () => { window.removeEventListener(THEME_CHANGE_EVENT, onChange); window.removeEventListener("storage", onStorage); };
+  }, []);
+  return THEME_PRESETS[theme] as React.CSSProperties;
+}
+
 const hash = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; };
 const av = (s: string) => "#" + ((hash(s) & 0xffffff) | 0x404040).toString(16).padStart(6, "0");
 const ini = (s: string) => (s || "•").replace(/[^0-9A-Za-zÀ-ɏЀ-ӿ ]/g, "").trim().split(/\s+/).slice(0, 2).map((w) => w[0] || "").join("").toUpperCase() || "•";
@@ -96,6 +127,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
   const [discStatus, setDiscStatus] = useState<"idle" | "discovering" | "indexing" | "building" | "completed" | "error">("idle");
   const [discLog, setDiscLog] = useState<{ t: string; text: string }[]>([]);
   const [index, setIndex] = useState<any>(null);
+  const themeVars = useWorkspaceTheme();
 
   useEffect(() => { try { const d = JSON.parse(localStorage.getItem(LS) || "{}"); if (d.section) setSection(d.section); if (!slotId && d.acc) setAcc(d.acc); } catch {} }, []);
   useEffect(() => { try { localStorage.setItem(LS, JSON.stringify({ section, acc })); } catch {} }, [section, acc]);
@@ -505,7 +537,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
     const focusSet = gfocus ? new Set([gfocus, ...gNeighbors(gfocus)]) : null;
     return (
       <div className="grid h-full grid-cols-[1fr_260px]">
-        <div className="relative overflow-hidden bg-[#0a0f17]" style={{ backgroundImage: "linear-gradient(rgba(62,166,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(62,166,255,.06) 1px,transparent 1px)", backgroundSize: "28px 28px" }}>
+        <div className="relative overflow-hidden bg-tg-bg" style={{ backgroundImage: "linear-gradient(rgba(62,166,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(62,166,255,.06) 1px,transparent 1px)", backgroundSize: "28px 28px" }}>
           <div className="absolute left-3 top-3 z-10 flex gap-1"><button onClick={() => setGv((v) => ({ ...v, s: Math.min(2, +(v.s + 0.15).toFixed(2)) }))} className="h-8 w-8 rounded-lg bg-tg-panel text-lg ring-1 ring-tg-line">+</button><button onClick={() => setGv((v) => ({ ...v, s: Math.max(0.3, +(v.s - 0.15).toFixed(2)) }))} className="h-8 w-8 rounded-lg bg-tg-panel text-lg ring-1 ring-tg-line">−</button><button onClick={() => { setGv({ tx: 40, ty: 20, s: 0.8 }); setGpos({}); setGfocus(""); }} className="rounded-lg bg-tg-panel px-2 text-xs ring-1 ring-tg-line">сброс</button></div>
           <div className="absolute inset-0 cursor-grab active:cursor-grabbing" onMouseDown={(e) => gdown(e)}>
             <div style={{ transform: `translate(${gv.tx}px,${gv.ty}px) scale(${gv.s})`, transformOrigin: "0 0", position: "absolute", inset: 0 }}>
@@ -517,7 +549,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
           </div>
           <div className="absolute bottom-3 right-3 h-24 w-40 overflow-hidden rounded-lg border border-tg-line bg-tg-panel/90"><svg width="160" height="96" viewBox="0 0 1200 700">{graph.edges.map(([a, b], i) => { const pa = GP(a), pb = GP(b); return <line key={i} x1={pa.x + 50} y1={pa.y + 16} x2={pb.x + 50} y2={pb.y + 16} stroke="rgba(62,166,255,.3)" strokeWidth={3} />; })}{graph.nodes.map((n) => { const p = GP(n.id); return <circle key={n.id} cx={p.x + 50} cy={p.y + 16} r={11} fill={GCLR[n.type]} />; })}</svg></div>
         </div>
-        <aside className="overflow-auto border-l border-tg-line bg-[#17212b] p-3">
+        <aside className="overflow-auto border-l border-tg-line bg-tg-panel p-3">
           <div className="text-[10px] font-black uppercase tracking-[0.18em] text-tg-accent">Инспектор узла</div>
           {gsn ? (<div className="mt-2 space-y-1 text-xs"><div className="flex items-center gap-2"><span className="h-3 w-3 rounded-full" style={{ background: GCLR[gsn.type] }} /><b>{gsn.label}</b></div>
             <div className="text-tg-muted">Тип: <b className="text-tg-text">{gsn.type}</b></div>
@@ -535,13 +567,13 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
   }
 
   return (
-    <div className="fixed inset-0 z-[55] flex flex-col bg-[#0e1621] text-tg-text">
-      <header className="flex items-center gap-3 border-b border-tg-line bg-[#17212b] px-4 py-2">
-        <button onClick={onClose} className="rounded-lg bg-tg-bg px-3 py-1.5 text-sm hover:text-white">‹ Назад</button>
+    <div className="fixed inset-0 z-[55] flex flex-col bg-tg-bg text-tg-text" style={themeVars}>
+      <header className="flex items-center gap-3 border-b border-tg-line bg-tg-panel px-4 py-2">
+        <button onClick={onClose} className="rounded-lg bg-tg-bg px-3 py-1.5 text-sm hover:text-tg-text">‹ Назад</button>
         <div className="font-black tracking-wide">📨 РАБОЧАЯ ОБЛАСТЬ TELEGRAM</div>
         <span className="flex items-center gap-1.5 rounded-full border border-tg-line bg-tg-bg px-2 py-0.5 text-[10px] font-bold"><span className="h-2 w-2 rounded-full" style={{ background: connClr }} />{connLbl}</span>
         <span className="rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-400">ТОЛЬКО ЧТЕНИЕ</span>
-        {accounts.length > 0 && <select value={acc} onChange={(e) => setAcc(e.target.value)} className="ml-2 rounded-lg border border-tg-line bg-[#0e1621] px-2 py-1 text-xs">{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>}
+        {accounts.length > 0 && <select value={acc} onChange={(e) => setAcc(e.target.value)} className="ml-2 rounded-lg border border-tg-line bg-tg-bg px-2 py-1 text-xs">{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>}
         {/* stats strip */}
         <div className="ml-2 hidden flex-wrap gap-1 text-[10px] md:flex">{([["D", stats.dialogs], ["G", stats.groups], ["C", stats.channels], ["B", stats.bots], ["Ct", stats.contacts]] as const).map(([l, v]) => <span key={l} className="rounded bg-tg-bg px-1.5 py-0.5 text-tg-muted">{l} <b className="text-tg-text">{v}</b></span>)}</div>
         <div className="ml-auto flex items-center gap-1.5">
@@ -555,20 +587,20 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
 
       {mode === "command" ? (
         <div className="grid min-h-0 flex-1 grid-cols-[180px_1fr]">
-          <nav className="min-h-0 overflow-auto border-r border-tg-line bg-[#17212b] p-2">
+          <nav className="min-h-0 overflow-auto border-r border-tg-line bg-tg-panel p-2">
             <div className="mb-1 px-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Командный центр</div>
             {CC_TABS.map((t) => (
-              <button key={t} onClick={() => setCc(t)} className={`mb-0.5 w-full rounded-lg px-2.5 py-1.5 text-left text-sm ${cc === t ? "bg-cyan-600/30 text-white ring-1 ring-cyan-500/50" : "text-tg-muted hover:bg-tg-bg/40 hover:text-white"}`}>{CC_TAB_LABELS[t] || t}</button>
+              <button key={t} onClick={() => setCc(t)} className={`mb-0.5 w-full rounded-lg px-2.5 py-1.5 text-left text-sm ${cc === t ? "bg-cyan-600/30 text-tg-text ring-1 ring-cyan-500/50" : "text-tg-muted hover:bg-tg-bg/40 hover:text-tg-text"}`}>{CC_TAB_LABELS[t] || t}</button>
             ))}
           </nav>
-          <main className="min-h-0 overflow-auto bg-[#0e1621]"><CommandCenter /></main>
+          <main className="min-h-0 overflow-auto bg-tg-bg"><CommandCenter /></main>
         </div>
       ) : (
 
       <div className="grid min-h-0 flex-1 grid-cols-[210px_320px_1fr_280px]">
-        <nav className="min-h-0 overflow-auto border-r border-tg-line bg-[#17212b] p-2">
+        <nav className="min-h-0 overflow-auto border-r border-tg-line bg-tg-panel p-2">
           {SECTIONS.map(([id, label]) => (
-            <button key={id} onClick={() => setSection(id)} className={`mb-0.5 flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-sm ${section === id ? "bg-tg-active/30 text-white ring-1 ring-tg-accent" : "text-tg-muted hover:bg-tg-bg/40 hover:text-white"}`}>
+            <button key={id} onClick={() => setSection(id)} className={`mb-0.5 flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-sm ${section === id ? "bg-tg-active/30 text-tg-text ring-1 ring-tg-accent" : "text-tg-muted hover:bg-tg-bg/40 hover:text-tg-text"}`}>
               <span>{label}</span>
               {id === "dialogs" && <span className="rounded-full bg-tg-bg px-1.5 text-[10px]">{stats.dialogs}</span>}
               {id === "groups" && <span className="rounded-full bg-tg-bg px-1.5 text-[10px]">{stats.groups + LOCAL_ITEMS.filter((i) => i.folder === "groups").length}</span>}
@@ -580,37 +612,37 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
           ))}
         </nav>
 
-        <section className="flex min-h-0 flex-col border-r border-tg-line bg-[#0e1621]">
+        <section className="flex min-h-0 flex-col border-r border-tg-line bg-tg-bg">
           <div className="border-b border-tg-line p-2">
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск…" className="w-full rounded-lg bg-[#17212b] px-3 py-1.5 text-sm outline-none" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск…" className="w-full rounded-lg bg-tg-panel px-3 py-1.5 text-sm outline-none" />
             {(section === "dialogs") && <div className="mt-1.5 flex flex-wrap gap-1">{FILTERS.map((f) => <button key={f} onClick={() => setFilter(f)} className={`rounded-full px-2 py-0.5 text-[10px] ${filter === f ? "bg-tg-active text-white" : "bg-tg-bg text-tg-muted"}`}>{f}</button>)}</div>}
           </div>
           <div className="min-h-0 flex-1 overflow-auto"><Center /></div>
         </section>
 
-        <section className="flex min-h-0 flex-col bg-[#0e1621]" style={{ backgroundImage: "radial-gradient(circle at 50% 0,rgba(34,46,61,.6),transparent 60%)" }}>
+        <section className="flex min-h-0 flex-col bg-tg-bg" style={{ backgroundImage: "radial-gradient(circle at 50% 0,rgba(34,46,61,.6),transparent 60%)" }}>
           {selLocalItem ? (
             <>
-              <div className="flex items-center gap-2.5 border-b border-tg-line bg-[#17212b] px-4 py-2"><Avatar name={selLocalItem.title} size={38} />
+              <div className="flex items-center gap-2.5 border-b border-tg-line bg-tg-panel px-4 py-2"><Avatar name={selLocalItem.title} size={38} />
                 <div><div className="text-sm font-semibold">{selLocalItem.title}</div><div className="text-[11px] text-tg-muted">{selLocalItem.badge} · локальная рабочая область</div></div>
               </div>
               <div className="min-h-0 flex-1 overflow-auto p-4">
                 <div className="relative mx-auto flex max-w-2xl flex-col gap-4">
                   <div className="mx-auto rounded-full bg-black/30 px-3 py-1 text-xs text-tg-muted">Создано по умолчанию</div>
-                  <section className="rounded-2xl bg-[#182533] p-4">
+                  <section className="rounded-2xl bg-tg-bubble p-4">
                     <div className="text-xs font-semibold text-tg-accent">Системное описание</div>
                     <h2 className="mt-2 text-xl font-semibold">{selLocalItem.title}</h2>
                     <p className="mt-2 text-sm leading-6 text-tg-muted">{selLocalItem.subtitle}</p>
                   </section>
-                  <section className="rounded-2xl border border-tg-line bg-[#1c1117] p-4">
+                  <section className="rounded-2xl border border-tg-line bg-tg-bubble p-4">
                     <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-tg-accent">🗄 Память</div>
                     <div className="space-y-2">{selLocalItem.memory.map((m) => <div key={m} className="rounded-xl bg-black/20 px-3 py-2 text-sm leading-6">{m}</div>)}</div>
                   </section>
-                  <section className="rounded-2xl bg-[#182533] p-4">
+                  <section className="rounded-2xl bg-tg-bubble p-4">
                     <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-tg-muted">✅ Технические задачи</div>
                     <div className="space-y-2">{selLocalItem.tasks.map((t) => <label key={t} className="flex items-center gap-3 rounded-xl bg-tg-bg px-3 py-2 text-sm"><span className="h-4 w-4 rounded border border-tg-muted" />{t}</label>)}</div>
                   </section>
-                  <section className="rounded-2xl bg-[#17212b] p-4">
+                  <section className="rounded-2xl bg-tg-panel p-4">
                     <h3 className="font-semibold">Telegram-аккаунт пока не подключен</h3>
                     <p className="mt-2 text-sm leading-6 text-tg-muted">Эти группы и каналы являются локальной AI-структурой проекта. Реальные Telegram-чаты появятся после авторизации через официальный TDLib backend.</p>
                     <button onClick={() => setSection("accounts")} className="mt-4 rounded-xl bg-tg-active px-4 py-3 text-sm font-semibold text-white">Авторизовать Telegram</button>
@@ -620,26 +652,26 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
             </>
           ) : selChat ? (
             <>
-              <div className="flex items-center gap-2.5 border-b border-tg-line bg-[#17212b] px-4 py-2"><Avatar name={selChat.title || "чат"} size={38} />
+              <div className="flex items-center gap-2.5 border-b border-tg-line bg-tg-panel px-4 py-2"><Avatar name={selChat.title || "чат"} size={38} />
                 <div><div className="text-sm font-semibold">{selChat.title || "чат"}</div><div className="text-[11px] text-tg-muted">{cat(selChat)}{selChat.memberCount ? " · " + selChat.memberCount : ""} · только чтение</div></div>
                 <div className="ml-auto flex gap-2 text-tg-muted"><span>🔍</span><span>📌</span><span>🖼</span></div>
               </div>
               <div className="min-h-0 flex-1 space-y-2 overflow-auto p-4">
                 {preview(selChat) ? (
-                  <div className="flex justify-start"><div className="max-w-[70%] rounded-2xl bg-[#182533] px-3 py-1.5 text-sm">{preview(selChat)}<div className="mt-0.5 text-[10px] text-tg-muted">последнее сообщение</div></div></div>
+                  <div className="flex justify-start"><div className="max-w-[70%] rounded-2xl bg-tg-bubble px-3 py-1.5 text-sm">{preview(selChat)}<div className="mt-0.5 text-[10px] text-tg-muted">последнее сообщение</div></div></div>
                 ) : <div className="mx-auto mt-8 text-sm text-tg-muted">История сообщений недоступна в read-only режиме.</div>}
                 <div className="mx-auto w-fit rounded-full bg-tg-bg/60 px-3 py-0.5 text-[10px] text-tg-muted">Только чтение · полная история не загружается</div>
               </div>
-              <div className="flex items-center gap-2 border-t border-tg-line bg-[#17212b] px-3 py-2">
+              <div className="flex items-center gap-2 border-t border-tg-line bg-tg-panel px-3 py-2">
                 <span className="text-tg-muted">📎</span>
-                <input disabled placeholder="Отправка отключена — режим только для чтения" className="flex-1 rounded-lg bg-[#0e1621] px-3 py-1.5 text-sm text-tg-muted outline-none" />
+                <input disabled placeholder="Отправка отключена — режим только для чтения" className="flex-1 rounded-lg bg-tg-bg px-3 py-1.5 text-sm text-tg-muted outline-none" />
                 <span className="text-tg-muted">🎤</span>
               </div>
             </>
           ) : <div className="flex flex-1 items-center justify-center text-tg-muted">{loading ? "Синхронизация…" : "Выбери чат · группу · канал · бота"}</div>}
         </section>
 
-        <aside className="min-h-0 overflow-auto border-l border-tg-line bg-[#17212b] p-3">
+        <aside className="min-h-0 overflow-auto border-l border-tg-line bg-tg-panel p-3">
           <div className="text-[10px] font-black uppercase tracking-[0.18em] text-tg-accent">Интеграция агента</div>
           {ownerAgent ? (
             <div className="mt-2 space-y-1.5 text-xs">
@@ -669,8 +701,8 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
 
       {palette && (
         <div className="fixed inset-0 z-[80] flex items-start justify-center bg-black/50 pt-24" onMouseDown={() => setPalette(false)}>
-          <div className="w-[540px] max-w-[92vw] overflow-hidden rounded-2xl border border-cyan-500/30 bg-[#17212b] shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
-            <input autoFocus value={pq} onChange={(e) => setPq(e.target.value)} placeholder="Команда или поиск по чатам…" className="w-full border-b border-tg-line bg-[#0e1621] px-4 py-3 text-sm outline-none" />
+          <div className="w-[540px] max-w-[92vw] overflow-hidden rounded-2xl border border-cyan-500/30 bg-tg-panel shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
+            <input autoFocus value={pq} onChange={(e) => setPq(e.target.value)} placeholder="Команда или поиск по чатам…" className="w-full border-b border-tg-line bg-tg-bg px-4 py-3 text-sm outline-none" />
             <div className="max-h-[52vh] overflow-auto p-2">
               {palCommands.length > 0 && <div className="px-2 py-1 text-[10px] font-bold uppercase text-tg-muted">Команды</div>}
               {palCommands.map((c) => <button key={c.id} onClick={() => { c.run(); setPalette(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-tg-bg/60"><span className="text-cyan-300">⌁</span>{c.label}</button>)}
