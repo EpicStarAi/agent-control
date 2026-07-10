@@ -1,0 +1,203 @@
+STOP EXPLAINING. EXECUTE NOW IN THIS CURRENT REPL.
+
+You are already inside the EPICGRAM Replit project.
+
+We are not building a sandbox demo.
+We are building a full online-dev EPICGRAM product environment that unifies:
+
+1. Web App
+2. Telegram WebApp / Telegram Mini App
+3. Desktop App layer
+4. Mobile App layer
+5. Operator AI workspace
+6. Channel OS
+7. App/download/distribution layer
+
+Goal:
+Make the current Replit project a unified EPICGRAM Platform OS online-dev build.
+
+Do not tell me to create another Repl.
+Do not explain import steps.
+Do not create only documentation.
+Do the work in this current project.
+
+Core product concept:
+EPICGRAM is one platform with several entrypoints:
+
+- /                 public landing
+- /login            admin/team auth
+- /client           Telegram-like AI client
+- /workspace        team/operator workspace
+- /tma              Telegram WebApp / Mini App entrypoint
+- /settings         settings/account/theme/auth modes
+- /downloads        desktop/mobile/web app download hub
+- /apps             platform apps hub
+- /desktop          desktop app landing/config page
+- /mobile           mobile app landing/config page
+- /channel-os       Channel OS/cards workspace
+- /operator         AI Operator full workspace if route exists or can be added safely
+
+Required unified architecture:
+1. Shared product shell:
+   - one EPICGRAM visual identity
+   - shared top navigation
+   - shared auth/access model
+   - shared theme system
+   - shared operator state
+   - shared “ONLINE DEV / LIVE SEND LOCKED” compact badge
+   - no fake sandbox look
+
+2. Telegram WebApp / Mini App:
+   - /tma must work as Telegram WebApp entrypoint
+   - detect Telegram WebApp if available
+   - if opened outside Telegram, show normal web preview mode
+   - include buttons:
+     - Open Web Client
+     - Open Workspace
+     - Open AI Operator
+     - Open Settings
+   - do not require real Telegram credentials in Replit
+
+3. Web Client:
+   - /client must open the EPICGRAM Telegram-like interface
+   - AI Operator must be visible
+   - operator must be action-first, not autoresponder
+   - chat context must not cover half the screen
+   - context should move into Channel OS/operator sidebar
+
+4. Desktop App layer:
+   - add /desktop route or section
+   - show desktop app status:
+     - Windows app: planned/dev
+     - macOS app: planned/dev
+     - Linux app: planned/dev
+   - include future packaging notes:
+     - Electron or Tauri candidate
+     - same web shell reused
+     - live Telegram send locked in Replit
+   - do not actually build native desktop binaries unless repo already supports it
+
+5. Mobile App layer:
+   - add /mobile route or section
+   - show mobile app status:
+     - Android app: planned/dev
+     - iOS app: planned/dev
+     - Telegram WebApp as first mobile entrypoint
+   - include future packaging notes:
+     - PWA first
+     - Capacitor/React Native candidate only if appropriate
+   - do not add real app store credentials
+
+6. Downloads/App distribution:
+   - add /downloads route or complete existing downloads route
+   - include cards:
+     - Web Client
+     - Telegram WebApp
+     - Desktop App
+     - Android App
+     - iOS App
+   - disabled/planned buttons are OK, but must look professional
+   - no fake download links
+   - no production secrets
+
+7. Channel OS central panel:
+   Add or improve central Channel OS panel/cards for selected channel/chat:
+   - ID
+   - name
+   - type
+   - account
+   - topic
+   - target audience
+   - admins/roles/bots
+   - subscribers/statistics placeholders
+   - content categories
+   - publication plan
+   - funnels
+   - competitors
+   - assets: photo/video/links/drafts
+   - autoposting status
+   - operator notes
+   - diagnostics
+   - growth strategy
+
+8. AI Operator:
+   Must behave like an operator, not a generic chatbot.
+   Supported commands should route to runtime/fallback actions:
+   - открыть чат
+   - зайди в канал
+   - проанализируй этот чат
+   - покажи контекст чата
+   - проверь статус отправки
+   - создай карточку канала
+   - покажи карточку канала
+   - добавь в план публикаций
+   - добавь ассет
+   - добавь конкурента
+   - добавь заметку канала
+
+9. Safety:
+   - do not use production secrets
+   - do not create .env.local with real values
+   - do not copy TDLib sessions
+   - do not send Telegram messages
+   - do not logout NOVIKOVA
+   - do not access production VPS
+   - do not enable real Telegram send
+   - live send must remain locked/approval-gated
+
+10. Replit behavior:
+   - app must run in Replit Preview
+   - bind to 0.0.0.0 and Replit PORT
+   - if backend is missing, add clean Replit fallback/mock behavior
+   - do not remove production backend/API logic
+   - keep production code paths intact
+
+First actions:
+1. Inspect:
+   - pwd
+   - ls
+   - find package.json
+   - package.json scripts
+   - app/routes structure
+   - existing /client, /login, /workspace, /tma, /settings, /downloads routes
+
+2. Identify actual project type:
+   - full EPICGRAM repo
+   - partial imported repo
+   - generated preview app
+   - Vite/Next/other
+
+3. Patch code directly.
+4. Run npm install if needed.
+5. Run npm run build.
+6. Run correct Replit dev command.
+7. Test routes:
+   - /
+   - /login
+   - /client
+   - /workspace
+   - /tma
+   - /settings
+   - /downloads
+   - /apps
+   - /desktop
+   - /mobile
+   - /channel-os
+
+Do not commit automatically.
+
+Return:
+EPICGRAM PLATFORM OS ONLINE DEV RESULT
+
+Include:
+- actual project type found
+- files changed
+- routes created/fixed
+- run command
+- build result
+- routes tested
+- what works now
+- what is mocked/fallback in Replit
+- what still depends on VPS/live backend
+- confirmation live Telegram send remains locked
+- next recommended task
