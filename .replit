@@ -18,23 +18,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "EPICGRAM Web"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "EPICGRAM API"
-
-[[workflows.workflow]]
-name = "EPICGRAM Web"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd epicgram/apps/web && npx next dev --hostname 0.0.0.0 --port 3000"
-waitForPort = 3000
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [[workflows.workflow]]
 name = "EPICGRAM API"
