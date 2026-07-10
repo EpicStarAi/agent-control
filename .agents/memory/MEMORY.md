@@ -1,0 +1,1 @@
+- [Shared proxy only routes registered artifacts](artifact-router-scope.md) — legacy non-artifact workflows (e.g. plain Next.js on a fixed port) are never reachable via the root domain/Preview iframe, even with correct binding and `[[ports]]`.
