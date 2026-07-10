@@ -34,6 +34,31 @@ const SECTIONS = [
 ] as const;
 const FILTERS = ["Все", "Непрочитанные", "Без звука", "Боты", "Каналы", "Группы", "Личные"];
 
+// Local AI workspace cards — seeded, non-Telegram "group/channel" cards that document the
+// project itself (memory + technical tasks). Mirrors the original EPICGRAM shell's default
+// view before a real Telegram session is authorized. Read-only, no backend calls.
+type LocalItem = { id: string; folder: "groups" | "channels"; title: string; subtitle: string; badge: string; memory: string[]; tasks: string[] };
+const LOCAL_ITEMS: LocalItem[] = [
+  { id: "group-tdlib-core", folder: "groups", title: "Техгруппа: TDLib Core", subtitle: "Авторизация, QR, номер телефона, статус сессии", badge: "AI группа",
+    memory: ["Подключать только аккаунты владельца через официальный TDLib.", "Сессии хранить на backend в зашифрованном виде.", "QR и код подтверждения не сохранять во frontend."],
+    tasks: ["Спроектировать login-flow", "Добавить endpoint статуса", "Подготовить logout/delete session"] },
+  { id: "group-sessions", folder: "groups", title: "Техгруппа: Сессии", subtitle: "Шифрование, хранение, список подключенных аккаунтов", badge: "AI группа",
+    memory: ["Каждая сессия имеет owner_id и метку согласия.", "Удаление сессии доступно из интерфейса.", "Секреты не попадают в localStorage браузера."],
+    tasks: ["Выбрать хранилище", "Добавить encryption key", "Сделать список аккаунтов"] },
+  { id: "group-agents", folder: "groups", title: "Техгруппа: AI-операторы", subtitle: "Права агентов, память, подтверждение действий", badge: "AI группа",
+    memory: ["AI-агенты не отправляют сообщения без подтверждения человека.", "Каждое действие агента пишется в аудит.", "Память разделяется по аккаунтам и рабочим областям."],
+    tasks: ["Описать роли агентов", "Добавить approval queue", "Связать память с аккаунтом"] },
+  { id: "channel-memory", folder: "channels", title: "AI Канал: Память", subtitle: "Долговременная память проекта и подключенных аккаунтов", badge: "AI канал",
+    memory: ["Пользователь явно авторизует каждый аккаунт.", "Память не включает приватные сообщения без разрешения.", "Сводки хранят источник и время создания."],
+    tasks: ["Создать memory schema", "Добавить экспорт", "Добавить очистку памяти"] },
+  { id: "channel-decisions", folder: "channels", title: "AI Канал: Решения", subtitle: "Архив технических решений и ограничений безопасности", badge: "AI канал",
+    memory: ["Frontend показывает состояние и запускает consent-flow.", "TDLib работает на backend или локальном runtime.", "Telegram-сессии не скрываются от владельца."],
+    tasks: ["Зафиксировать архитектуру", "Описать угрозы", "Добавить журнал решений"] },
+  { id: "channel-automation", folder: "channels", title: "AI Канал: Автоматизации", subtitle: "План будущих безопасных автоматизаций", badge: "AI канал",
+    memory: ["Массовый спам и скрытая имитация запрещены.", "Автоматизация возможна только для разрешенных процессов.", "В MVP внешняя отправка остается на подтверждении человека."],
+    tasks: ["Список разрешенных сценариев", "Политика лимитов", "Human approval UI"] },
+];
+
 const hash = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; };
 const av = (s: string) => "#" + ((hash(s) & 0xffffff) | 0x404040).toString(16).padStart(6, "0");
 const ini = (s: string) => (s || "•").replace(/[^0-9A-Za-zÀ-ɏЀ-ӿ ]/g, "").trim().split(/\s+/).slice(0, 2).map((w) => w[0] || "").join("").toUpperCase() || "•";
@@ -52,6 +77,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
   const [acc, setAcc] = useState<string>(slotId || ctx.activeId || accounts[0]?.id || "");
   const [filter, setFilter] = useState("Все");
   const [chat, setChat] = useState<string>("");
+  const [localItem, setLocalItem] = useState<string>("");
   const [q, setQ] = useState("");
   const [palette, setPalette] = useState(false);
   const [pq, setPq] = useState("");
@@ -143,7 +169,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
       const query = (command.query || "").trim().toLowerCase();
       const found = chats.find((c) => (c.title || "").toLowerCase() === query || (c.username || "").toLowerCase() === query)
         || chats.find((c) => (c.title || "").toLowerCase().includes(query) || (c.username || "").toLowerCase().includes(query));
-      if (found) { setSection("dialogs"); setFilter("Все"); setChat(found.id); report(true, `Открыл чат «${found.title || found.username || query}».`); }
+      if (found) { setSection("dialogs"); setFilter("Все"); setChat(found.id); setLocalItem(""); report(true, `Открыл чат «${found.title || found.username || query}».`); }
       else report(false, "Не нашёл чат. Выбери его вручную или напиши точное имя.");
       return;
     }
@@ -200,34 +226,46 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
   function Center() {
     if (section === "accounts") return accounts.length ? (
       <div className="space-y-1.5 p-2">{accounts.map((a) => (
-        <Row key={a.id} active={acc === a.id} onClick={() => { setAcc(a.id); setSection("dialogs"); }}>
+        <Row key={a.id} active={acc === a.id} onClick={() => { setAcc(a.id); setSection("dialogs"); setLocalItem(""); setChat(""); }}>
           <Avatar name={a.name} /><div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold">{a.name}</div><div className="truncate text-[11px] text-tg-muted">{a.phone} · {a.status}</div></div>
           <span className="rounded bg-tg-bg px-1.5 py-0.5 text-[10px] text-tg-muted">{a.owner?.name || "нет агента"}</span>
         </Row>))}</div>
     ) : <Empty text="Нет аккаунтов Telegram." />;
-    if (section === "groups") return groups.length ? (
-      <div className="space-y-1.5 p-2">{groups.map((g) => (
-        <Row key={g.id} active={chat === g.id} onClick={() => setChat(g.id)}><Avatar name={g.title || "group"} />
+    if (section === "groups") { const localGroups = LOCAL_ITEMS.filter((i) => i.folder === "groups"); return (groups.length || localGroups.length) ? (
+      <div className="space-y-1.5 p-2">
+        {localGroups.map((it) => (
+          <Row key={it.id} active={localItem === it.id} onClick={() => { setLocalItem(it.id); setChat(""); }}><Avatar name={it.title} />
+            <div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold">{it.title}</div><div className="truncate text-[11px] text-tg-muted">{it.subtitle}</div></div>
+            <span className="rounded bg-tg-bg px-1.5 py-0.5 text-[10px] text-fuchsia-300">{it.badge}</span></Row>
+        ))}
+        {groups.map((g) => (
+        <Row key={g.id} active={chat === g.id} onClick={() => { setChat(g.id); setLocalItem(""); }}><Avatar name={g.title || "group"} />
           <div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold">{g.title || "group"}</div><div className="truncate text-[11px] text-tg-muted">{g.memberCount ? g.memberCount + " участников · " : ""}{preview(g)}</div></div>
           {g.isMuted && <span className="text-[10px] text-tg-muted">🔕</span>}</Row>))}</div>
-    ) : <Empty text="Групп нет." />;
-    if (section === "channels") return channels.length ? (
-      <div className="space-y-1.5 p-2">{channels.map((c) => { const owner = ctx.bind?.[acc]; const ag = ctx.agents?.find((a) => a.id === owner); return (
-        <Row key={c.id} active={chat === c.id} onClick={() => setChat(c.id)}><Avatar name={c.title || "channel"} />
+    ) : <Empty text="Групп нет." />; }
+    if (section === "channels") { const localChannels = LOCAL_ITEMS.filter((i) => i.folder === "channels"); return (channels.length || localChannels.length) ? (
+      <div className="space-y-1.5 p-2">
+        {localChannels.map((it) => (
+          <Row key={it.id} active={localItem === it.id} onClick={() => { setLocalItem(it.id); setChat(""); }}><Avatar name={it.title} />
+            <div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold">{it.title}</div><div className="truncate text-[11px] text-tg-muted">{it.subtitle}</div></div>
+            <span className="rounded bg-tg-bg px-1.5 py-0.5 text-[10px] text-fuchsia-300">{it.badge}</span></Row>
+        ))}
+        {channels.map((c) => { const owner = ctx.bind?.[acc]; const ag = ctx.agents?.find((a) => a.id === owner); return (
+        <Row key={c.id} active={chat === c.id} onClick={() => { setChat(c.id); setLocalItem(""); }}><Avatar name={c.title || "channel"} />
           <div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold">{c.title || "channel"}</div><div className="truncate text-[11px] text-tg-muted">{c.memberCount ? c.memberCount.toLocaleString() + " подписчиков · " : ""}{preview(c)}</div></div>
           {ag && <span className="rounded bg-tg-bg px-1.5 py-0.5 text-[10px] text-tg-accent">{ag.name}</span>}</Row>); })}</div>
-    ) : <Empty text="Каналов нет." />;
+    ) : <Empty text="Каналов нет." />; }
     if (section === "bots") return bots.length ? (
       <div className="space-y-1.5 p-2">{bots.map((b) => (
-        <Row key={b.id} active={chat === b.id} onClick={() => setChat(b.id)}><Avatar name={b.title || "bot"} />
+        <Row key={b.id} active={chat === b.id} onClick={() => { setChat(b.id); setLocalItem(""); }}><Avatar name={b.title || "bot"} />
           <div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold">{b.title || "bot"}</div><div className="truncate text-[11px] text-tg-muted">{b.username || ""} {preview(b)}</div></div></Row>))}</div>
     ) : <Empty text="Ботов нет." />;
     if (section === "contacts") return contacts.length ? (
       <div className="space-y-1 p-2">{contacts.filter((c) => !q || (c.title || "").toLowerCase().includes(q.toLowerCase())).map((c) => (
-        <Row key={c.id} active={chat === c.id} onClick={() => setChat(c.id)}><Avatar name={c.title || "user"} size={32} />
+        <Row key={c.id} active={chat === c.id} onClick={() => { setChat(c.id); setLocalItem(""); }}><Avatar name={c.title || "user"} size={32} />
           <div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold">{c.title || "user"}</div><div className="text-[11px] text-tg-muted">{c.username || ""}</div></div></Row>))}</div>
     ) : <Empty text="Контактов нет." />;
-    if (section === "saved") { const self = chats.find((c) => /saved/i.test(c.title || "")); return self ? <div className="p-2"><Row active onClick={() => setChat(self.id)}><Avatar name="Saved" /><span className="text-sm font-semibold">{self.title}</span></Row></div> : <Empty text="«Избранное» недоступно (только чтение)." />; }
+    if (section === "saved") { const self = chats.find((c) => /saved/i.test(c.title || "")); return self ? <div className="p-2"><Row active onClick={() => { setChat(self.id); setLocalItem(""); }}><Avatar name="Saved" /><span className="text-sm font-semibold">{self.title}</span></Row></div> : <Empty text="«Избранное» недоступно (только чтение)." />; }
     if (section === "media") return <Empty text="Медиа недоступно в read-only режиме (Telegram Layer не отдаёт медиа-историю)." />;
     if (section === "files") return <Empty text="Файлы недоступны в read-only режиме." />;
     if (section === "calls") return <Empty text="История звонков недоступна в read-only режиме." />;
@@ -248,7 +286,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
     // dialogs default
     return fDialogs.length ? (
       <div className="space-y-0.5 p-2">{fDialogs.map((d) => (
-        <Row key={d.id} active={chat === d.id} onClick={() => setChat(d.id)}><Avatar name={d.title || "чат"} />
+        <Row key={d.id} active={chat === d.id} onClick={() => { setChat(d.id); setLocalItem(""); }}><Avatar name={d.title || "чат"} />
           <div className="min-w-0 flex-1"><div className="flex items-center"><span className="truncate text-sm font-semibold">{d.title || "чат"}</span><span className="ml-auto text-[10px] text-tg-muted">{cat(d)}</span></div>
             <div className="flex items-center"><span className="truncate text-[12px] text-tg-muted">{preview(d)}</span>{(d.unreadCount || 0) > 0 && <span className="ml-auto rounded-full bg-tg-accent px-1.5 text-[10px] font-bold text-white">{d.unreadCount}</span>}</div></div>
           {d.isMuted && <span className="text-[10px] text-tg-muted">🔕</span>}</Row>))}</div>
@@ -256,6 +294,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
   }
 
   const selChat = chats.find((c) => c.id === chat);
+  const selLocalItem = LOCAL_ITEMS.find((i) => i.id === localItem);
   const ownerAgent = account?.owner;
   const ownerMissions = ctx.missions?.filter((m) => m.agentId === ownerAgent?.id) || [];
   const connClr = conn === "connected" ? "#4ade80" : conn === "syncing" ? "#fbbf24" : "#f87171";
@@ -532,8 +571,8 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
             <button key={id} onClick={() => setSection(id)} className={`mb-0.5 flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-sm ${section === id ? "bg-tg-active/30 text-white ring-1 ring-tg-accent" : "text-tg-muted hover:bg-tg-bg/40 hover:text-white"}`}>
               <span>{label}</span>
               {id === "dialogs" && <span className="rounded-full bg-tg-bg px-1.5 text-[10px]">{stats.dialogs}</span>}
-              {id === "groups" && <span className="rounded-full bg-tg-bg px-1.5 text-[10px]">{stats.groups}</span>}
-              {id === "channels" && <span className="rounded-full bg-tg-bg px-1.5 text-[10px]">{stats.channels}</span>}
+              {id === "groups" && <span className="rounded-full bg-tg-bg px-1.5 text-[10px]">{stats.groups + LOCAL_ITEMS.filter((i) => i.folder === "groups").length}</span>}
+              {id === "channels" && <span className="rounded-full bg-tg-bg px-1.5 text-[10px]">{stats.channels + LOCAL_ITEMS.filter((i) => i.folder === "channels").length}</span>}
               {id === "bots" && <span className="rounded-full bg-tg-bg px-1.5 text-[10px]">{stats.bots}</span>}
               {id === "contacts" && <span className="rounded-full bg-tg-bg px-1.5 text-[10px]">{stats.contacts}</span>}
               {id === "sessions" && <span className="rounded-full bg-tg-bg px-1.5 text-[10px]">{accounts.length}</span>}
@@ -550,7 +589,36 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
         </section>
 
         <section className="flex min-h-0 flex-col bg-[#0e1621]" style={{ backgroundImage: "radial-gradient(circle at 50% 0,rgba(34,46,61,.6),transparent 60%)" }}>
-          {selChat ? (
+          {selLocalItem ? (
+            <>
+              <div className="flex items-center gap-2.5 border-b border-tg-line bg-[#17212b] px-4 py-2"><Avatar name={selLocalItem.title} size={38} />
+                <div><div className="text-sm font-semibold">{selLocalItem.title}</div><div className="text-[11px] text-tg-muted">{selLocalItem.badge} · локальная рабочая область</div></div>
+              </div>
+              <div className="min-h-0 flex-1 overflow-auto p-4">
+                <div className="relative mx-auto flex max-w-2xl flex-col gap-4">
+                  <div className="mx-auto rounded-full bg-black/30 px-3 py-1 text-xs text-tg-muted">Создано по умолчанию</div>
+                  <section className="rounded-2xl bg-[#182533] p-4">
+                    <div className="text-xs font-semibold text-tg-accent">Системное описание</div>
+                    <h2 className="mt-2 text-xl font-semibold">{selLocalItem.title}</h2>
+                    <p className="mt-2 text-sm leading-6 text-tg-muted">{selLocalItem.subtitle}</p>
+                  </section>
+                  <section className="rounded-2xl border border-tg-line bg-[#1c1117] p-4">
+                    <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-tg-accent">🗄 Память</div>
+                    <div className="space-y-2">{selLocalItem.memory.map((m) => <div key={m} className="rounded-xl bg-black/20 px-3 py-2 text-sm leading-6">{m}</div>)}</div>
+                  </section>
+                  <section className="rounded-2xl bg-[#182533] p-4">
+                    <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-tg-muted">✅ Технические задачи</div>
+                    <div className="space-y-2">{selLocalItem.tasks.map((t) => <label key={t} className="flex items-center gap-3 rounded-xl bg-tg-bg px-3 py-2 text-sm"><span className="h-4 w-4 rounded border border-tg-muted" />{t}</label>)}</div>
+                  </section>
+                  <section className="rounded-2xl bg-[#17212b] p-4">
+                    <h3 className="font-semibold">Telegram-аккаунт пока не подключен</h3>
+                    <p className="mt-2 text-sm leading-6 text-tg-muted">Эти группы и каналы являются локальной AI-структурой проекта. Реальные Telegram-чаты появятся после авторизации через официальный TDLib backend.</p>
+                    <button onClick={() => setSection("accounts")} className="mt-4 rounded-xl bg-tg-active px-4 py-3 text-sm font-semibold text-white">Авторизовать Telegram</button>
+                  </section>
+                </div>
+              </div>
+            </>
+          ) : selChat ? (
             <>
               <div className="flex items-center gap-2.5 border-b border-tg-line bg-[#17212b] px-4 py-2"><Avatar name={selChat.title || "чат"} size={38} />
                 <div><div className="text-sm font-semibold">{selChat.title || "чат"}</div><div className="text-[11px] text-tg-muted">{cat(selChat)}{selChat.memberCount ? " · " + selChat.memberCount : ""} · только чтение</div></div>
@@ -607,7 +675,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
               {palCommands.length > 0 && <div className="px-2 py-1 text-[10px] font-bold uppercase text-tg-muted">Команды</div>}
               {palCommands.map((c) => <button key={c.id} onClick={() => { c.run(); setPalette(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-tg-bg/60"><span className="text-cyan-300">⌁</span>{c.label}</button>)}
               {palNodes.length > 0 && <div className="px-2 py-1 pt-2 text-[10px] font-bold uppercase text-tg-muted">Чаты ({palNodes.length})</div>}
-              {palNodes.map((n) => <button key={n.id} onClick={() => { setChat(n.id); setPalette(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-tg-bg/60"><Avatar name={n.title || "чат"} size={22} />{n.title || "чат"}</button>)}
+              {palNodes.map((n) => <button key={n.id} onClick={() => { setChat(n.id); setLocalItem(""); setPalette(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-tg-bg/60"><Avatar name={n.title || "чат"} size={22} />{n.title || "чат"}</button>)}
               {pq && palCommands.length === 0 && palNodes.length === 0 && <div className="px-3 py-3 text-sm text-tg-muted">Ничего не найдено.</div>}
             </div>
             <div className="border-t border-tg-line px-3 py-1.5 text-[10px] text-tg-muted">Esc — закрыть · ⌘K — переключить</div>
