@@ -1,13 +1,13 @@
 ---
-name: EPICGRAM Next.js-to-Vite port proxy pattern
-description: How the EPICGRAM Telegram client frontend was ported to a react-vite artifact while keeping the real TDLib backend service untouched and safe.
+name: EPICGRAM proxy artifact pattern
+description: Porting the Next.js EPICGRAM app to a react-vite artifact while keeping the real Telegram backend service untouched, and how the mutating-route allowlist is decided.
 ---
 
-When porting a Next.js app's frontend to a `react-vite` artifact (for artifact-router compatibility) while a real backend service keeps running as an unregistered workflow, add a thin passthrough proxy router inside an already-registered `api` artifact (e.g. `artifacts/api-server`) instead of duplicating backend logic or exposing the bare backend port through the proxy.
+The `artifacts/epicgram-web` artifact reaches the real backend (`epicgram/services/api/src/server.mjs`) only through `artifacts/api-server/src/routes/epicgram-proxy.ts`. The backend itself is never modified — the proxy is the only integration point.
 
-**Why:** the shared artifact proxy only routes registered artifacts; a raw workflow's port is never reachable from the browser/preview. Re-implementing backend logic risks diverging from the real TDLib/session-handling code, which must stay untouched.
+## Mutating-route allowlist decision
+The proxy defaults to GET/HEAD-only, plus a reviewed allowlist of specific mutating paths (auth flow, account slot management, logout, `/telegram/send`, draft-reject/schedule-approve).
 
-**How to apply:**
-- The proxy only forwards **GET/HEAD** requests; every mutating verb is rejected with 403 before reaching the backend. This is the safety boundary when the frontend must never be able to trigger real sends/auth/account mutations from a dev preview surface.
-- Forward original request headers (minus hop-by-hop ones: host/connection/content-length/transfer-encoding) and pass response headers through similarly, so auth/session-dependent GETs behave like the original Next.js API-route proxies.
-- Frontend calls the proxy via `/api/<segment>/...` — matches the `api-server` artifact's fixed `previewPath = "/api"`, so `apiUrl(path)` can just be `` `/api${path}` `` with no BASE_URL prefixing needed (it's a top-level route, not nested under the web artifact's own base path).
+**Why:** the backend already enforces its own send-safety gates independent of the proxy — `sendMessage()` in `telegram-runtime.mjs` requires TDLib to be configured (`EPICGRAM_TDLIB_ENABLED=true` + real credentials) AND an explicit `operatorApproved=true` unless `EPICGRAM_AI_SEND_MODE=auto_send` (never shipped). So forwarding `/telegram/send` through the proxy doesn't weaken safety — the backend gate stays authoritative regardless of what the proxy allows through. Routes with no such independent backend gate (production/live-send toggles, infra/docker/ollama control) are kept proxy-blocked since the proxy is currently the only guard for those.
+
+**How to apply:** when adding a new mutating route to the allowlist, check whether the backend has its own authorization/approval gate for it. If yes, forwarding is low-risk. If no, either add a backend-side gate first or leave it proxy-blocked.

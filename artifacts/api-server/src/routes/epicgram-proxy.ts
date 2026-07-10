@@ -7,24 +7,69 @@ import { Router, type IRouter, type Request, type Response } from "express";
 // requests here so the registered `epicgram-web` artifact can reach it
 // through its own routed path instead of hitting a bare port directly.
 //
-// SAFETY: this artifact is a read-only preview surface. It must never be
-// able to trigger a real Telegram send, auth/session mutation, or any
-// production/live-send state change. We enforce that by only forwarding
-// GET requests — every mutating verb (POST/PUT/PATCH/DELETE) is rejected
-// here, before it ever reaches the real backend.
+// SAFETY: this artifact is the managed preview surface for EPICGRAM. By
+// default it only forwards read-only (GET/HEAD) requests. A deliberate,
+// reviewed allowlist of mutating routes is forwarded on top of that:
+//
+//   - /telegram/auth/*        login flow (QR/phone/code/2FA/reset) — the
+//                             real backend still requires TDLib to be
+//                             configured (EPICGRAM_TDLIB_ENABLED=true) and
+//                             real credentials, so this is a no-op unless the
+//                             owner has actually turned live Telegram on.
+//   - /telegram/accounts/*    manage local login "slots" (create/select/
+//                             remove) — no external side effects.
+//   - /telegram/logout        end a local session — no external side effects.
+//   - /telegram/send          the ONLY route that writes to Telegram. The
+//                             backend (services/api/src/telegram-runtime.mjs
+//                             sendMessage) independently enforces: (1) TDLib
+//                             must be configured/live, and (2) an explicit
+//                             operatorApproved=true flag unless
+//                             EPICGRAM_AI_SEND_MODE=auto_send (never shipped).
+//                             The proxy does not and must not weaken this —
+//                             it only forwards the bytes; the send-safety
+//                             gate lives server-side and stays authoritative.
+//   - /ai/audit/reject, /operator/reject   operator dismissing an AI draft —
+//                             no external side effects, audit-logged.
+//   - /ai/schedule/approve    operator approving a queued send — still funnels
+//                             through the same /telegram/send approval gate.
+//
+// Everything else mutating (production/live-send toggles, infra actions,
+// docker/ollama control, etc.) remains blocked by default — those are
+// operator-console concerns, not something this preview should expose.
 const API_BASE_URL = process.env["EPICGRAM_API_BASE_URL"] ?? "http://127.0.0.1:8788";
 
 const PREFIXES = ["/telegram", "/operator", "/operator-events", "/v1", "/ai", "/approvals", "/memory"];
+
+// Exact-match mutating routes allowed through, with the rationale above.
+const ALLOWED_MUTATING_PATHS = new Set([
+  "/telegram/auth/qr",
+  "/telegram/auth/phone",
+  "/telegram/auth/code",
+  "/telegram/auth/2fa",
+  "/telegram/auth/reset",
+  "/telegram/accounts/new",
+  "/telegram/accounts/select",
+  "/telegram/accounts/remove",
+  "/telegram/logout",
+  "/telegram/send",
+  "/ai/audit/reject",
+  "/operator/reject",
+  "/ai/schedule/approve",
+]);
 
 // Hop-by-hop / connection-management headers that must not be forwarded verbatim.
 const STRIPPED_REQUEST_HEADERS = new Set(["host", "connection", "content-length", "transfer-encoding"]);
 const STRIPPED_RESPONSE_HEADERS = new Set(["content-encoding", "content-length", "transfer-encoding", "connection"]);
 
 async function forward(req: Request, res: Response) {
-  if (req.method !== "GET" && req.method !== "HEAD") {
+  const isReadOnly = req.method === "GET" || req.method === "HEAD";
+  const path = req.originalUrl.replace(/^\/api/, "").split("?")[0] ?? "";
+  const isAllowedMutation = !isReadOnly && ALLOWED_MUTATING_PATHS.has(path);
+
+  if (!isReadOnly && !isAllowedMutation) {
     res.status(403).json({
       runtime: "mutating_action_blocked",
-      message: "This preview artifact only forwards read-only (GET) requests. Real Telegram sends, auth, and account/session mutations are disabled here by design.",
+      message: "This route is not on the managed preview's allowlist of mutating actions. Real Telegram sends, auth, and account/session mutations are only permitted for a reviewed set of routes.",
     });
     return;
   }
@@ -37,7 +82,11 @@ async function forward(req: Request, res: Response) {
       headers[key] = value;
     }
 
-    const upstream = await fetch(target, { method: req.method, headers });
+    const hasBody = req.method !== "GET" && req.method !== "HEAD";
+    const body = hasBody ? JSON.stringify(req.body ?? {}) : undefined;
+    if (hasBody) headers["content-type"] = "application/json";
+
+    const upstream = await fetch(target, { method: req.method, headers, body });
     const text = await upstream.text();
     res.status(upstream.status);
     upstream.headers.forEach((value, key) => {
