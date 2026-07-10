@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api";
+import SettingsCenter from "@/components/SettingsCenter";
 
 export type OperatorCommand = {
   reqId: string;
@@ -240,7 +241,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
         <div key={l} className="rounded-xl border border-tg-line bg-tg-bg/40 p-3"><div className="text-[10px] uppercase tracking-wide text-tg-muted">{l}</div><div className="text-2xl font-extrabold text-tg-accent">{v}</div></div>))}</div>
     );
     if (section === "archive") return <Empty text="Архив недоступен в read-only режиме." />;
-    if (section === "settings") return <div className="space-y-2 p-3 text-sm text-tg-muted">Визуальная рабочая область в режиме только для чтения. Источник данных: существующий Telegram Layer (TDLib через /api/telegram). Реальные Telegram-действия отключены. Backend/авторизация/маршруты не затрагиваются.</div>;
+    if (section === "settings") return <div className="h-full p-2"><SettingsCenter embedded /></div>;
     if (section === "folders") return (
       <div className="space-y-1 p-2">{(["Все", "Непрочитанные", "Каналы", "Группы", "Боты", "Личные"]).map((f) => <Row key={f} active={filter === f} onClick={() => { setFilter(f); setSection("dialogs"); }}><span className="text-lg">🗂</span><span className="text-sm font-semibold">{f}</span></Row>)}</div>
     );
