@@ -1,0 +1,73 @@
+FIX REPLIT PREVIEW/DEPLOYMENT MODE NOW.
+
+Current visible problem:
+Preview shows:
+404 — Not Found
+This deployment has no previewable artifacts
+
+This means Replit is opening a deployment/static-artifact preview instead of the running EPICGRAM web server.
+
+Do not build a new app.
+Do not explain import steps.
+Do not replace the real EPICGRAM code.
+Fix the current Replit run/preview/deployment configuration.
+
+Current app status:
+You reported that:
+- workflow restarted
+- / returned 200
+- /client returned 200
+So the app/server probably runs, but the visible Replit Preview is pointing to the wrong target.
+
+Goal:
+Make Replit Preview open the running EPICGRAM web app, not a static deployment artifact.
+
+Tasks:
+1. Inspect:
+   - pwd
+   - ls -la
+   - find . -maxdepth 4 -name package.json -print
+   - cat .replit if exists
+   - cat replit.nix if exists
+   - cat package.json
+   - cat apps/web/package.json if exists
+
+2. Identify actual web app folder:
+   likely apps/web.
+
+3. Fix .replit run command so it starts the web app as a live web server:
+   cd apps/web && npm run dev -- --hostname 0.0.0.0 -p ${PORT:-3000}
+
+4. If monorepo root scripts are required, use the correct root command, but final server must bind to:
+   0.0.0.0
+   process.env.PORT or ${PORT:-3000}
+
+5. Do NOT use static deployment mode.
+6. Do NOT require previewable static artifacts.
+7. If deployment config exists and is static, change/disable it or document that this project must be run as Web Service / dev server.
+8. Make sure root route / works in the browser.
+9. Test with curl locally:
+   curl -I http://127.0.0.1:${PORT:-3000}/
+   curl -I http://127.0.0.1:${PORT:-3000}/client
+   curl -I http://127.0.0.1:${PORT:-3000}/login
+   curl -I http://127.0.0.1:${PORT:-3000}/tma
+
+10. Return the correct URL or exact Replit button to open the running web app.
+
+Safety:
+- no production secrets
+- no TDLib sessions
+- no real Telegram send
+- no production VPS access
+- live send locked
+
+Return:
+REPLIT PREVIEW FIX RESULT
+
+Include:
+- final .replit contents
+- final run command
+- detected port
+- local curl results
+- which Replit preview/open button should be used
+- whether the visible 404 was deployment/static-artifact mode
