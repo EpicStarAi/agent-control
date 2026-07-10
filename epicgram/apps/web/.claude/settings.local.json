@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-CimInstance *)",
+      "Bash(wsl *)",
+      "PowerShell(wsl -d Ubuntu-24.04 -- bash /mnt/c/Users/Admin/Documents/Codex/2026-05-21/prior-conversation-with-codex-conversation-role/agent-control/apps/web/_audit_local_ubuntu.sh)"
+    ]
+  }
+}

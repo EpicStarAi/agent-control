@@ -1,0 +1,177 @@
+# DEEPINSIDE — Self-Hosted AI Stack (PHASE S)
+# Based on n8n Self-Hosted AI Starter Kit (https://github.com/n8n-io/self-hosted-ai-starter-kit),
+# extended with Redis + MinIO. ADDITIVE infra — does not touch the existing app or API.
+# SAFETY: no real secrets here. Copy .env.example -> .env and fill locally. Nothing here runs
+# real Telegram actions, auto-publish, or external API calls. Bring up only what you need.
+#
+# Usage:
+#   cp .env.example .env            # fill local-only values
+#   docker compose --profile cpu up -d            # Ollama on CPU
+#   docker compose --profile gpu-nvidia up -d     # Ollama on NVIDIA GPU
+#
+# Services: n8n (workflow engine) · postgres (state) · qdrant (vectors) · ollama (local LLM)
+#           redis (queue/cache) · minio (object storage). Open WebUI / Flowise are optional add-ons.
+
+volumes:
+  n8n_storage:
+  postgres_storage:
+  qdrant_storage:
+  ollama_storage:
+  redis_storage:
+  minio_storage:
+
+networks:
+  deepinside_ai:
+    driver: bridge
+
+x-n8n: &service-n8n
+  image: n8nio/n8n:latest
+  networks: [deepinside_ai]
+  environment:
+    - DB_TYPE=postgresdb
+    - DB_POSTGRESDB_HOST=postgres
+    - DB_POSTGRESDB_USER=${POSTGRES_USER}
+    - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+    - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+    - N8N_DIAGNOSTICS_ENABLED=false
+    - N8N_PERSONALIZATION_ENABLED=false
+    - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+    - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET}
+    - OLLAMA_HOST=ollama:11434
+    - QDRANT_URL=http://qdrant:6333
+    - QUEUE_BULL_REDIS_HOST=redis
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: deepinside-postgres
+    networks: [deepinside_ai]
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres_storage:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: deepinside-redis
+    networks: [deepinside_ai]
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_storage:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: deepinside-qdrant
+    networks: [deepinside_ai]
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+
+  minio:
+    image: minio/minio:latest
+    container_name: deepinside-minio
+    networks: [deepinside_ai]
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_storage:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  n8n:
+    <<: *service-n8n
+    container_name: deepinside-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_storage:/home/node/.n8n
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ---- Ollama (local LLM). Pick one profile. ----
+  ollama-cpu:
+    profiles: ["cpu"]
+    image: ollama/ollama:latest
+    container_name: deepinside-ollama
+    networks: [deepinside_ai]
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_storage:/root/.ollama
+
+  ollama-gpu:
+    profiles: ["gpu-nvidia"]
+    image: ollama/ollama:latest
+    container_name: deepinside-ollama
+    networks: [deepinside_ai]
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_storage:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ---- Optional add-ons (off by default). Enable with --profile addons ----
+  open-webui:
+    profiles: ["addons"]
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: deepinside-open-webui
+    networks: [deepinside_ai]
+    restart: unless-stopped
+    ports:
+      - "3080:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    volumes:
+      - n8n_storage:/app/backend/data
+    depends_on:
+      - n8n
+
+  flowise:
+    profiles: ["addons"]
+    image: flowiseai/flowise:latest
+    container_name: deepinside-flowise
+    networks: [deepinside_ai]
+    restart: unless-stopped
+    ports:
+      - "3070:3000"
+    environment:
+      - PORT=3000
+    volumes:
+      - n8n_storage:/root/.flowise

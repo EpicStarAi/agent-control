@@ -1,0 +1,285 @@
+openapi: 3.1.0
+info:
+  title: EPIC GRAM Platform API
+  version: "1.0.0"
+  description: >
+    Unified versioned API for all EPIC GRAM clients (Web, Desktop, Android, iOS,
+    Cloud, WebApp, AI Operator, external agents). The /api/v1 surface described
+    here is FROZEN: only non-breaking changes are allowed; breaking changes ship
+    under /api/v2. Read-only endpoints never mutate Telegram state.
+servers:
+  - url: /api/v1
+    description: Web client proxy (Next.js) -> backend
+  - url: http://127.0.0.1:8788/v1
+    description: Backend direct (local dev)
+tags:
+  - name: system
+    description: Health and metadata
+  - name: accounts
+    description: Read-only account/session detail (per slot)
+paths:
+  /system/health:
+    get:
+      tags: [system]
+      summary: Liveness/health of the API
+      responses:
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  service: { type: string }
+                  version: { type: string }
+                  time: { type: string, format: date-time }
+  /system/capabilities:
+    get:
+      tags: [system]
+      summary: Platform + runtime capabilities. Clients adapt UI by capability, not device type.
+      responses:
+        "200":
+          description: Capability descriptor
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Capabilities" }
+  /runtime/events:
+    get:
+      tags: [events]
+      summary: SSE Event Bus (read-only push). Streams runtime events; no commands over SSE.
+      responses:
+        "200":
+          description: text/event-stream of runtime events
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: >
+                  SSE stream of Event envelopes { id, ts, runtime, type, accountId, data }.
+                  Types: session.changed, account.switched, auth.state_changed, message.new, runtime.health.
+  /accounts:
+    get:
+      tags: [accounts]
+      summary: List account slots + active slot
+      responses:
+        "200": { description: Accounts list }
+  /accounts/current:
+    get:
+      tags: [accounts]
+      summary: The active account slot
+      responses:
+        "200": { description: Active account }
+  /accounts/{id}/switch:
+    post:
+      tags: [accounts]
+      summary: Switch active slot (instant, no re-auth). Emits account.switched + session.changed.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Switched }
+        "404": { description: No such slot }
+  /accounts/{id}/logout:
+    post:
+      tags: [accounts]
+      summary: Log out a slot
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Logged out }
+  /accounts/{id}/lock:
+    post:
+      tags: [accounts]
+      summary: Lock a slot (flag + account.locked event)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Locked }
+        "404": { description: No such slot }
+  /accounts/{id}/unlock:
+    post:
+      tags: [accounts]
+      summary: Unlock a slot (flag + account.unlocked event)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Unlocked }
+        "404": { description: No such slot }
+  /telegram/dialogs:
+    get:
+      tags: [telegram]
+      summary: Read-only account-aware dialogs (real via TDLib) with typed counts
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      responses:
+        "200": { description: "{ slotId, ready, source, counts, dialogs[] }" }
+  /telegram/saved:
+    get:
+      tags: [telegram]
+      summary: Saved Messages (honest empty state until backed by TDLib)
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      responses:
+        "200": { description: "{ available, items[], message }" }
+  /telegram/drafts:
+    get:
+      tags: [telegram]
+      summary: Drafts (honest empty state until backed by TDLib)
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      responses:
+        "200": { description: "{ available, items[], message }" }
+  /telegram/account/info:
+    get:
+      tags: [accounts]
+      summary: Full read-only account detail for a slot
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      responses:
+        "200":
+          description: Composite account detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountDetail" }
+        "503":
+          description: TDLib not configured
+  /telegram/account/storage:
+    get:
+      tags: [accounts]
+      summary: Storage statistics (database/media/files) for a slot
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      responses:
+        "200":
+          description: Storage slice
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  slotId: { type: string }
+                  storage: { $ref: "#/components/schemas/Storage" }
+  /telegram/account/devices:
+    get:
+      tags: [accounts]
+      summary: Active sessions/devices for a slot (getActiveSessions)
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      responses:
+        "200":
+          description: Devices slice
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  slotId: { type: string }
+                  devices:
+                    type: array
+                    items: { $ref: "#/components/schemas/Device" }
+  /telegram/account/statistics:
+    get:
+      tags: [accounts]
+      summary: Dialog counters for a slot
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      responses:
+        "200":
+          description: Statistics slice
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  slotId: { type: string }
+                  statistics: { $ref: "#/components/schemas/Statistics" }
+components:
+  parameters:
+    AccountId:
+      name: accountId
+      in: query
+      required: false
+      description: Slot id; defaults to the active slot.
+      schema: { type: string }
+  schemas:
+    Account:
+      type: object
+      properties:
+        id: { type: string }
+        username: { type: [string, "null"] }
+        firstName: { type: [string, "null"] }
+        lastName: { type: [string, "null"] }
+        phone: { type: [string, "null"], description: Masked, e.g. +3806***72 }
+        premium: { type: boolean }
+        verified: { type: boolean }
+        scam: { type: boolean }
+        fake: { type: boolean }
+        language: { type: [string, "null"] }
+        dc: { type: [integer, "null"] }
+    Session:
+      type: object
+      properties:
+        ready: { type: boolean }
+        authorizationState: { type: [string, "null"] }
+        deviceModel: { type: string }
+        systemVersion: { type: string }
+        appVersion: { type: string }
+        createdAt: { type: [string, "null"], format: date-time }
+        lastActive: { type: [string, "null"], format: date-time }
+    Storage:
+      type: object
+      properties:
+        database: { type: integer, description: bytes }
+        media: { type: integer, description: bytes }
+        documents: { type: integer, description: bytes }
+        cache: { type: integer, description: bytes }
+        filesCount: { type: integer }
+    Statistics:
+      type: object
+      properties:
+        dialogs: { type: integer }
+        privateChats: { type: integer }
+        groups: { type: integer }
+        supergroups: { type: integer }
+        channels: { type: integer }
+        bots: { type: integer }
+        unread: { type: integer }
+    Device:
+      type: object
+      properties:
+        id: { type: [string, "null"] }
+        current: { type: boolean }
+        deviceModel: { type: [string, "null"] }
+        platform: { type: [string, "null"] }
+        systemVersion: { type: [string, "null"] }
+        appName: { type: [string, "null"] }
+        appVersion: { type: [string, "null"] }
+        official: { type: boolean }
+        country: { type: [string, "null"] }
+        region: { type: [string, "null"] }
+        ip: { type: [string, "null"] }
+        lastActive: { type: [string, "null"], format: date-time }
+        loginDate: { type: [string, "null"], format: date-time }
+    AccountDetail:
+      type: object
+      properties:
+        slotId: { type: string }
+        account: { $ref: "#/components/schemas/Account" }
+        session: { $ref: "#/components/schemas/Session" }
+        storage: { $ref: "#/components/schemas/Storage" }
+        statistics: { $ref: "#/components/schemas/Statistics" }
+        devices:
+          type: array
+          items: { $ref: "#/components/schemas/Device" }
+    Capabilities:
+      type: object
+      properties:
+        platform: { type: string }
+        apiVersion: { type: string }
+        runtimes:
+          type: object
+          additionalProperties: { type: boolean }
+          description: Which runtimes are available (telegram, browser, discord, whatsapp, localAi, cloudAi ...).
+        capabilities:
+          type: object
+          description: Feature flags the UI adapts to (accounts, multiAccount, instantSwitch, auth, telegram, ai, events, plugins ...).

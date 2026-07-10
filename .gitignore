@@ -47,3 +47,5 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+epicgram/.env.local
+epicgram/node_modules

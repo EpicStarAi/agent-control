@@ -1,0 +1,53 @@
+import { NextResponse } from "next/server";
+import { currentWorkspaceId } from "@/lib/sessionWs";
+import { getAvatar, getPassport, createJob, listJobs } from "@/lib/avatarStudioData";
+import { getPack, sceneTemplate, buildAvatarPrompt, newBatchId } from "@/lib/avatarStudio";
+import { selectProvider, getProvider, isKnownProvider } from "@/lib/renderProviders";
+import { broadcast } from "@/lib/operatorBus";
+
+// P27.2 — render jobs. POST creates a QUEUED batch (one job per pack scene, shared
+// batch_id). Rendering happens later via the mock queue runner (/run-once).
+// No external calls here.
+export const dynamic = "force-dynamic";
+
+export async function GET() {
+  const ws = await currentWorkspaceId();
+  if (!ws) return NextResponse.json({ authenticated: false, message: "referral session required" }, { status: 401 });
+  const { data, source } = await listJobs(ws);
+  return NextResponse.json({ jobs: data, source });
+}
+
+export async function POST(req: Request) {
+  const ws = await currentWorkspaceId();
+  if (!ws) return NextResponse.json({ authenticated: false, message: "referral session required" }, { status: 401 });
+  const body = (await req.json().catch(() => ({}))) as { avatarId?: string; packId?: string; engine?: string; priority?: number; providerId?: string; candidateCount?: number };
+  const pack = getPack(String(body.packId || ""));
+  if (!pack) return NextResponse.json({ ok: false, message: "unknown pack" }, { status: 400 });
+  const providerReq = String(body.providerId || "");
+  if (providerReq && !isKnownProvider(providerReq)) return NextResponse.json({ ok: false, message: `unknown provider: ${providerReq}` }, { status: 400 });
+  const { data: avatar } = await getAvatar(ws, String(body.avatarId || ""));
+  if (!avatar) return NextResponse.json({ ok: false, message: "avatar not found" }, { status: 404 });
+  const { data: passport } = await getPassport(ws, avatar.id);
+  const engine = String(body.engine || pack.engine || "grok_imagine_ui");
+  const priority = Number.isFinite(Number(body.priority)) ? Number(body.priority) : 0;
+  const batchId = newBatchId();
+  // Router picks the provider once for the whole batch.
+  const sel = selectProvider({ providerId: providerReq, packPreferred: pack.preferredProvider, capability: "image" });
+  const provider = getProvider(sel.providerId)!;
+  const caps = provider.capabilities.join(",");
+
+  const candidateCount = Math.max(1, Math.min(4, Number(body.candidateCount) || 1)); // multi-candidate: 1..4 per scene
+
+  const jobs = [];
+  for (const scene of pack.scenes) {
+    const prompt = buildAvatarPrompt(passport, sceneTemplate(scene));
+    for (let ci = 0; ci < candidateCount; ci++) {
+      const { data: job } = await createJob(ws, { avatarId: avatar.id, packId: pack.id, engine, status: "queued",
+        sceneKey: scene, prompt, batchId, priority, attempts: 0, maxAttempts: 3, candidateIndex: ci,
+        providerId: sel.providerId, selectedBy: sel.selectedBy, capabilitiesSnapshot: caps });
+      jobs.push(job);
+    }
+  }
+  broadcast("audit.logged", { event: "avatar.batch.queued", workspaceId: ws, batchId, pack: pack.id, count: jobs.length, provider: sel.providerId, candidateCount });
+  return NextResponse.json({ ok: true, batchId, count: jobs.length, candidateCount, provider: sel.providerId, selectedBy: sel.selectedBy, mode: provider.mode, jobs, note: "queued — call /render-jobs/run-once" });
+}
