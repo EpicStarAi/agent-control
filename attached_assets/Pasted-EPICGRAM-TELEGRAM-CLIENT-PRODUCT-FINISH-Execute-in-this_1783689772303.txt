@@ -1,0 +1,557 @@
+EPICGRAM TELEGRAM CLIENT PRODUCT FINISH — Execute in this current Replit project.
+
+Отвечай мне только на русском языке.
+Не объясняй, как создать новый Repl.
+Не делай новый фейковый проект с нуля.
+Работай в текущем EPICGRAM Replit project.
+Исправляй реальные файлы проекта.
+Не используй Publish/static deployment.
+Не трогай production VPS.
+Не используй реальные secrets.
+Не копируй TDLib sessions.
+Не отправляй реальные Telegram-сообщения.
+Live-send должен оставаться LOCKED / approval-gated.
+
+Current production checkpoint reference:
+a1385b checkpoint: harden operator intent router and sidebar shell
+
+Main goal:
+Довести Telegram-клиент EPICGRAM до продуктового состояния, чтобы в Replit online-dev он работал стабильно как полноценный интерфейс, а в production мог подключаться к реальному backend/TDLib через controlled bridge.
+
+This is not a sandbox demo.
+This is EPICGRAM Online Dev:
+- Web Client
+- Telegram-like client
+- AI Operator
+- Telegram WebApp / Mini App
+- Channel OS
+- Settings/Auth
+- Desktop/Mobile/App hub
+- Approval-gated Telegram send
+
+Required app routes:
+- /
+- /login
+- /client
+- /workspace
+- /tma
+- /settings
+- /downloads
+- /apps
+- /desktop
+- /mobile
+- /channel-os
+- /operator if safe/applicable
+
+Critical visible UI rule:
+Replace all visible:
+“REPLIT SANDBOX / NO LIVE TELEGRAM SEND”
+
+With compact professional badge:
+“ONLINE DEV / LIVE SEND LOCKED”
+
+Do not show the product as a fake sandbox.
+Use online-dev wording only.
+
+==================================================
+PHASE 0 — Inspect and stabilize project
+==================================================
+
+First inspect:
+pwd
+ls -la
+find . -maxdepth 5 -name package.json -print
+cat package.json 2>/dev/null || true
+cat apps/web/package.json 2>/dev/null || true
+cat .replit 2>/dev/null || true
+cat replit.nix 2>/dev/null || true
+
+Detect:
+- project root
+- web app folder
+- framework: Next.js/Vite/other
+- current run command
+- existing app routes
+- existing EPICGRAM components
+- existing Telegram components
+- existing AI Operator components
+- existing mock/fallback data
+
+Do not rewrite from scratch if real components exist.
+Patch incrementally.
+
+Required Replit runtime:
+- app must open in Preview
+- server must listen on 0.0.0.0
+- use Replit PORT or fallback 3000
+- do not use static deployment preview
+- do not require previewable static artifacts
+
+Expected .replit web command if apps/web is correct:
+cd epicgram/apps/web && npx next dev --hostname 0.0.0.0 --port 3000
+
+If actual path differs, detect and use the correct path.
+
+Safe env:
+EPICGRAM_ONLINE_DEV=true
+EPICGRAM_ENABLE_LIVE_TELEGRAM=false
+EPICGRAM_DISABLE_SEND=true
+EPICGRAM_AI_SEND_MODE=operator_approval_required
+EPICGRAM_LIVE_SEND_LOCKED=true
+
+Do not create .env.local with real secrets.
+
+==================================================
+PHASE 1 — Telegram client core UX
+==================================================
+
+Make /client look and behave like a real Telegram workspace.
+
+Required layout:
+1. Left account rail:
+   - account avatars
+   - add account button
+   - settings/access button
+   - selected account indicator
+
+2. Left chat list:
+   - search
+   - refresh
+   - filters:
+     - Все
+     - Личные
+     - Группы
+     - Каналы
+   - online-dev label if data is mocked
+   - selected chat highlight
+   - unread counters
+   - last message preview
+   - time
+   - avatar
+
+3. Center chat area:
+   - clean Telegram-like message feed
+   - no huge “context chat” panel covering half the chat
+   - media messages render correctly
+   - image grid renders correctly
+   - file/audio/video placeholders render cleanly in online-dev
+   - reply/forward blocks render if data exists
+   - reactions render if data exists
+   - date separators
+   - scroll works
+   - loading/empty states are product-like
+
+4. Composer:
+   - text draft
+   - attachment button
+   - schedule button
+   - send button
+   - approval-gate note
+   - send disabled/locked in online-dev unless explicit approved mock action
+   - clear feedback when user tries live send:
+     “Live-send заблокирован в online-dev. Подключите production backend bridge и approval gate.”
+
+5. Header:
+   - selected chat name
+   - type: личный/группа/канал
+   - account
+   - source: mock/TDLib/API
+   - status chips:
+     - Web UI online
+     - Operator online-dev
+     - Telegram backend disconnected or connected
+     - Live send locked
+
+==================================================
+PHASE 2 — Auth/account connection UI
+==================================================
+
+Telegram account is not connected in Replit. This must be shown as a normal product state, not as a scary error.
+
+Replace central “Telegram не авторизован / not connected” state with:
+
+Title:
+Telegram Core: online-dev mode
+
+Body:
+Этот Replit-клиент работает как online-dev копия EPICGRAM. Реальная TDLib-сессия NOVIKOVA остаётся на production VPS. Live-send заблокирован до подключения backend bridge и approval gate.
+
+Buttons:
+- Подключить Telegram
+- QR login
+- Phone login
+- Проверить статус
+- Настройки подключения
+
+Implement connection UI as safe placeholders:
+- QR login screen
+- phone number screen
+- code confirmation screen
+- 2FA password screen
+- status screen
+
+In online-dev:
+- do not call real TDLib
+- do not store QR/code/password in frontend
+- show “backend bridge required” where needed
+- prepare clean API adapter interfaces, but keep production secrets absent
+
+If existing Telegram auth routes exist, do not break them:
+- /api/telegram/accounts
+- /api/telegram/accounts/qr
+- /api/telegram/accounts/phone
+- /api/telegram/accounts/code
+- /api/telegram/accounts/password
+- /api/telegram/accounts/resend
+
+If backend is unavailable, return structured online-dev fallback.
+
+==================================================
+PHASE 3 — Telegram data layer
+==================================================
+
+Create/clean a Telegram data adapter layer with two modes:
+
+A. online-dev mock mode
+B. production bridge mode
+
+Required adapter functions:
+- getAccounts()
+- getAccountStatus(accountId)
+- getChats(accountId)
+- getChatMessages(accountId, chatId)
+- getChatContext(accountId, chatId)
+- getSendStatus(accountId, chatId)
+- prepareDraft(accountId, chatId, text, attachments?)
+- scheduleDraft(accountId, chatId, text, datetime)
+- sendApprovedDraft(accountId, chatId, draftId)
+
+Online-dev mode:
+- must return stable mock data
+- must not send Telegram messages
+- must not require TDLib
+- must not require production API keys
+- must clearly mark source as “online-dev”
+
+Production bridge mode:
+- keep interface ready
+- do not enable unless env explicitly allows:
+  EPICGRAM_ENABLE_LIVE_TELEGRAM=true
+  EPICGRAM_DISABLE_SEND=false
+  EPICGRAM_AI_SEND_MODE=operator_approval_required
+
+Never bypass approval gate.
+
+==================================================
+PHASE 4 — AI Operator behavior
+==================================================
+
+AI Operator must be action-first, not a dumb autoresponder.
+
+Remove/stop behavior where operator replies generic nonsense like:
+- “На связи. Runtime готов.”
+- “Команда не распознана” for every casual input
+- autoresponder replies to normal chat text
+
+Operator must classify user intent into action types:
+
+Supported commands:
+- открой чат
+- зайди в канал
+- выбери чат
+- проанализируй этот чат
+- покажи контекст чата
+- проверь статус отправки
+- создай карточку канала
+- покажи карточку канала
+- добавь в план публикаций
+- подготовь пост
+- добавь ассет
+- добавь конкурента
+- добавь заметку канала
+- открой настройки
+- открой Channel OS
+- открой TMA
+- открой workspace
+
+For each command return structured action report:
+- action
+- status: done/blocked/needs_backend/needs_confirmation/error
+- what was checked
+- what was changed
+- next action
+
+If user says casual nonsense like “rfr”, “тук тук”, “ты тут?”:
+- answer briefly and product-like
+- do not pretend to execute
+- do not spam status cards
+
+Operator first message:
+“На связи EPICSTAR Operator. Online-dev режим активен. Я могу разобрать чат, создать карточку канала, подготовить пост, план публикаций, ассеты и задачи. Реальная отправка в Telegram заблокирована до подключения production backend и approval gate.”
+
+==================================================
+PHASE 5 — ChatGPT-like operator sidebar
+==================================================
+
+Make operator panel usable like a compact ChatGPT-style workspace.
+
+Required:
+- collapsible left rail inside operator
+- New dialog
+- Search
+- Context
+- Channel OS
+- Projects
+- Tasks
+- Assets
+- History
+- Settings
+- Diagnostics
+- close button works
+- minimize button works
+- expand/collapse works
+- state persisted in localStorage
+- no broken close behavior
+
+Right operator panel should not permanently steal too much screen.
+User must be able to:
+- dock right
+- collapse to icon rail
+- open full sidebar
+- close panel
+- reopen panel
+
+Technical/debug sections:
+- hide by default
+- put under “Diagnostics”
+- do not show huge technical blocks to normal operator user
+
+==================================================
+PHASE 6 — Channel OS
+==================================================
+
+Add central Channel OS panel/card system for selected chat/channel.
+
+The user wants the Telegram client to become an operating panel for channels.
+
+For selected chat/channel show:
+
+Main card:
+- ID
+- name
+- username/link
+- type: private/group/channel
+- account
+- status
+- source: mock/TDLib/API
+- selected folder/filter
+- last activity
+
+Strategy:
+- тематика
+- целевая аудитория
+- tone of voice
+- positioning
+- content pillars
+- growth strategy
+
+Team/admin:
+- owner/admins
+- roles
+- bots
+- permissions
+- notes
+
+Content:
+- рубрики
+- publication plan
+- drafts
+- scheduled posts
+- approval queue
+- autoposting status
+
+Assets:
+- photo
+- video
+- covers
+- links
+- files
+- reusable templates
+
+Analytics:
+- subscribers placeholder
+- unread count
+- messages loaded
+- dynamics placeholder
+- engagement placeholder
+- diagnostics
+
+Competitors:
+- competitor channels
+- notes
+- content ideas
+
+Operator notes:
+- notes
+- tasks
+- next actions
+
+Important:
+Context must live in Channel OS/operator sidebar, not as a huge block over the Telegram chat.
+
+Routes:
+- /channel-os should exist
+- /client can show Channel OS as panel/tab
+- operator command “создай карточку канала” should open/create/update Channel OS card
+
+==================================================
+PHASE 7 — Telegram WebApp / TMA
+==================================================
+
+/tma must work as Telegram Mini App entrypoint.
+
+Required:
+- detect Telegram WebApp if available
+- outside Telegram show web preview mode
+- clean EPICGRAM branding
+- buttons:
+  - Open Web Client
+  - Open Workspace
+  - Open AI Operator
+  - Open Settings
+  - Open Channel OS
+- no real Telegram auth required in Replit
+- no live send
+- show compact:
+  ONLINE DEV / LIVE SEND LOCKED
+
+==================================================
+PHASE 8 — Desktop/Mobile/Downloads/App hub
+==================================================
+
+Add/complete:
+- /downloads
+- /apps
+- /desktop
+- /mobile
+
+Downloads page cards:
+- Web Client
+- Telegram WebApp
+- Desktop App
+- Android App
+- iOS App
+- AI Operator
+- Channel OS
+
+Desktop:
+- Windows: planned/dev
+- macOS: planned/dev
+- Linux: planned/dev
+- Electron/Tauri candidate
+- reuse web shell
+
+Mobile:
+- Telegram WebApp first
+- PWA first
+- Android/iOS planned
+- no app store secrets
+
+Apps:
+- EPICGRAM AI Telegram Client
+- AI Operator
+- Channel OS
+- VPN/WebApp placeholder only if already in product
+- Editorial Hub placeholder
+- Desktop/Mobile entrypoints
+
+Do not create fake download links.
+Disabled/planned buttons are acceptable.
+
+==================================================
+PHASE 9 — Safety and approval gate
+==================================================
+
+Hard rules:
+- no real Telegram send in Replit
+- no auto-send
+- no background mass sending
+- no bypass of approval gate
+- no secrets
+- no TDLib sessions
+- no production VPS access
+- no logout NOVIKOVA
+- no destructive account actions
+
+All send-related UI must say:
+“Отправка в Telegram доступна только после подтверждения оператора.”
+
+In online-dev:
+- Send button can prepare draft only
+- Real send is locked
+- Approval card can be demonstrated in mock mode
+- Scheduling can be mocked
+- Status should be transparent
+
+==================================================
+PHASE 10 — Build, test, report
+==================================================
+
+Run:
+npm install if needed
+npm run build or correct app build command
+
+Run app in Replit Preview.
+
+Test routes:
+curl -I http://127.0.0.1:3000/
+curl -I http://127.0.0.1:3000/login
+curl -I http://127.0.0.1:3000/client
+curl -I http://127.0.0.1:3000/workspace
+curl -I http://127.0.0.1:3000/tma
+curl -I http://127.0.0.1:3000/settings
+curl -I http://127.0.0.1:3000/downloads
+curl -I http://127.0.0.1:3000/apps
+curl -I http://127.0.0.1:3000/desktop
+curl -I http://127.0.0.1:3000/mobile
+curl -I http://127.0.0.1:3000/channel-os
+
+Manual UI checks:
+- /client opens
+- chat list visible
+- center chat visible
+- AI Operator opens
+- AI Operator closes/minimizes
+- operator does not autorespond nonsense
+- Channel OS panel opens
+- “создай карточку канала” works in online-dev
+- “проанализируй этот чат” works in online-dev
+- send is locked
+- badge says ONLINE DEV / LIVE SEND LOCKED
+- no visible “REPLIT SANDBOX” wording remains
+
+Do not commit automatically.
+Do not publish.
+
+Return final report in Russian:
+
+EPICGRAM TG CLIENT PRODUCT FINISH RESULT
+
+Include:
+1. Что было найдено в проекте
+2. Какие файлы изменены
+3. Какие маршруты добавлены/исправлены
+4. Что теперь работает в /client
+5. Что теперь работает в AI Operator
+6. Что теперь работает в Channel OS
+7. Что работает в /tma
+8. Что работает в /downloads, /desktop, /mobile, /apps
+9. Build result
+10. Route check result
+11. Confirmation:
+    - live Telegram send locked
+    - secrets not used
+    - TDLib sessions not touched
+    - production VPS not touched
+12. Что ещё зависит от VPS/live backend
+13. Следующий рекомендуемый production bridge этап
