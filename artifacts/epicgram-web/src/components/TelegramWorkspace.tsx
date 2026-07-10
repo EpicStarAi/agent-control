@@ -178,10 +178,15 @@ const preview = (c: Chat) => c.lastMessage?.content || c.lastMessage?.text || ""
 export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, onClose, onOpenAgent }: {
   ctx: Ctx; slotId?: string; focusKind?: string; focusId?: string; command?: OperatorCommand | null; onClose: () => void; onOpenAgent?: (id: string) => void;
 }) {
-  const accounts = useMemo(() => (ctx.slots || []).map((s: any) => {
+  // ctx.slots is populated by embedders that manage accounts/agents centrally.
+  // On this page ctx is a static empty stub, so fall back to whatever the
+  // read-only /telegram/status poll below found (statusAccounts).
+  const [statusAccounts, setStatusAccounts] = useState<any[]>([]);
+  const accountSlots = ctx.slots && ctx.slots.length > 0 ? ctx.slots : statusAccounts;
+  const accounts = useMemo(() => (accountSlots || []).map((s: any) => {
     const ownerId = ctx.bind?.[s.slotId || s.label]; const owner = ctx.agents?.find((a) => a.id === ownerId);
-    return { id: s.slotId || s.label || "acc", name: s.displayName || s.slotId || "Telegram", phone: s.phoneMasked || "—", status: s.status || s.authorizationState || "—", authState: s.authorizationState, username: s.username || null, owner, device: ctx.devices?.find((d) => d.id === owner?.deviceId)?.name || "—", raw: s };
-  }), [ctx]);
+    return { id: s.slotId || s.label || "acc", name: s.displayName || s.slotId || "Telegram", phone: s.phoneMasked || "—", status: s.status || s.authorizationState || "—", authState: s.authorizationState, username: s.username || null, photoFileId: s.photoSmallFileId || null, owner, device: ctx.devices?.find((d) => d.id === owner?.deviceId)?.name || "—", raw: s };
+  }), [ctx, accountSlots]);
 
   const [section, setSection] = useState<string>("dialogs");
   const [acc, setAcc] = useState<string>(slotId || ctx.activeId || accounts[0]?.id || "");
@@ -193,6 +198,15 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
   const [pq, setPq] = useState("");
   const [chats, setChats] = useState<Chat[]>([]);
   const [conn, setConn] = useState<"connected" | "syncing" | "offline">("offline");
+
+  // `acc` may start empty when accounts only become known asynchronously via
+  // the /telegram/status poll (statusAccounts fallback below). Reconcile once
+  // real accounts arrive so avatar/photo lookups and chat fetches never use
+  // an empty/invalid account id.
+  useEffect(() => {
+    if (!accounts.length) return;
+    if (!accounts.some((a) => a.id === acc)) setAcc(accounts[0].id);
+  }, [accounts]);
   const [loading, setLoading] = useState(false);
   const [fetchedAcc, setFetchedAcc] = useState("");
   const [mode, setMode] = useState<"client" | "command">("client");
@@ -236,6 +250,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
         const active = (s?.accounts || []).find((a: any) => (a.slotId || a.label) === acc) || (s?.accounts || [])[0];
         const ready = active && (active.authorizationState === "authorizationStateReady" || active.status === "ready" || active.status === "authorized");
         if (!alive) return;
+        if (Array.isArray(s?.accounts)) setStatusAccounts(s.accounts);
         if (!s || !active) { setConn("offline"); setChats([]); setLoading(false); setFetchedAcc(acc); return; }
         const cj = await fetch(apiUrl("/telegram/chats?")+"accountId=" + encodeURIComponent(acc || active.slotId || ""), { cache: "no-store" }).then((r) => r.json()).catch(() => null);
         if (!alive) return;
@@ -397,9 +412,25 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
     setDraftByChat((d) => ({ ...d, [chatId]: { text: "", auditId: null, loading: false, error: null, sending: false } }));
   };
 
-  const Avatar = ({ name, size = 36 }: { name: string; size?: number }) => (
-    <div className="flex shrink-0 items-center justify-center rounded-full font-bold text-white" style={{ width: size, height: size, background: av(name), fontSize: size / 2.6 }}>{ini(name)}</div>
-  );
+  const Avatar = ({ name, size = 36, photoFileId, accountId }: { name: string; size?: number; photoFileId?: string | null; accountId?: string }) => {
+    const [broken, setBroken] = useState(false);
+    if (photoFileId && !broken) {
+      return (
+        <img
+          src={apiUrl(`/telegram/photo?fileId=${encodeURIComponent(photoFileId)}&accountId=${encodeURIComponent(accountId || acc || "main")}`)}
+          alt={name}
+          width={size}
+          height={size}
+          onError={() => setBroken(true)}
+          className="shrink-0 rounded-full object-cover"
+          style={{ width: size, height: size }}
+        />
+      );
+    }
+    return (
+      <div className="flex shrink-0 items-center justify-center rounded-full font-bold text-white" style={{ width: size, height: size, background: av(name), fontSize: size / 2.6 }}>{ini(name)}</div>
+    );
+  };
   const Row = ({ children, active, onClick }: any) => (
     <button onClick={onClick} className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left ${active ? "bg-tg-active/30 ring-1 ring-tg-accent" : "hover:bg-tg-bg/50"}`}>{children}</button>
   );
@@ -415,7 +446,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
     if (section === "accounts") return accounts.length ? (
       <div className="space-y-1.5 p-2">{accounts.map((a) => (
         <Row key={a.id} active={acc === a.id} onClick={() => { setAcc(a.id); setSection("dialogs"); setLocalItem(""); setChat(""); }}>
-          <Avatar name={a.name} /><div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold">{a.name}</div><div className="truncate text-[11px] text-tg-muted">{a.phone} · {a.status}</div></div>
+          <Avatar name={a.name} photoFileId={a.photoFileId} accountId={a.id} /><div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold">{a.name}</div><div className="truncate text-[11px] text-tg-muted">{a.phone} · {a.status}</div></div>
           <span className="rounded bg-tg-bg px-1.5 py-0.5 text-[10px] text-tg-muted">{a.owner?.name || "нет агента"}</span>
         </Row>))}</div>
     ) : <Empty text="Нет аккаунтов Telegram." />;
@@ -427,7 +458,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
             <span className="rounded bg-tg-bg px-1.5 py-0.5 text-[10px] text-fuchsia-300">{it.badge}</span></Row>
         ))}
         {groups.map((g) => (
-        <Row key={g.id} active={chat === g.id} onClick={() => { setChat(g.id); setLocalItem(""); }}><Avatar name={g.title || "group"} />
+        <Row key={g.id} active={chat === g.id} onClick={() => { setChat(g.id); setLocalItem(""); }}><Avatar name={g.title || "group"} photoFileId={g.photoSmallFileId} accountId={acc} />
           <div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold">{g.title || "group"}</div><div className="truncate text-[11px] text-tg-muted">{g.memberCount ? g.memberCount + " участников · " : ""}{preview(g)}</div></div>
           {g.isMuted && <span className="text-[10px] text-tg-muted">🔕</span>}</Row>))}</div>
     ) : <Empty text="Групп нет." />; }
@@ -439,18 +470,18 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
             <span className="rounded bg-tg-bg px-1.5 py-0.5 text-[10px] text-fuchsia-300">{it.badge}</span></Row>
         ))}
         {channels.map((c) => { const owner = ctx.bind?.[acc]; const ag = ctx.agents?.find((a) => a.id === owner); return (
-        <Row key={c.id} active={chat === c.id} onClick={() => { setChat(c.id); setLocalItem(""); }}><Avatar name={c.title || "channel"} />
+        <Row key={c.id} active={chat === c.id} onClick={() => { setChat(c.id); setLocalItem(""); }}><Avatar name={c.title || "channel"} photoFileId={c.photoSmallFileId} accountId={acc} />
           <div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold">{c.title || "channel"}</div><div className="truncate text-[11px] text-tg-muted">{c.memberCount ? c.memberCount.toLocaleString() + " подписчиков · " : ""}{preview(c)}</div></div>
           {ag && <span className="rounded bg-tg-bg px-1.5 py-0.5 text-[10px] text-tg-accent">{ag.name}</span>}</Row>); })}</div>
     ) : <Empty text="Каналов нет." />; }
     if (section === "bots") return bots.length ? (
       <div className="space-y-1.5 p-2">{bots.map((b) => (
-        <Row key={b.id} active={chat === b.id} onClick={() => { setChat(b.id); setLocalItem(""); }}><Avatar name={b.title || "bot"} />
+        <Row key={b.id} active={chat === b.id} onClick={() => { setChat(b.id); setLocalItem(""); }}><Avatar name={b.title || "bot"} photoFileId={b.photoSmallFileId} accountId={acc} />
           <div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold">{b.title || "bot"}</div><div className="truncate text-[11px] text-tg-muted">{b.username || ""} {preview(b)}</div></div></Row>))}</div>
     ) : <Empty text="Ботов нет." />;
     if (section === "contacts") return contacts.length ? (
       <div className="space-y-1 p-2">{contacts.filter((c) => !q || (c.title || "").toLowerCase().includes(q.toLowerCase())).map((c) => (
-        <Row key={c.id} active={chat === c.id} onClick={() => { setChat(c.id); setLocalItem(""); }}><Avatar name={c.title || "user"} size={32} />
+        <Row key={c.id} active={chat === c.id} onClick={() => { setChat(c.id); setLocalItem(""); }}><Avatar name={c.title || "user"} size={32} photoFileId={c.photoSmallFileId} accountId={acc} />
           <div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold">{c.title || "user"}</div><div className="text-[11px] text-tg-muted">{c.username || ""}</div></div></Row>))}</div>
     ) : <Empty text="Контактов нет." />;
     if (section === "saved") { const self = chats.find((c) => /saved/i.test(c.title || "")); return self ? <div className="p-2"><Row active onClick={() => { setChat(self.id); setLocalItem(""); }}><Avatar name="Saved" /><span className="text-sm font-semibold">{self.title}</span></Row></div> : <Empty text="«Избранное» недоступно (только чтение)." />; }
@@ -474,7 +505,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
     // dialogs default
     return fDialogs.length ? (
       <div className="space-y-0.5 p-2">{fDialogs.map((d) => (
-        <Row key={d.id} active={chat === d.id} onClick={() => { setChat(d.id); setLocalItem(""); }}><Avatar name={d.title || "чат"} />
+        <Row key={d.id} active={chat === d.id} onClick={() => { setChat(d.id); setLocalItem(""); }}><Avatar name={d.title || "чат"} photoFileId={d.photoSmallFileId} accountId={acc} />
           <div className="min-w-0 flex-1"><div className="flex items-center"><span className="truncate text-sm font-semibold">{d.title || "чат"}</span><span className="ml-auto text-[10px] text-tg-muted">{cat(d)}</span></div>
             <div className="flex items-center"><span className="truncate text-[12px] text-tg-muted">{preview(d)}</span>{(d.unreadCount || 0) > 0 && <span className="ml-auto rounded-full bg-tg-accent px-1.5 text-[10px] font-bold text-white">{d.unreadCount}</span>}</div></div>
           {d.isMuted && <span className="text-[10px] text-tg-muted">🔕</span>}</Row>))}</div>
@@ -659,7 +690,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
     );
     if (cc === "sessions") return (
       <div className="p-3"><table className="w-full text-left text-xs"><thead className="text-tg-muted"><tr>{["", "Аккаунт", "Телефон", "Статус", "Диалоги", "Каналы", "Группы", "Агент-владелец", "Подключено"].map((h) => <th key={h} className="px-2 py-1">{h}</th>)}</tr></thead>
-        <tbody>{accounts.length ? accounts.map((a) => (<tr key={a.id} className="border-t border-tg-line"><td className="px-2 py-1.5"><div className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ background: av(a.name) }}>{ini(a.name)}</div></td><td className="px-2 font-semibold">{a.name}</td><td className="px-2 text-tg-muted">{a.phone}</td><td className="px-2">{a.status}</td><td className="px-2">{a.id === acc ? stats.dialogs : "—"}</td><td className="px-2">{a.id === acc ? stats.channels : "—"}</td><td className="px-2">{a.id === acc ? stats.groups : "—"}</td><td className="px-2 text-tg-accent">{a.owner?.name || "—"}</td><td className="px-2"><span style={{ color: a.id === acc ? connClr : "#9ca3af" }}>{a.id === acc ? connLbl : "—"}</span></td></tr>)) : <tr><td colSpan={9} className="px-2 py-4 text-tg-muted">Нет сессий.</td></tr>}</tbody></table></div>
+        <tbody>{accounts.length ? accounts.map((a) => (<tr key={a.id} className="border-t border-tg-line"><td className="px-2 py-1.5"><Avatar name={a.name} photoFileId={a.photoFileId} accountId={a.id} size={28} /></td><td className="px-2 font-semibold">{a.name}</td><td className="px-2 text-tg-muted">{a.phone}</td><td className="px-2">{a.status}</td><td className="px-2">{a.id === acc ? stats.dialogs : "—"}</td><td className="px-2">{a.id === acc ? stats.channels : "—"}</td><td className="px-2">{a.id === acc ? stats.groups : "—"}</td><td className="px-2 text-tg-accent">{a.owner?.name || "—"}</td><td className="px-2"><span style={{ color: a.id === acc ? connClr : "#9ca3af" }}>{a.id === acc ? connLbl : "—"}</span></td></tr>)) : <tr><td colSpan={9} className="px-2 py-4 text-tg-muted">Нет сессий.</td></tr>}</tbody></table></div>
     );
     if (cc === "dialogs" || cc === "channels" || cc === "groups" || cc === "bots") {
       const data = cc === "channels" ? channels : cc === "groups" ? groups : cc === "bots" ? bots : dialogs;
@@ -731,7 +762,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
         <div className="font-black tracking-wide">📨 РАБОЧАЯ ОБЛАСТЬ TELEGRAM</div>
         <span className="flex items-center gap-1.5 rounded-full border border-tg-line bg-tg-bg px-2 py-0.5 text-[10px] font-bold"><span className="h-2 w-2 rounded-full" style={{ background: connClr }} />{connLbl}</span>
         <span className="rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-400">ТОЛЬКО ЧТЕНИЕ</span>
-        {accounts.length > 0 && <select value={acc} onChange={(e) => setAcc(e.target.value)} className="ml-2 rounded-lg border border-tg-line bg-tg-bg px-2 py-1 text-xs">{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select>}
+        {accounts.length > 0 && <span className="ml-2 flex items-center gap-1.5"><Avatar name={account?.name || ""} photoFileId={account?.photoFileId} accountId={acc} size={24} /><select value={acc} onChange={(e) => setAcc(e.target.value)} className="rounded-lg border border-tg-line bg-tg-bg px-2 py-1 text-xs">{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></span>}
         {/* stats strip */}
         <div className="ml-2 hidden flex-wrap gap-1 text-[10px] md:flex">{([["D", stats.dialogs], ["G", stats.groups], ["C", stats.channels], ["B", stats.bots], ["Ct", stats.contacts]] as const).map(([l, v]) => <span key={l} className="rounded bg-tg-bg px-1.5 py-0.5 text-tg-muted">{l} <b className="text-tg-text">{v}</b></span>)}</div>
         <div className="ml-auto flex items-center gap-1.5">
@@ -813,7 +844,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
             </>
           ) : selChat ? (
             <>
-              <div className="flex items-center gap-2.5 border-b border-tg-line bg-tg-panel px-4 py-2"><Avatar name={selChat.title || "чат"} size={38} />
+              <div className="flex items-center gap-2.5 border-b border-tg-line bg-tg-panel px-4 py-2"><Avatar name={selChat.title || "чат"} size={38} photoFileId={selChat.photoSmallFileId} accountId={acc} />
                 <div><div className="text-sm font-semibold">{selChat.title || "чат"}</div><div className="text-[11px] text-tg-muted">{cat(selChat)}{selChat.memberCount ? " · " + selChat.memberCount : ""} · только чтение</div></div>
                 <div className="ml-auto flex gap-2 text-tg-muted"><span>🔍</span><span>📌</span><span>🖼</span></div>
               </div>

@@ -61,6 +61,7 @@ function normalizeAccountSlot(slot, fallbackId = "main", index = 0) {
     displayName: slot?.displayName ?? null,
     username: slot?.username ?? null,
     phoneMasked: slot?.phoneMasked ?? null,
+    photoSmallFileId: slot?.photoSmallFileId ?? null,
     status: slot?.status ?? (slot?.displayName ? "ready" : "waiting_auth"),
     authorizationState: slot?.authorizationState ?? null,
     locked: Boolean(slot?.locked),

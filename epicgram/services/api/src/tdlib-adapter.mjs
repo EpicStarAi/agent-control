@@ -192,13 +192,15 @@ function formatAccount(user) {
   const firstName = user.first_name ?? "";
   const lastName = user.last_name ?? "";
   const displayName = `${firstName} ${lastName}`.trim() || user.username || "Telegram account";
+  const photoSmall = user.profile_photo?.small ?? null;
 
   return {
     id: String(user.id),
     displayName,
     username: user.username ? `@${user.username}` : null,
     phoneMasked: user.phone_number ? `+${String(user.phone_number).slice(0, 4)}***${String(user.phone_number).slice(-2)}` : null,
-    type: user.type?._ ?? "user"
+    type: user.type?._ ?? "user",
+    photoSmallFileId: photoSmall?.id ? String(photoSmall.id) : null
   };
 }
 

@@ -93,12 +93,15 @@ async function forward(req: Request, res: Response) {
     if (hasBody) headers["content-type"] = "application/json";
 
     const upstream = await fetch(target, { method: req.method, headers, body });
-    const text = await upstream.text();
+    // IMPORTANT: read as a binary Buffer, not .text() — text() decodes the
+    // body as UTF-8, which silently corrupts non-text payloads (e.g. JPEG
+    // avatar bytes from /telegram/photo turn into U+FFFD replacement bytes).
+    const buffer = Buffer.from(await upstream.arrayBuffer());
     res.status(upstream.status);
     upstream.headers.forEach((value, key) => {
       if (!STRIPPED_RESPONSE_HEADERS.has(key.toLowerCase())) res.setHeader(key, value);
     });
-    res.send(text);
+    res.send(buffer);
   } catch {
     res.status(503).json({
       runtime: "backend_offline",
