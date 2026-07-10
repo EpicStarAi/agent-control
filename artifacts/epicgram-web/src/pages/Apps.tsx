@@ -1,12 +1,12 @@
 import { Link } from "wouter";
 
 const HUB: { title: string; desc: string; href: string }[] = [
-  { title: "Web Client", desc: "Полный Telegram-клиент в браузере", href: "/client" },
-  { title: "Telegram Mini App", desc: "Открыть EPIC GRAM внутри Telegram", href: "/tma" },
-  { title: "Desktop", desc: "Windows / macOS / Linux", href: "/desktop" },
-  { title: "Mobile", desc: "Android / iOS", href: "/mobile" },
+  { title: "Веб-клиент", desc: "Полный Telegram-клиент в браузере", href: "/client" },
+  { title: "Мини-приложение Telegram", desc: "Открыть EPIC GRAM внутри Telegram", href: "/tma" },
+  { title: "Десктоп", desc: "Windows / macOS / Linux", href: "/desktop" },
+  { title: "Мобильные устройства", desc: "Android / iOS", href: "/mobile" },
   { title: "Channel OS", desc: "Карточная система управления каналами", href: "/channel-os" },
-  { title: "Downloads", desc: "Все способы получить EPIC GRAM", href: "/downloads" },
+  { title: "Загрузки", desc: "Все способы получить EPIC GRAM", href: "/downloads" },
 ];
 
 export default function Apps() {

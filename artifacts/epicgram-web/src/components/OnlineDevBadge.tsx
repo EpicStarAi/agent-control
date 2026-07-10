@@ -32,7 +32,7 @@ export default function OnlineDevBadge() {
         pointerEvents: "none",
         userSelect: "none",
       }}
-      aria-label="Online dev environment status"
+      aria-label="Статус онлайн dev-окружения"
     >
       <span
         style={{
@@ -43,7 +43,7 @@ export default function OnlineDevBadge() {
           boxShadow: "0 0 6px rgba(245, 165, 36, 0.8)",
         }}
       />
-      ONLINE DEV / LIVE SEND LOCKED
+      DEV-СРЕДА / ОТПРАВКА ЗАБЛОКИРОВАНА
     </div>
   );
 }

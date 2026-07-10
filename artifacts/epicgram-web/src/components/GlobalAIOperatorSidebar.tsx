@@ -74,13 +74,15 @@ export function GlobalAIOperatorSidebar() {
   const tgts = load<AnyRec[]>("deepinside.livePrep.targets.v1", []);
   const rb = load<AnyRec | null>("deepinside.livePrep.firstLiveRunbook.v1", null);
   const modelG = load<AnyRec>("deepinside.livePrep.localModelGate.v1", {} as AnyRec);
-  const sectionName = OS_SECTIONS.indexOf(hash) >= 0 ? t("section." + hash, loc) : (path.indexOf("/agents") >= 0 ? "Agent Registry" : path);
+  const sectionName = OS_SECTIONS.indexOf(hash) >= 0 ? t("section." + hash, loc) : (path.indexOf("/agents") >= 0 ? "Реестр агентов" : path);
   const agentName = matrix.agent || (accs[0] && accs[0].boundAgent) || "NOVIKOVA";
   const accAlias = matrix.accountSlot || (accs[0] && accs[0].accountAlias) || "—";
   const tgtAlias = matrix.target || (tgts[0] && tgts[0].targetAlias) || "—";
   const readiness = pre && typeof pre.readiness === "number" ? pre.readiness : 0;
-  const localModelStatus = modelG.status || "unknown";
-  const aiMode = localModelStatus === "ready" ? "LOCAL_MODEL_READY" : "RULE_BASED_LOCAL";
+  const LOCAL_MODEL_STATUS_RU: Record<string, string> = { ready: "готова", unknown: "неизвестно", checking: "проверка", unavailable: "недоступна" };
+  const localModelStatusRaw = modelG.status || "unknown";
+  const localModelStatus = LOCAL_MODEL_STATUS_RU[localModelStatusRaw] || localModelStatusRaw;
+  const aiMode = localModelStatusRaw === "ready" ? "LOCAL_MODEL_READY" : "RULE_BASED_LOCAL";
 
   const accFull = !!(checks.accountSlotReady && checks.accountSessionReady && checks.accountVerified && checks.accountWhitelisted && checks.agentBoundToAccount);
   const tgtFull = !!(checks.targetVerified && checks.targetWhitelisted && checks.agentBoundToTarget && checks.campaignAttached);
@@ -299,7 +301,7 @@ export function GlobalAIOperatorSidebar() {
   const headColor = tgReady === false ? "#f87171" : (pre && pre.result === "BLOCKED") ? "#fbbf24" : allPassed ? "#4ade80" : "#fbbf24";
 
   if (!open) {
-    return <button onClick={toggle} aria-label="AI Operator" className="fixed bottom-4 right-4 z-[130] rounded-full border border-cyan-400/50 bg-gradient-to-r from-cyan-600/40 to-fuchsia-600/35 px-4 py-2 text-sm font-black text-cyan-50 shadow-lg backdrop-blur hover:from-cyan-600/55">🤖 {t("sb.title", loc)}</button>;
+    return <button onClick={toggle} aria-label="AI-оператор" className="fixed bottom-4 right-4 z-[130] rounded-full border border-cyan-400/50 bg-gradient-to-r from-cyan-600/40 to-fuchsia-600/35 px-4 py-2 text-sm font-black text-cyan-50 shadow-lg backdrop-blur hover:from-cyan-600/55">🤖 {t("sb.title", loc)}</button>;
   }
 
   const card = (title: string, body: any) => <div className="rounded-xl border border-white/10 bg-white/5 p-2"><div className="mb-1 text-[9px] font-black uppercase tracking-wide text-cyan-300/70">{title}</div>{body}</div>;
@@ -332,8 +334,8 @@ export function GlobalAIOperatorSidebar() {
         {blocker && <div className="text-[10px] text-rose-200">{t("sb.blocker", loc)}: <b>{t(blocker[0], loc)}</b> — {blocker[2]}</div>}
         <div className="rounded bg-black/30 p-1.5 text-[11px] text-amber-100">{na}</div>
         <div className="flex flex-wrap gap-1">
-          <button onClick={() => copy(na, "Next Action")} className="rounded bg-white/10 px-2 py-0.5 text-[9px] hover:bg-white/20">{t("sb.copyAction", loc)}</button>
-          <button onClick={() => copy(claudePrompt(), "Claude Prompt")} className="rounded bg-cyan-600/25 px-2 py-0.5 text-[9px] hover:bg-cyan-600/40">{t("sb.copyClaude", loc)}</button>
+          <button onClick={() => copy(na, "Следующее действие")} className="rounded bg-white/10 px-2 py-0.5 text-[9px] hover:bg-white/20">{t("sb.copyAction", loc)}</button>
+          <button onClick={() => copy(claudePrompt(), "Промпт для Claude")} className="rounded bg-cyan-600/25 px-2 py-0.5 text-[9px] hover:bg-cyan-600/40">{t("sb.copyClaude", loc)}</button>
         </div>
       </div>)}
 
@@ -344,8 +346,8 @@ export function GlobalAIOperatorSidebar() {
       {card(t("sb.quickActions", loc), <div className="grid grid-cols-2 gap-1 text-[9px]">
         <button onClick={() => quick("Объясни этот экран")} className="rounded bg-white/10 px-2 py-1 hover:bg-white/20">{t("sb.explainScreen", loc)}</button>
         <button onClick={() => quick("Покажи блокеры")} className="rounded bg-white/10 px-2 py-1 hover:bg-white/20">{t("sb.showBlockers", loc)}</button>
-        <button onClick={() => copy(claudePrompt(), "current state")} className="rounded bg-white/10 px-2 py-1 hover:bg-white/20">{t("sb.copyState", loc)}</button>
-        <button onClick={() => copy(claudePrompt(), "Claude fix prompt")} className="rounded bg-white/10 px-2 py-1 hover:bg-white/20">{t("sb.copyClaude", loc)}</button>
+        <button onClick={() => copy(claudePrompt(), "текущее состояние")} className="rounded bg-white/10 px-2 py-1 hover:bg-white/20">{t("sb.copyState", loc)}</button>
+        <button onClick={() => copy(claudePrompt(), "промпт-исправление для Claude")} className="rounded bg-white/10 px-2 py-1 hover:bg-white/20">{t("sb.copyClaude", loc)}</button>
         <button onClick={() => navTo("liveprep")} className="rounded bg-emerald-600/20 px-2 py-1 hover:bg-emerald-600/35">{t("nav.openLivePrep", loc)}</button>
         <button onClick={() => navTo("dryrun")} className="rounded bg-white/10 px-2 py-1 hover:bg-white/20">{t("nav.openDryRun", loc)}</button>
         <button onClick={() => navTo("postlive")} className="rounded bg-white/10 px-2 py-1 hover:bg-white/20">{t("nav.openPostLive", loc)}</button>
@@ -359,16 +361,16 @@ export function GlobalAIOperatorSidebar() {
         {cmdBlock(t("gate.build", loc) + " + log", CMD.buildLog)}
         {cmdBlock("API", CMD.api)}
         {cmdBlock("Ollama", CMD.ollama)}
-        {cmdBlock("Web dev", CMD.webdev)}
-        {cmdBlock("API dev", CMD.apidev)}
-        {cmdBlock("Next cache", CMD.clearCache)}
+        {cmdBlock("Web (dev)", CMD.webdev)}
+        {cmdBlock("API (dev)", CMD.apidev)}
+        {cmdBlock("Кэш Next.js", CMD.clearCache)}
       </div>)}
 
       {card(t("sb.safetyInspector", loc), <div className="grid grid-cols-1 gap-0.5 text-[9px]">
         {Object.keys(SAFETY).map((k) => { const v = (SAFETY as AnyRec)[k]; return <div key={k} className="flex items-center justify-between"><span className="text-tg-muted">{k}</span><span style={{ color: (v === false || k === "mode" || ((k === "oneMessageOnly" || k === "assistantOnly" || k === "advisoryOnly") && v === true)) ? "#86efac" : (v === true ? "#fca5a5" : "#86efac") }}>{String(v)}</span></div>; })}
       </div>)}
 
-      {plan && card("AI AGENT WORKSPACE — " + t("sb.title", loc), <div className="space-y-2">
+      {plan && card("РАБОЧАЯ ОБЛАСТЬ AI-АГЕНТА — " + t("sb.title", loc), <div className="space-y-2">
         <div className="text-[10px] text-tg-muted">Задача</div>
         <div className="rounded bg-black/30 p-1.5 text-[11px] text-cyan-100">{plan.task}</div>
         {plan.questions.length > 0 ? (

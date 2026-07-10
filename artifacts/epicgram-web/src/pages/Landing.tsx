@@ -6,18 +6,18 @@ type Svc = { name: string; desc: string; href?: string };
 type Feature = { name: string; desc: string };
 
 const SERVICES: Svc[] = [
-  { name: "EPIC GRAM AI Telegram Client", desc: "TDLib-клиент: чаты, каналы, группы, боты", href: "/client" },
+  { name: "EPIC GRAM AI Telegram-клиент", desc: "TDLib-клиент: чаты, каналы, группы, боты", href: "/client" },
   { name: "STAR Console", desc: "Операторская консоль / Agent OS" },
   { name: "Cyber Neon VPN", desc: "VPN веб-клиент" },
   { name: "Editorial Hub", desc: "Контент и публикации" },
 ];
 
 const FEATURES: Feature[] = [
-  { name: "TDLib Client", desc: "Настоящий Telegram-клиент" },
-  { name: "AI Operator", desc: "Готовит черновики, не отправляет сам" },
-  { name: "Approval Gate", desc: "Действия — только после подтверждения" },
-  { name: "Safe Mode", desc: "Аварийная блокировка по умолчанию" },
-  { name: "Desktop / Mobile / TMA", desc: "Windows / macOS / Linux, Android, Telegram Mini App" },
+  { name: "TDLib-клиент", desc: "Настоящий Telegram-клиент" },
+  { name: "AI-оператор", desc: "Готовит черновики, не отправляет сам" },
+  { name: "Гейт подтверждения", desc: "Действия — только после подтверждения" },
+  { name: "Безопасный режим", desc: "Аварийная блокировка по умолчанию" },
+  { name: "Десктоп / Мобильные / TMA", desc: "Windows / macOS / Linux, Android, Telegram Mini App" },
   { name: "Channel OS", desc: "Карточная система управления каналами" },
 ];
 
@@ -29,10 +29,10 @@ export default function Landing() {
       <header className="sticky top-0 z-10 flex flex-wrap items-center gap-3 border-b border-white/10 bg-black/40 px-5 py-3 backdrop-blur">
         <span className="text-lg font-black tracking-wide text-fuchsia-200">EPIC☠GRAM</span>
         <nav className="flex flex-wrap gap-3 text-sm text-white/70">
-          <Link href="/downloads" className="hover:text-white">Downloads</Link>
-          <Link href="/login" className="hover:text-white">Login</Link>
-          <Link href="/client" className="hover:text-white">Client</Link>
-          <Link href="/apps" className="hover:text-white">Apps</Link>
+          <Link href="/downloads" className="hover:text-white">Загрузки</Link>
+          <Link href="/login" className="hover:text-white">Вход</Link>
+          <Link href="/client" className="hover:text-white">Клиент</Link>
+          <Link href="/apps" className="hover:text-white">Приложения</Link>
           <Link href="/channel-os" className="hover:text-white">Channel OS</Link>
         </nav>
         <Link href="/client" className="ml-auto rounded-xl bg-fuchsia-600/40 px-4 py-2 text-sm font-semibold text-white hover:bg-fuchsia-600/60">
@@ -41,15 +41,15 @@ export default function Landing() {
       </header>
 
       <section className="mx-auto max-w-4xl px-5 pt-16 pb-10 text-center">
-        <div className="mb-4 inline-block rounded-full border border-white/15 px-3 py-1 text-xs tracking-widest text-amber-300">PRIVATE BETA</div>
+        <div className="mb-4 inline-block rounded-full border border-white/15 px-3 py-1 text-xs tracking-widest text-amber-300">ЗАКРЫТАЯ БЕТА</div>
         <h1 className="text-5xl font-black text-fuchsia-100">EPIC☠GRAM</h1>
-        <p className="mt-2 text-xl text-white/85">Telegram AI Workspace</p>
+        <p className="mt-2 text-xl text-white/85">Рабочая область Telegram + AI</p>
         <p className="mx-auto mt-3 max-w-2xl text-white/70">
-          Telegram + AI workspace для операторов, каналов, групп и ботов. Один вход через Telegram.
-          AI готовит черновики, человек подтверждает действия. Safe Mode по умолчанию.
+          Рабочая область Telegram + AI для операторов, каналов, групп и ботов. Один вход через Telegram.
+          AI готовит черновики, человек подтверждает действия. Безопасный режим по умолчанию.
         </p>
         <div className="mt-7 flex flex-wrap justify-center gap-3">
-          <Link href="/client" className="rounded-xl bg-fuchsia-600/40 px-5 py-3 text-sm font-semibold hover:bg-fuchsia-600/60">Открыть Web Client</Link>
+          <Link href="/client" className="rounded-xl bg-fuchsia-600/40 px-5 py-3 text-sm font-semibold hover:bg-fuchsia-600/60">Открыть веб-клиент</Link>
           <Link href="/login" className="rounded-xl border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold hover:bg-white/10">Войти через Telegram</Link>
           <Link href="/downloads" className="rounded-xl border border-white/20 bg-white/5 px-5 py-3 text-sm font-semibold hover:bg-white/10">Скачать приложение</Link>
         </div>
@@ -85,7 +85,7 @@ export default function Landing() {
       </section>
 
       <footer className="border-t border-white/10 px-5 py-6 text-center text-xs text-white/45">
-        Private beta · owner-operated automation only
+        Закрытая бета · автоматизация только под управлением владельца
       </footer>
     </main>
   );

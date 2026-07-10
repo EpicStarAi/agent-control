@@ -4,16 +4,16 @@ import { Link } from "wouter";
 type Item = { name: string; note: string; sub?: string; href?: string };
 
 const DESKTOP: Item[] = [
-  { name: "Windows Desktop", note: "Скоро", sub: "сборка готовится" },
-  { name: "macOS Desktop", note: "Скоро", sub: "сборка готовится" },
-  { name: "Linux Desktop", note: "Скоро", sub: "сборка готовится" },
+  { name: "Windows (десктоп)", note: "Скоро", sub: "сборка готовится" },
+  { name: "macOS (десктоп)", note: "Скоро", sub: "сборка готовится" },
+  { name: "Linux (десктоп)", note: "Скоро", sub: "сборка готовится" },
 ];
 const ANDROID: Item[] = [
   { name: "Google Play", note: "Скоро", sub: "готовим публикацию" },
-  { name: "Android APK", note: "Скоро", sub: "direct install" },
+  { name: "Android APK", note: "Скоро", sub: "прямая установка" },
 ];
 const WEB: Item[] = [
-  { name: "Web Client", note: "Открыть", sub: "работает сейчас", href: "/client" },
+  { name: "Веб-клиент", note: "Открыть", sub: "работает сейчас", href: "/client" },
   { name: "Telegram WebApp / TMA", note: "Открыть", sub: "внутри Telegram", href: "/tma" },
 ];
 
@@ -46,9 +46,9 @@ export default function Downloads() {
       <div className="mx-auto max-w-4xl">
         <Link href="/" className="text-sm text-sky-300">← EPIC☠GRAM</Link>
         <h1 className="mb-6 mt-2 text-3xl font-black text-fuchsia-100">Скачать EPIC☠GRAM</h1>
-        <Cards title="Desktop" items={DESKTOP} />
+        <Cards title="Десктоп" items={DESKTOP} />
         <Cards title="Android" items={ANDROID} />
-        <Cards title="Web" items={WEB} />
+        <Cards title="Веб" items={WEB} />
         <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-[12px] text-amber-200">
           <b>Официальные источники.</b> EPIC GRAM распространяется только через официальный сайт, Google Play
           и официальный Telegram WebApp. Не устанавливайте APK из неизвестных источников.
