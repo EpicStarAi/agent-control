@@ -90,6 +90,80 @@ function useWorkspaceTheme() {
   return THEME_PRESETS[theme] as React.CSSProperties;
 }
 
+// ---- RESIZABLE PANELS ----
+// Each column of the workspace grid (nav / chat-list / main / agent sidebar) can be dragged
+// to its own width, independent of the others, and persisted per-browser so it stays put
+// across reloads. Pure layout state — no data/backend change.
+const RESIZE_LS = "epic_tg_panel_widths_v1";
+type PanelWidths = Record<string, number>;
+function readStoredWidths(): PanelWidths {
+  try { const v = JSON.parse(localStorage.getItem(RESIZE_LS) || "null"); if (v && typeof v === "object") return v; } catch {}
+  return {};
+}
+// Panels anchored to the right edge (e.g. the agent sidebar) shrink as the divider moves right,
+// so their delta must be inverted relative to left-anchored panels (nav/list).
+const RIGHT_ANCHORED = new Set(["aside"]);
+function useResizableWidths(defaults: Record<string, number>, limits: Record<string, [number, number]>) {
+  const [widths, setWidths] = useState<PanelWidths>(() => {
+    const stored = readStoredWidths();
+    // Clamp any persisted values to current limits so a stale/corrupt localStorage entry
+    // (e.g. from a previous session with different bounds) can't break the layout.
+    const merged: PanelWidths = { ...defaults, ...stored };
+    for (const k of Object.keys(merged)) {
+      const [min, max] = limits[k] || [80, 800];
+      merged[k] = Math.max(min, Math.min(max, merged[k]));
+    }
+    return merged;
+  });
+  const widthsRef = useRef(widths); widthsRef.current = widths;
+  const defaultsRef = useRef(defaults); defaultsRef.current = defaults;
+  const limitsRef = useRef(limits); limitsRef.current = limits;
+  const dragRef = useRef<{ key: string; startX: number; startW: number } | null>(null);
+  // Mount-once listeners: refs (not state/props) carry the live values, so dragging never
+  // re-subscribes mousemove/mouseup on every render and never jitters mid-drag.
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const d = dragRef.current; if (!d) return;
+      const [min, max] = limitsRef.current[d.key] || [80, 800];
+      const dx = e.clientX - d.startX;
+      const raw = RIGHT_ANCHORED.has(d.key) ? d.startW - dx : d.startW + dx;
+      const next = Math.max(min, Math.min(max, raw));
+      setWidths((w) => (w[d.key] === next ? w : { ...w, [d.key]: next }));
+    };
+    const endDrag = () => {
+      if (!dragRef.current) return;
+      dragRef.current = null;
+      document.body.style.cursor = ""; document.body.style.userSelect = "";
+      setWidths((w) => { try { localStorage.setItem(RESIZE_LS, JSON.stringify(w)); } catch {} return w; });
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", endDrag);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", endDrag);
+      endDrag(); // if unmounted mid-drag, don't leave the cursor/select style stuck on <body>
+    };
+  }, []);
+  const startDrag = (key: string) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    dragRef.current = { key, startX: e.clientX, startW: widthsRef.current[key] ?? defaultsRef.current[key] ?? 200 };
+    document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none";
+  };
+  const resetWidths = () => { setWidths({ ...defaultsRef.current }); try { localStorage.removeItem(RESIZE_LS); } catch {} };
+  return { widths, startDrag, resetWidths };
+}
+function ColResizer({ onMouseDown, title }: { onMouseDown: (e: React.MouseEvent) => void; title?: string }) {
+  return (
+    <div
+      onMouseDown={onMouseDown}
+      title={title || "Потяните, чтобы изменить ширину"}
+      className="group relative z-10 w-[3px] shrink-0 cursor-col-resize bg-tg-line/60 hover:bg-tg-accent active:bg-tg-accent"
+    >
+      <div className="absolute inset-y-0 -left-1.5 -right-1.5" />
+    </div>
+  );
+}
+
 const hash = (s: string) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; };
 const av = (s: string) => "#" + ((hash(s) & 0xffffff) | 0x404040).toString(16).padStart(6, "0");
 const ini = (s: string) => (s || "•").replace(/[^0-9A-Za-zÀ-ɏЀ-ӿ ]/g, "").trim().split(/\s+/).slice(0, 2).map((w) => w[0] || "").join("").toUpperCase() || "•";
@@ -128,6 +202,10 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
   const [discLog, setDiscLog] = useState<{ t: string; text: string }[]>([]);
   const [index, setIndex] = useState<any>(null);
   const themeVars = useWorkspaceTheme();
+  const { widths: panelW, startDrag: startPanelDrag } = useResizableWidths(
+    { nav: 210, list: 320, aside: 280, ccNav: 180 },
+    { nav: [140, 360], list: [220, 520], aside: [200, 460], ccNav: [140, 320] },
+  );
 
   useEffect(() => { try { const d = JSON.parse(localStorage.getItem(LS) || "{}"); if (d.section) setSection(d.section); if (!slotId && d.acc) setAcc(d.acc); } catch {} }, []);
   useEffect(() => { try { localStorage.setItem(LS, JSON.stringify({ section, acc })); } catch {} }, [section, acc]);
@@ -586,19 +664,20 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
       </header>
 
       {mode === "command" ? (
-        <div className="grid min-h-0 flex-1 grid-cols-[180px_1fr]">
-          <nav className="min-h-0 overflow-auto border-r border-tg-line bg-tg-panel p-2">
+        <div className="flex min-h-0 flex-1">
+          <nav style={{ width: panelW.ccNav, flex: "0 0 auto" }} className="min-h-0 overflow-auto bg-tg-panel p-2">
             <div className="mb-1 px-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Командный центр</div>
             {CC_TABS.map((t) => (
               <button key={t} onClick={() => setCc(t)} className={`mb-0.5 w-full rounded-lg px-2.5 py-1.5 text-left text-sm ${cc === t ? "bg-cyan-600/30 text-tg-text ring-1 ring-cyan-500/50" : "text-tg-muted hover:bg-tg-bg/40 hover:text-tg-text"}`}>{CC_TAB_LABELS[t] || t}</button>
             ))}
           </nav>
-          <main className="min-h-0 overflow-auto bg-tg-bg"><CommandCenter /></main>
+          <ColResizer onMouseDown={startPanelDrag("ccNav")} title="Изменить ширину панели командного центра" />
+          <main className="min-h-0 min-w-0 flex-1 overflow-auto bg-tg-bg"><CommandCenter /></main>
         </div>
       ) : (
 
-      <div className="grid min-h-0 flex-1 grid-cols-[210px_320px_1fr_280px]">
-        <nav className="min-h-0 overflow-auto border-r border-tg-line bg-tg-panel p-2">
+      <div className="flex min-h-0 flex-1">
+        <nav style={{ width: panelW.nav, flex: "0 0 auto" }} className="min-h-0 overflow-auto bg-tg-panel p-2">
           {SECTIONS.map(([id, label]) => (
             <button key={id} onClick={() => setSection(id)} className={`mb-0.5 flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-sm ${section === id ? "bg-tg-active/30 text-tg-text ring-1 ring-tg-accent" : "text-tg-muted hover:bg-tg-bg/40 hover:text-tg-text"}`}>
               <span>{label}</span>
@@ -611,16 +690,18 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
             </button>
           ))}
         </nav>
+        <ColResizer onMouseDown={startPanelDrag("nav")} title="Изменить ширину боковой навигации" />
 
-        <section className="flex min-h-0 flex-col border-r border-tg-line bg-tg-bg">
+        <section style={{ width: panelW.list, flex: "0 0 auto" }} className="flex min-h-0 flex-col bg-tg-bg">
           <div className="border-b border-tg-line p-2">
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск…" className="w-full rounded-lg bg-tg-panel px-3 py-1.5 text-sm outline-none" />
             {(section === "dialogs") && <div className="mt-1.5 flex flex-wrap gap-1">{FILTERS.map((f) => <button key={f} onClick={() => setFilter(f)} className={`rounded-full px-2 py-0.5 text-[10px] ${filter === f ? "bg-tg-active text-white" : "bg-tg-bg text-tg-muted"}`}>{f}</button>)}</div>}
           </div>
           <div className="min-h-0 flex-1 overflow-auto"><Center /></div>
         </section>
+        <ColResizer onMouseDown={startPanelDrag("list")} title="Изменить ширину списка чатов" />
 
-        <section className="flex min-h-0 flex-col bg-tg-bg" style={{ backgroundImage: "radial-gradient(circle at 50% 0,rgba(34,46,61,.6),transparent 60%)" }}>
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-tg-bg" style={{ backgroundImage: "radial-gradient(circle at 50% 0,rgba(34,46,61,.6),transparent 60%)" }}>
           {selLocalItem ? (
             <>
               <div className="flex items-center gap-2.5 border-b border-tg-line bg-tg-panel px-4 py-2"><Avatar name={selLocalItem.title} size={38} />
@@ -670,8 +751,9 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
             </>
           ) : <div className="flex flex-1 items-center justify-center text-tg-muted">{loading ? "Синхронизация…" : "Выбери чат · группу · канал · бота"}</div>}
         </section>
+        <ColResizer onMouseDown={startPanelDrag("aside")} title="Изменить ширину панели агента" />
 
-        <aside className="min-h-0 overflow-auto border-l border-tg-line bg-tg-panel p-3">
+        <aside style={{ width: panelW.aside, flex: "0 0 auto" }} className="min-h-0 overflow-auto bg-tg-panel p-3">
           <div className="text-[10px] font-black uppercase tracking-[0.18em] text-tg-accent">Интеграция агента</div>
           {ownerAgent ? (
             <div className="mt-2 space-y-1.5 text-xs">
