@@ -40,6 +40,26 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 _Populate as you build — sharp edges, "always run X before Y" rules._
 
+### EPICGRAM: real Telegram session drop alerting
+
+If the owner's real TDLib-backed Telegram session (EPICGRAM_TDLIB_ENABLED=true) drops
+out of `authorizationStateReady` unexpectedly — remote logout, ban, expired
+session, TDLib restart — the app now surfaces this instead of failing silently:
+
+- Backend (`epicgram/services/api/src/telegram-runtime.mjs`, `syncTdlibState`)
+  logs a `console.warn` and publishes an `auth.state_changed` SSE event with
+  `unexpectedDrop: true` on the `/v1/runtime/events` bus whenever the state
+  transitions away from ready without going through an owner-initiated
+  logout flow.
+- Frontend (`artifacts/epicgram-web/src/hooks/useTelegramSessionWatchdog.ts` +
+  `TelegramSessionAlertBanner.tsx`, mounted in `App.tsx`) listens on that SSE
+  bus and shows a persistent toast plus a dismissible top banner linking to
+  Settings.
+- **To re-authenticate:** open `/settings` (or the Accounts panel in
+  `/client`) and re-run the QR or phone login flow for that account slot.
+  The banner clears automatically once the session reports
+  `authorizationStateReady` again.
+
 ## Pointers
 
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details

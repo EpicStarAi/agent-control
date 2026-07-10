@@ -210,9 +210,29 @@ async function syncTdlibState(state) {
     const snapshot = await getTdlibSessionSnapshot(accountId);
     const authorizationState = snapshot.authorizationState?._ ?? state.authorizationState;
     if (authorizationState && authorizationState !== state.authorizationState) {
+      // OWNER ALERT: the owner's real Telegram session was previously fully
+      // authorized (authorizationStateReady) and just transitioned away from
+      // that unexpectedly (remote logout, ban, expiry, TDLib restart losing
+      // the session, etc). This was NOT triggered by an owner-initiated
+      // logout flow (those go through removeAccountSlot / explicit logout
+      // actions, not this background sync path) — so it's worth a loud,
+      // visible signal rather than a silent status flip.
+      const wasReady = isReadyAuthorizationState(state.authorizationState);
+      const droppedUnexpectedly = wasReady && !isReadyAuthorizationState(authorizationState);
+      if (droppedUnexpectedly) {
+        console.warn(
+          `[telegram-runtime] OWNER ALERT: Telegram session for account "${accountId}" dropped from authorizationStateReady to ${authorizationState} unexpectedly. ` +
+          `The owner must re-authenticate (QR or phone) in Settings > Telegram Accounts to restore this session.`
+        );
+      }
       try {
         const { publish } = await import("./event-bus.mjs");
-        publish({ type: "auth.state_changed", runtime: "telegram", accountId, data: { authorizationState } });
+        publish({
+          type: "auth.state_changed",
+          runtime: "telegram",
+          accountId,
+          data: { authorizationState, previousAuthorizationState: state.authorizationState, unexpectedDrop: droppedUnexpectedly }
+        });
       } catch { /* event bus is optional */ }
     }
     const nextState = upsertAccountSlot(state, accountId, {

@@ -2,3 +2,4 @@
 - [EPICGRAM proxy artifact pattern](epicgram-proxy-pattern.md) — porting a Next.js app to a react-vite artifact while keeping the real backend service untouched: proxy through the api-server artifact, GET-only allowlist for safety.
 - [EPICGRAM Next.js app is VPS-only, kept intentionally](epicgram-nextjs-vps-only.md) — user chose to keep apps/web for external VPS deploy, not retire it; don't propose removing it as dead code.
 - [EPICGRAM TDLib live enablement](epicgram-tdlib-live-enablement.md) — real Telegram login is a 4-env-var flip (owner secrets, not .env.local); send-approval gate is separate and already server-side.
+- [EPICGRAM session drop alerting](epicgram-session-drop-alerting.md) — unexpected auth-state drops reuse the existing SSE event bus; frontend owns one watchdog subscription, not per-component.

@@ -1,6 +1,9 @@
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import NotFound from '@/pages/not-found';
 import OnlineDevBadge from '@/components/OnlineDevBadge';
+import TelegramSessionAlertBanner from '@/components/TelegramSessionAlertBanner';
+import { Toaster } from '@/components/ui/sonner';
+import { useTelegramSessionWatchdogEffect } from '@/hooks/useTelegramSessionWatchdog';
 import Landing from '@/pages/Landing';
 import Login from '@/pages/Login';
 import Client from '@/pages/Client';
@@ -34,10 +37,13 @@ function Router() {
 }
 
 function App() {
+  useTelegramSessionWatchdogEffect();
   return (
     <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+      <TelegramSessionAlertBanner />
       <OnlineDevBadge />
       <Router />
+      <Toaster richColors position="top-right" />
     </WouterRouter>
   );
 }
