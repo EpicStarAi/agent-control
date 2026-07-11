@@ -224,6 +224,21 @@ async function syncTdlibState(state) {
           `[telegram-runtime] OWNER ALERT: Telegram session for account "${accountId}" dropped from authorizationStateReady to ${authorizationState} unexpectedly. ` +
           `The owner must re-authenticate (QR or phone) in Settings > Telegram Accounts to restore this session.`
         );
+        // Fire-and-forget out-of-band email alert so the owner is notified even
+        // when they don't have the web app open.
+        const accountLabel = state.accounts.find((s) => s.slotId === accountId)?.label ?? accountId;
+        import("./session-alert.mjs")
+          .then(({ sendSessionDropAlert }) =>
+            sendSessionDropAlert({
+              accountId,
+              accountLabel,
+              previousState: state.authorizationState,
+              newState: authorizationState
+            })
+          )
+          .catch((err) =>
+            console.error("[telegram-runtime] session-alert module load failed:", err?.message ?? err)
+          );
       }
       try {
         const { publish } = await import("./event-bus.mjs");
