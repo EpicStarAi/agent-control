@@ -804,12 +804,13 @@ const server = http.createServer(async (request, response) => {
     }
 
     // DEV-ONLY: synthetic session-drop / session-recover triggers.
-    // These endpoints are intentionally blocked in production so they can never
-    // be hit on a deployed instance.  They emit real SSE events onto the shared
-    // event bus, which is exactly what a TDLib auth-state change would do, so
-    // the full banner → toast → recover → clear lifecycle can be exercised
-    // locally without a live Telegram connection.
-    if (process.env.NODE_ENV !== "production") {
+    // These endpoints require DEV_TOOLS_ENABLED=true to be set explicitly —
+    // they are never reachable in production or staging unless the operator
+    // deliberately opts in.  NODE_ENV alone is not sufficient because deployed
+    // environments sometimes omit it.  They emit real SSE events onto the
+    // shared event bus so the full banner → toast → recover → clear lifecycle
+    // can be exercised locally without a live Telegram connection.
+    if (process.env.DEV_TOOLS_ENABLED === "true") {
       if (request.method === "POST" && url.pathname === "/dev/session-drop") {
         const { publish } = await import("./event-bus.mjs");
         const body = await readJson(request).catch(() => ({}));
