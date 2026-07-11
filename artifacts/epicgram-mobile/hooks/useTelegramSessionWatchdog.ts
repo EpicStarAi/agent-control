@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AppState, type AppStateStatus } from "react-native";
 import { fetch } from "expo/fetch";
 
 // OWNER ALERT WATCHDOG (React Native / Expo port)
@@ -7,6 +8,12 @@ import { fetch } from "expo/fetch";
 // using expo/fetch streaming (getReader), which works on iOS, Android, and web.
 // Mirrors the logic in epicgram-web/src/hooks/useTelegramSessionWatchdog.ts:
 // watches for "auth.state_changed" events where unexpectedDrop=true.
+//
+// Foreground recovery: when the OS resumes the app from background the SSE
+// connection has been torn down and may have missed a recovery event. An
+// AppState listener polls /v1/accounts on every foreground transition so
+// a stale alert is cleared if the session has already recovered, then
+// re-establishes the SSE stream.
 
 export type TelegramSessionAlert = {
   accountId: string | null;
@@ -45,10 +52,21 @@ export function useTelegramSessionAlert(): TelegramSessionAlert {
   return alert;
 }
 
+type AccountSlot = {
+  slotId?: string;
+  authorizationState?: string | null;
+};
+
 /**
  * Mount ONCE in the root _layout. Owns the single SSE connection used for
  * session-drop alerting. Uses expo/fetch streaming so it works natively on
  * iOS and Android (no EventSource polyfill needed).
+ *
+ * On every app foreground event (AppState → "active") the hook:
+ *   1. Polls /v1/accounts to check whether the alerted account has recovered.
+ *   2. If authorizationStateReady, dismisses the standing alert.
+ *   3. Aborts the current SSE reader so the reconnect loop picks up a fresh
+ *      connection instead of waiting on the dead stream.
  */
 export function useTelegramSessionWatchdogEffect() {
   const abortRef = useRef<AbortController | null>(null);
@@ -58,7 +76,45 @@ export function useTelegramSessionWatchdogEffect() {
     if (!domain) return;
 
     const sseUrl = `https://${domain}/api/v1/runtime/events`;
+    const accountsUrl = `https://${domain}/api/v1/accounts`;
     let active = true;
+
+    // Normalise accountId to a canonical string for comparison.
+    // The API uses "main" as the default slotId; the alert stores null for that.
+    function normaliseId(id: string | null | undefined): string {
+      return id ?? "main";
+    }
+
+    /** One-shot poll: dismiss the alert if the session is now Ready. */
+    async function pollAndSync() {
+      if (!currentAlert) return;
+      try {
+        const res = await fetch(accountsUrl, {
+          headers: { Accept: "application/json" },
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          accounts?: AccountSlot[];
+        };
+        const accounts = data?.accounts ?? [];
+        const alertedId = normaliseId(currentAlert?.accountId);
+        const match = accounts.find(
+          (a) => normaliseId(a.slotId) === alertedId
+        );
+        if (match?.authorizationState === "authorizationStateReady") {
+          // Session recovered while we were backgrounded — clear the alert.
+          if (
+            currentAlert &&
+            normaliseId(currentAlert.accountId) === alertedId
+          ) {
+            setAlert(null);
+          }
+        }
+      } catch {
+        // Network errors during the sync poll are non-fatal; the SSE stream
+        // will catch any subsequent state changes once reconnected.
+      }
+    }
 
     async function connectSSE() {
       while (active) {
@@ -127,10 +183,13 @@ export function useTelegramSessionWatchdogEffect() {
           }
         } catch (err: unknown) {
           if (!active) break;
-          // Reconnect after delay on transient errors
-          const isAbort =
-            err instanceof Error && err.name === "AbortError";
-          if (isAbort) break;
+          const isAbort = err instanceof Error && err.name === "AbortError";
+          if (isAbort) {
+            // Aborted externally (e.g. foreground reconnect) — loop continues
+            // so a fresh connection is established immediately.
+            continue;
+          }
+          // Transient network error — back off before retrying.
           await new Promise((r) => setTimeout(r, 5000));
         }
       }
@@ -138,10 +197,24 @@ export function useTelegramSessionWatchdogEffect() {
 
     connectSSE();
 
+    // On foreground: sync alert state from the API then force a fresh SSE
+    // connection (the old one was torn down when the OS suspended the runtime).
+    function handleAppStateChange(nextState: AppStateStatus) {
+      if (nextState === "active") {
+        pollAndSync();
+        abortRef.current?.abort();
+      }
+    }
+    const appStateSubscription = AppState.addEventListener(
+      "change",
+      handleAppStateChange
+    );
+
     return () => {
       active = false;
       abortRef.current?.abort();
       abortRef.current = null;
+      appStateSubscription.remove();
     };
   }, []);
 }
