@@ -4,4 +4,5 @@
 - [EPICGRAM TDLib live enablement](epicgram-tdlib-live-enablement.md) — real Telegram login is a 4-env-var flip (owner secrets, not .env.local); send-approval gate is separate and already server-side.
 - [EPICGRAM session drop alerting](epicgram-session-drop-alerting.md) — unexpected auth-state drops reuse the existing SSE event bus; frontend owns one watchdog subscription, not per-component.
 - [EPICGRAM Add Account Wizard](epicgram-add-account-wizard.md) — phone/code/2FA auth flow: POST /accounts/new → /auth/phone → /auth/code → /auth/2fa; bump refreshTick to force re-poll after success.
+- [EPICGRAM AI Operator Glow System](epicgram-ai-glow-system.md) — neon border effect tied to real AI states via CustomEvent bus; fixed overlay + CSS keyframes; no layout impact.
 - [EPICGRAM TDLib enabled](epicgram-tdlib-enabled.md) — EPICGRAM_TDLIB_ENABLED=true now set in shared env; EPICGRAM API must be restarted after any env change to pick it up.

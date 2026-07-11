@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { TelegramWorkspace } from "@/components/TelegramWorkspace";
 import { GlobalAIOperatorSidebar } from "@/components/GlobalAIOperatorSidebar";
 import { AdminTerminal } from "@/components/AdminTerminal";
+import { AIOperatorGlow } from "@/components/AIOperatorGlow";
 
 // /client — EPIC GRAM Web Client. Hosts the real, read-only TelegramWorkspace
 // component (ported verbatim from epicgram/apps/web/components/TelegramWorkspace.tsx)
@@ -23,6 +24,7 @@ export default function ClientPage() {
 
   return (
     <div className="tg-root min-h-screen bg-tg-bg text-tg-text">
+      <AIOperatorGlow />
       <TelegramWorkspace ctx={EMPTY_CTX} command={command} onClose={() => {}} />
       <GlobalAIOperatorSidebar />
       <AdminTerminal />

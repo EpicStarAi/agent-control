@@ -4,6 +4,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { apiUrl } from "@/lib/api";
+import { emitGlowState } from "@/hooks/useAIGlowSettings";
 
 // ── types ────────────────────────────────────────────────────────────────────
 type Role = "user" | "assistant" | "system" | "tool_call";
@@ -166,6 +167,7 @@ export function GlobalAIOperatorSidebar() {
 
     setMessages(prev => [...prev, userMsg, assistantMsg]);
     setLoading(true);
+    emitGlowState("thinking");
 
     // build history for API (exclude currently streaming placeholder)
     const history = [...messages.filter(m => !m.streaming), userMsg]
@@ -220,6 +222,7 @@ export function GlobalAIOperatorSidebar() {
                 role: "tool_call", content: label, id: toolId, streaming: true,
                 toolName: payload.toolCall.name,
               }]);
+              emitGlowState("tool_call");
             }
 
             if (payload.content) {
@@ -234,18 +237,28 @@ export function GlobalAIOperatorSidebar() {
                 pendingToolMsgIds.includes(m.id) ? { ...m, streaming: false } : m
               ));
               const { clean, action } = extractAction(fullText);
+              const cards: any[] = payload.approvalCards ?? [];
               setMessages(prev => prev.map(m =>
                 m.id === assistantId ? {
                   ...m, content: clean, streaming: false,
-                  approvalCards: payload.approvalCards ?? [],
+                  approvalCards: cards,
                 } : m
               ));
-              if (action) dispatchNavigate(action);
+              if (action) {
+                emitGlowState("tool_call"); // navigating counts as an action
+                dispatchNavigate(action);
+                setTimeout(() => emitGlowState("success"), 400);
+              } else if (cards.length > 0) {
+                emitGlowState("approval_required");
+              } else {
+                emitGlowState("success");
+              }
             }
             if (payload.error) {
               setMessages(prev => prev.map(m =>
                 m.id === assistantId ? { ...m, content: `⚠️ ${payload.error}`, streaming: false } : m
               ));
+              emitGlowState("error");
             }
           } catch {}
         }
@@ -255,6 +268,9 @@ export function GlobalAIOperatorSidebar() {
         setMessages(prev => prev.map(m =>
           m.id === assistantId ? { ...m, content: "⚠️ Не удалось получить ответ. Проверь подключение.", streaming: false } : m
         ));
+        emitGlowState("error");
+      } else {
+        emitGlowState("idle");
       }
     } finally {
       setLoading(false);
