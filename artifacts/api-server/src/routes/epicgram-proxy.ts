@@ -93,14 +93,38 @@ async function forward(req: Request, res: Response) {
     if (hasBody) headers["content-type"] = "application/json";
 
     const upstream = await fetch(target, { method: req.method, headers, body });
-    // IMPORTANT: read as a binary Buffer, not .text() — text() decodes the
-    // body as UTF-8, which silently corrupts non-text payloads (e.g. JPEG
-    // avatar bytes from /telegram/photo turn into U+FFFD replacement bytes).
-    const buffer = Buffer.from(await upstream.arrayBuffer());
+
     res.status(upstream.status);
     upstream.headers.forEach((value, key) => {
       if (!STRIPPED_RESPONSE_HEADERS.has(key.toLowerCase())) res.setHeader(key, value);
     });
+
+    // SSE / streaming responses: pipe the body directly rather than buffering
+    // with arrayBuffer(). Buffering an SSE stream would block until the
+    // connection closes (never, for a keepalive bus).
+    const contentType = upstream.headers.get("content-type") ?? "";
+    if (contentType.includes("text/event-stream") && upstream.body) {
+      res.setHeader("cache-control", "no-cache");
+      res.setHeader("x-accel-buffering", "no"); // disable nginx buffering if present
+      res.flushHeaders();
+      const reader = upstream.body.getReader();
+      req.on("close", () => reader.cancel());
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          res.write(value);
+        }
+      } finally {
+        res.end();
+      }
+      return;
+    }
+
+    // IMPORTANT: read as a binary Buffer, not .text() — text() decodes the
+    // body as UTF-8, which silently corrupts non-text payloads (e.g. JPEG
+    // avatar bytes from /telegram/photo turn into U+FFFD replacement bytes).
+    const buffer = Buffer.from(await upstream.arrayBuffer());
     res.send(buffer);
   } catch {
     res.status(503).json({
