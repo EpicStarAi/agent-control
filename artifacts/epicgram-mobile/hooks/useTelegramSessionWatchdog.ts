@@ -52,6 +52,44 @@ export function useTelegramSessionAlert(): TelegramSessionAlert {
   return alert;
 }
 
+// ---------------------------------------------------------------------------
+// SSE connection state — tracks whether the watchdog stream is live or
+// trying to reconnect after a proxy/network failure.
+// ---------------------------------------------------------------------------
+
+export type WatchdogConnectionState = "connected" | "reconnecting";
+
+let connectionState: WatchdogConnectionState = "reconnecting";
+const connectionStateListeners = new Set<
+  (state: WatchdogConnectionState) => void
+>();
+
+function setConnectionState(next: WatchdogConnectionState) {
+  if (connectionState === next) return;
+  connectionState = next;
+  for (const listener of connectionStateListeners) listener(next);
+}
+
+export function getWatchdogConnectionState(): WatchdogConnectionState {
+  return connectionState;
+}
+
+export function subscribeWatchdogConnectionState(
+  listener: (state: WatchdogConnectionState) => void
+): () => void {
+  connectionStateListeners.add(listener);
+  return () => connectionStateListeners.delete(listener);
+}
+
+/** Read/subscribe helper for components that need to react to SSE connection state. */
+export function useWatchdogConnectionState(): WatchdogConnectionState {
+  const [state, setLocalState] = useState<WatchdogConnectionState>(
+    getWatchdogConnectionState()
+  );
+  useEffect(() => subscribeWatchdogConnectionState(setLocalState), []);
+  return state;
+}
+
 type AccountSlot = {
   slotId?: string;
   authorizationState?: string | null;
@@ -126,7 +164,17 @@ export function useTelegramSessionWatchdogEffect() {
             signal: controller.signal,
           });
 
-          if (!response.body) break;
+          if (!response.ok || !response.body) {
+            // Proxy or backend returned an error (e.g. 503 when backend is
+            // offline). Mark as reconnecting and back off before retrying.
+            setConnectionState("reconnecting");
+            await new Promise((r) => setTimeout(r, 5000));
+            continue;
+          }
+
+          // Stream is open — mark connected so the UI clears any indicator.
+          setConnectionState("connected");
+
           const reader = (response.body as ReadableStream<Uint8Array>).getReader();
           const decoder = new TextDecoder();
           let buffer = "";
@@ -181,15 +229,21 @@ export function useTelegramSessionWatchdogEffect() {
               }
             }
           }
+
+          // Stream ended cleanly (server closed). Mark reconnecting so the UI
+          // shows a spinner while the loop re-establishes the connection.
+          if (active) setConnectionState("reconnecting");
         } catch (err: unknown) {
           if (!active) break;
           const isAbort = err instanceof Error && err.name === "AbortError";
           if (isAbort) {
             // Aborted externally (e.g. foreground reconnect) — loop continues
-            // so a fresh connection is established immediately.
+            // so a fresh connection is established immediately. Leave the
+            // connection state as-is; the new connection will update it.
             continue;
           }
-          // Transient network error — back off before retrying.
+          // Transient network error — mark reconnecting and back off.
+          setConnectionState("reconnecting");
           await new Promise((r) => setTimeout(r, 5000));
         }
       }

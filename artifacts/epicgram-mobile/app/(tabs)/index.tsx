@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   dismissTelegramAlert,
   useTelegramSessionAlert,
+  useWatchdogConnectionState,
 } from "@/hooks/useTelegramSessionWatchdog";
 import { useColors } from "@/hooks/useColors";
 import { router } from "expo-router";
@@ -20,14 +21,25 @@ export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const alert = useTelegramSessionAlert();
+  const connectionState = useWatchdogConnectionState();
+
+  const isReconnecting = !alert && connectionState === "reconnecting";
 
   // Extra top padding when the alert banner is visible
   const alertBannerHeight = alert ? 46 : 0;
   const topPad =
     Platform.OS === "web" ? 67 + alertBannerHeight : alertBannerHeight;
 
-  const statusColor = alert ? colors.destructive : colors.accent;
-  const statusLabel = alert ? "Session disconnected" : "Connected";
+  const statusColor = alert
+    ? colors.destructive
+    : isReconnecting
+      ? colors.mutedForeground
+      : colors.accent;
+  const statusLabel = alert
+    ? "Session disconnected"
+    : isReconnecting
+      ? "Reconnecting…"
+      : "Connected";
   const statusIcon: "wifi-off" | "wifi" = alert ? "wifi-off" : "wifi";
 
   return (
