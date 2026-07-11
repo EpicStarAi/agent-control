@@ -123,9 +123,15 @@ export function useTelegramSessionWatchdogEffect() {
       return id ?? "main";
     }
 
-    /** One-shot poll: dismiss the alert if the session is now Ready. */
+    /**
+     * One-shot poll on foreground: syncs alert state with the live account list.
+     *
+     * Two cases are handled:
+     *   1. An alert is already showing → dismiss it if the session recovered.
+     *   2. No alert is showing → raise one if any account is now in a
+     *      non-ready state (session dropped while the app was backgrounded).
+     */
     async function pollAndSync() {
-      if (!currentAlert) return;
       try {
         const res = await fetch(accountsUrl, {
           headers: { Accept: "application/json" },
@@ -135,17 +141,38 @@ export function useTelegramSessionWatchdogEffect() {
           accounts?: AccountSlot[];
         };
         const accounts = data?.accounts ?? [];
-        const alertedId = normaliseId(currentAlert?.accountId);
-        const match = accounts.find(
-          (a) => normaliseId(a.slotId) === alertedId
-        );
-        if (match?.authorizationState === "authorizationStateReady") {
-          // Session recovered while we were backgrounded — clear the alert.
-          if (
-            currentAlert &&
-            normaliseId(currentAlert.accountId) === alertedId
-          ) {
-            setAlert(null);
+
+        if (currentAlert) {
+          // Case 1: dismiss the standing alert if the session recovered.
+          const alertedId = normaliseId(currentAlert.accountId);
+          const match = accounts.find(
+            (a) => normaliseId(a.slotId) === alertedId
+          );
+          if (match?.authorizationState === "authorizationStateReady") {
+            if (
+              currentAlert &&
+              normaliseId(currentAlert.accountId) === alertedId
+            ) {
+              setAlert(null);
+            }
+          }
+        } else {
+          // Case 2: no alert yet — check every account for a dropped state.
+          const dropped = accounts.find(
+            (a) =>
+              a.authorizationState != null &&
+              a.authorizationState !== "authorizationStateReady"
+          );
+          if (dropped) {
+            const alert: TelegramSessionAlert = {
+              accountId: dropped.slotId ?? null,
+              authorizationState: dropped.authorizationState ?? null,
+              at: new Date().toISOString(),
+            };
+            setAlert(alert);
+            console.warn(
+              `[epicgram-mobile] Telegram session for account "${alert.accountId ?? "main"}" found offline after foreground (now: ${alert.authorizationState}). Re-authenticate in Settings.`
+            );
           }
         }
       } catch {
