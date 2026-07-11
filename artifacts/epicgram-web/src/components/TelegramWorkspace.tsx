@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api";
 import SettingsCenter from "@/components/SettingsCenter";
+import { AddAccountWizard } from "@/components/AddAccountWizard";
 
 export type OperatorCommand = {
   reqId: string;
@@ -183,6 +184,8 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
   // On this page ctx is a static empty stub, so fall back to whatever the
   // read-only /telegram/status poll below found (statusAccounts).
   const [statusAccounts, setStatusAccounts] = useState<any[]>([]);
+  const [showWizard, setShowWizard] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
   const accountSlots = ctx.slots && ctx.slots.length > 0 ? ctx.slots : statusAccounts;
   const accounts = useMemo(() => (accountSlots || []).map((s: any) => {
     const ownerId = ctx.bind?.[s.slotId || s.label]; const owner = ctx.agents?.find((a) => a.id === ownerId);
@@ -263,7 +266,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
     }
     load();
     return () => { alive = false; };
-  }, [acc]);
+  }, [acc, refreshTick]);
 
   const account = accounts.find((a) => a.id === acc) || accounts[0];
   const lastCommandRef = useRef<string>("");
@@ -444,13 +447,46 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
   );
 
   function Center() {
-    if (section === "accounts") return accounts.length ? (
-      <div className="space-y-1.5 p-2">{accounts.map((a) => (
-        <Row key={a.id} active={acc === a.id} onClick={() => { setAcc(a.id); setSection("dialogs"); setLocalItem(""); setChat(""); }}>
-          <Avatar name={a.name} photoFileId={a.photoFileId} accountId={a.id} /><div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold">{a.name}</div><div className="truncate text-[11px] text-tg-muted">{a.phone} · {a.status}</div></div>
-          <span className="rounded bg-tg-bg px-1.5 py-0.5 text-[10px] text-tg-muted">{a.owner?.name || "нет агента"}</span>
-        </Row>))}</div>
-    ) : <Empty text="Нет аккаунтов Telegram." />;
+    if (section === "accounts") return (
+      <div className="space-y-2 p-2">
+        {/* Wizard overlay */}
+        {showWizard && (
+          <AddAccountWizard
+            onSuccess={(newSlotId) => {
+              setShowWizard(false);
+              setAcc(newSlotId);
+              setTimeout(() => setRefreshTick(t => t + 1), 800);
+            }}
+            onCancel={() => setShowWizard(false)}
+          />
+        )}
+        {/* Account list */}
+        {!showWizard && accounts.map((a) => (
+          <Row key={a.id} active={acc === a.id} onClick={() => { setAcc(a.id); setSection("dialogs"); setLocalItem(""); setChat(""); }}>
+            <Avatar name={a.name} photoFileId={a.photoFileId} accountId={a.id} />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold">{a.name}</div>
+              <div className="truncate text-[11px] text-tg-muted">{a.phone} · {a.status}</div>
+            </div>
+            <span className={`rounded px-1.5 py-0.5 text-[10px] ${a.status === "ready" ? "bg-emerald-500/15 text-emerald-400" : "bg-tg-bg text-tg-muted"}`}>
+              {a.status === "ready" ? "✓ подключён" : a.status}
+            </span>
+          </Row>
+        ))}
+        {/* Add button */}
+        {!showWizard && (
+          <button
+            onClick={() => setShowWizard(true)}
+            className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 py-2.5 text-[12px] font-medium text-white/40 transition-all hover:border-sky-500/40 hover:bg-sky-500/8 hover:text-sky-400"
+          >
+            <span className="text-base">+</span> Добавить Telegram-аккаунт
+          </button>
+        )}
+        {accounts.length === 0 && !showWizard && (
+          <p className="py-2 text-center text-[11px] text-white/30">Нет подключённых аккаунтов</p>
+        )}
+      </div>
+    );
     if (section === "groups") { const localGroups = LOCAL_ITEMS.filter((i) => i.folder === "groups"); return (groups.length || localGroups.length) ? (
       <div className="space-y-1.5 p-2">
         {localGroups.map((it) => (

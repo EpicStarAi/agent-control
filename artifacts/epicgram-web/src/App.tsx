@@ -14,6 +14,7 @@ import Tma from '@/pages/Tma';
 import Desktop from '@/pages/Desktop';
 import Mobile from '@/pages/Mobile';
 import ChannelOs from '@/pages/ChannelOs';
+import Diagnostics from '@/pages/Diagnostics';
 import { Redirect } from 'wouter';
 
 function Router() {
@@ -31,6 +32,7 @@ function Router() {
       <Route path="/desktop" component={Desktop} />
       <Route path="/mobile" component={Mobile} />
       <Route path="/channel-os" component={ChannelOs} />
+      <Route path="/diagnostics" component={Diagnostics} />
       <Route component={NotFound} />
     </Switch>
   );

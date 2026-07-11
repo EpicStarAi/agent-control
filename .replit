@@ -44,3 +44,6 @@ timeoutMs = 20000
 
 [userenv.shared]
 EPICGRAM_TDLIB_ENABLED = "true"
+OPENAI_FALLBACK_MODEL = "gpt-5.4-mini"
+OPENAI_MAX_OUTPUT_TOKENS = "2048"
+OPENAI_MODEL = "gpt-5.4-mini"

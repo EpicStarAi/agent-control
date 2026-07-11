@@ -6,8 +6,9 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { apiUrl } from "@/lib/api";
 
 // ── types ────────────────────────────────────────────────────────────────────
-type Role = "user" | "assistant" | "system";
-interface Msg { role: Role; content: string; id: string; streaming?: boolean }
+type Role = "user" | "assistant" | "system" | "tool_call";
+interface ApprovalCard { type: string; tool: string; payload: Record<string, any>; warning: string }
+interface Msg { role: Role; content: string; id: string; streaming?: boolean; toolName?: string; approvalCards?: ApprovalCard[] }
 type WinState = { x: number; y: number; w: number; h: number; minimized: boolean; maximized: boolean };
 
 // ── persistence helpers ───────────────────────────────────────────────────────
@@ -43,6 +44,16 @@ function dispatchNavigate(action: { kind: string; target?: string; query?: strin
     }));
   }
 }
+
+// ── tool call human-readable labels ──────────────────────────────────────────
+const TOOL_LABELS: Record<string, string> = {
+  get_status:           "🔍 Получаю статус Telegram…",
+  list_accounts:        "👤 Загружаю список аккаунтов…",
+  list_chats:           "💬 Загружаю чаты…",
+  get_chat_history:     "📜 Читаю историю чата…",
+  get_audit_log:        "📋 Читаю audit log…",
+  propose_send_message: "📨 Формирую запрос на отправку…",
+};
 
 // ── quick suggestion chips shown before first message ─────────────────────────
 const SUGGESTIONS = [
@@ -187,6 +198,7 @@ export function GlobalAIOperatorSidebar() {
       const decoder = new TextDecoder();
       let buffer = "";
       let fullText = "";
+      const pendingToolMsgIds: string[] = [];
 
       while (true) {
         const { done, value } = await reader.read();
@@ -198,6 +210,18 @@ export function GlobalAIOperatorSidebar() {
           if (!line.startsWith("data: ")) continue;
           try {
             const payload = JSON.parse(line.slice(6));
+
+            // Tool call in progress — show as a small status bubble
+            if (payload.toolCall) {
+              const toolId = uid();
+              pendingToolMsgIds.push(toolId);
+              const label = TOOL_LABELS[payload.toolCall.name] ?? payload.toolCall.name;
+              setMessages(prev => [...prev, {
+                role: "tool_call", content: label, id: toolId, streaming: true,
+                toolName: payload.toolCall.name,
+              }]);
+            }
+
             if (payload.content) {
               fullText += payload.content;
               setMessages(prev => prev.map(m =>
@@ -205,9 +229,16 @@ export function GlobalAIOperatorSidebar() {
               ));
             }
             if (payload.done) {
+              // Mark all tool call bubbles as done
+              setMessages(prev => prev.map(m =>
+                pendingToolMsgIds.includes(m.id) ? { ...m, streaming: false } : m
+              ));
               const { clean, action } = extractAction(fullText);
               setMessages(prev => prev.map(m =>
-                m.id === assistantId ? { ...m, content: clean, streaming: false } : m
+                m.id === assistantId ? {
+                  ...m, content: clean, streaming: false,
+                  approvalCards: payload.approvalCards ?? [],
+                } : m
               ));
               if (action) dispatchNavigate(action);
             }
@@ -322,28 +353,57 @@ export function GlobalAIOperatorSidebar() {
             )}
 
             {/* message bubbles */}
-            {messages.map(msg => (
-              <div key={msg.id}
-                className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-                {/* avatar */}
-                {msg.role === "assistant" && (
-                  <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px]"
-                    style={{ background: "linear-gradient(135deg,rgba(14,165,233,.4),rgba(168,85,247,.35))", border: "1px solid rgba(255,255,255,0.1)" }}>
-                    ✦
-                  </div>
-                )}
-                <div className={`max-w-[82%] rounded-2xl px-3 py-2 text-[12.5px] leading-[1.55] ${
-                  msg.role === "user"
-                    ? "rounded-tr-sm bg-sky-500/20 text-white/90"
-                    : "rounded-tl-sm bg-white/6 text-white/85"
-                }`}
-                  style={msg.role === "user"
-                    ? { background: "rgba(14,165,233,0.18)", border: "1px solid rgba(14,165,233,0.2)" }
-                    : { background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                  <MessageContent content={msg.content} streaming={msg.streaming} />
+            {messages.map(msg => {
+              // Tool call status bubble
+              if (msg.role === "tool_call") return (
+                <div key={msg.id} className="flex items-center gap-1.5 px-1">
+                  {msg.streaming
+                    ? <span className="h-3 w-3 animate-spin rounded-full border border-sky-500/40 border-t-sky-400" />
+                    : <span className="text-[10px] text-emerald-400">✓</span>}
+                  <span className="text-[10px] text-white/35 italic">{msg.content}</span>
                 </div>
-              </div>
-            ))}
+              );
+
+              return (
+                <div key={msg.id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                  {msg.role === "assistant" && (
+                    <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px]"
+                      style={{ background: "linear-gradient(135deg,rgba(14,165,233,.4),rgba(168,85,247,.35))", border: "1px solid rgba(255,255,255,0.1)" }}>
+                      ✦
+                    </div>
+                  )}
+                  <div className="flex max-w-[82%] flex-col gap-2">
+                    <div className={`rounded-2xl px-3 py-2 text-[12.5px] leading-[1.55] ${
+                      msg.role === "user" ? "rounded-tr-sm" : "rounded-tl-sm"
+                    }`}
+                      style={msg.role === "user"
+                        ? { background: "rgba(14,165,233,0.18)", border: "1px solid rgba(14,165,233,0.2)" }
+                        : { background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                      <MessageContent content={msg.content} streaming={msg.streaming} />
+                    </div>
+                    {/* Approval cards */}
+                    {msg.approvalCards?.map((card, i) => (
+                      <div key={i} className="rounded-xl border border-amber-500/30 bg-amber-500/8 p-3 text-[11px]">
+                        <div className="mb-1.5 flex items-center gap-1.5 font-semibold text-amber-400">
+                          <span>⚠️</span> Требуется подтверждение
+                        </div>
+                        <div className="space-y-1 text-white/60">
+                          <div><span className="text-white/40">Действие:</span> {card.tool}</div>
+                          {card.payload.chatTitle && <div><span className="text-white/40">Чат:</span> {card.payload.chatTitle}</div>}
+                          {card.payload.text && (
+                            <div><span className="text-white/40">Текст:</span>
+                              <span className="ml-1 rounded bg-white/5 px-1">{card.payload.text.slice(0, 80)}{card.payload.text.length > 80 ? "…" : ""}</span>
+                            </div>
+                          )}
+                        </div>
+                        <p className="mt-2 text-[10px] text-amber-400/70">{card.warning}</p>
+                        <p className="mt-1.5 text-[10px] text-white/25">Для подтверждения используй кнопку «Approve & Send» в рабочей области</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {/* ── input area ── */}
