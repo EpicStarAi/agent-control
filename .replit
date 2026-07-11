@@ -20,6 +20,10 @@ author = "agent"
 task = "workflow.run"
 args = "EPICGRAM API"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "epicgram-dev-tools-guard"
+
 [[workflows.workflow]]
 name = "EPICGRAM API"
 author = "agent"
@@ -31,6 +35,17 @@ outputType = "console"
 task = "shell.exec"
 args = "cd epicgram && EPICGRAM_API_HOST=0.0.0.0 node services/api/src/server.mjs"
 waitForPort = 8788
+
+[[workflows.workflow]]
+name = "epicgram-dev-tools-guard"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd epicgram && node --test services/api/src/dev-tools-guard.test.mjs"
+
+[workflows.workflow.metadata]
+isValidation = true
 
 [agent]
 stack = "PNPM_WORKSPACE"

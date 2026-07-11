@@ -16,7 +16,8 @@
     "lint": "next lint apps/web",
     "vite:dev": "vite",
     "vite:build": "vite build",
-    "vite:preview": "vite preview"
+    "vite:preview": "vite preview",
+    "test": "node --test services/api/src/dev-tools-guard.test.mjs"
   },
   "dependencies": {
     "@twa-dev/sdk": "^6.9.0",
