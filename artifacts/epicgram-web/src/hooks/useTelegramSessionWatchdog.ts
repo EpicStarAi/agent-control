@@ -27,6 +27,7 @@ export type TelegramSessionAlert = {
 } | null;
 
 let currentAlert: TelegramSessionAlert = null;
+let activeToastId: string | number | null = null;
 const listeners = new Set<(alert: TelegramSessionAlert) => void>();
 
 function setAlert(next: TelegramSessionAlert) {
@@ -39,6 +40,10 @@ export function getTelegramAlert(): TelegramSessionAlert {
 }
 
 export function dismissTelegramAlert() {
+  if (activeToastId !== null) {
+    toast.dismiss(activeToastId);
+    activeToastId = null;
+  }
   setAlert(null);
 }
 
@@ -81,13 +86,22 @@ export function useTelegramSessionWatchdogEffect() {
         console.warn(
           `[epicgram] Telegram session for account "${alert.accountId ?? "main"}" went offline unexpectedly (now: ${authorizationState}). Owner action needed: re-authenticate in Settings.`
         );
-        toast.error("Telegram-сессия отключилась неожиданно", {
+        // Dismiss any previous alert toast before firing a new one, then store
+        // the new ID so we can dismiss it programmatically when the session
+        // recovers or the owner manually clears the banner.
+        if (activeToastId !== null) toast.dismiss(activeToastId);
+        activeToastId = toast.error("Telegram-сессия отключилась неожиданно", {
           description: "Аккаунт вышел из авторизации без явного логаута. Переавторизуйтесь в Настройках, чтобы восстановить сессию.",
           duration: Infinity
         });
       } else if (authorizationState === "authorizationStateReady") {
-        // Session recovered — clear any standing alert for this account.
+        // Session recovered — clear any standing alert for this account,
+        // including the persistent toast so it doesn't linger after re-auth.
         if (currentAlert && (currentAlert.accountId ?? null) === (evt.accountId ?? null)) {
+          if (activeToastId !== null) {
+            toast.dismiss(activeToastId);
+            activeToastId = null;
+          }
           setAlert(null);
         }
       }
