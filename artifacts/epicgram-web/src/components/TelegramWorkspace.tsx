@@ -28,6 +28,7 @@ type Chat = {
   category?: "private" | "group" | "channel" | "bot" | "chat"; isChannel?: boolean; isBot?: boolean;
   isMarkedAsUnread?: boolean; unreadCount?: number; isMuted?: boolean; memberCount?: number;
   lastMessage?: { content?: string; text?: string } | null;
+  photoSmallFileId?: string | null;
 };
 
 const LS = "epic_tg_workspace_v1";
