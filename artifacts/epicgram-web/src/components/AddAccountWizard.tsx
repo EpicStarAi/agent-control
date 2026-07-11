@@ -152,7 +152,8 @@ const AUTH_STATE_LABELS: Record<string, string> = {
 
 export function AddAccountWizard({ onSuccess, onCancel }: Props) {
   const [step, setStep]           = useState<WizardStep>("phone");
-  const [country, setCountry]     = useState(COUNTRIES[0]);
+  const [countryIdx, setCountryIdx] = useState(0);
+  const country = COUNTRIES[countryIdx];
   const [phone, setPhone]         = useState("");
   const [code, setCode]           = useState("");
   const [password, setPassword]   = useState("");
@@ -294,11 +295,11 @@ export function AddAccountWizard({ onSuccess, onCancel }: Props) {
           <div>
             <label className="mb-1.5 block text-[11px] font-medium text-white/50">Страна</label>
             <select
-              value={country.code}
-              onChange={e => setCountry(COUNTRIES.find(c => c.code === e.target.value) || COUNTRIES[0])}
+              value={countryIdx}
+              onChange={e => setCountryIdx(Number(e.target.value))}
               className={inputCls}
             >
-              {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.flag} {c.name} ({c.code})</option>)}
+              {COUNTRIES.map((c, i) => <option key={i} value={i}>{c.flag} {c.name} ({c.code})</option>)}
             </select>
           </div>
           <div>
