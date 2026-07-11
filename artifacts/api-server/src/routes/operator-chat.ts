@@ -178,12 +178,14 @@ async function executeTool(name: string, args: Record<string, any>): Promise<{ r
 
 // ── main route ────────────────────────────────────────────────────────────────
 router.post("/operator/chat", async (req, res) => {
-  const { messages, context } = req.body as {
+  const { messages, context, settings, attachments } = req.body as {
     messages: { role: "user" | "assistant"; content: string }[];
     context?: {
       tgReady?: boolean; accountCount?: number; activeAccount?: string;
       currentSection?: string; selectedChatId?: string; selectedChatTitle?: string;
     };
+    settings?: { model?: string; temperature?: number; customSystemPrompt?: string };
+    attachments?: { name: string; type: string; dataUrl: string }[];
   };
 
   if (!Array.isArray(messages) || messages.length === 0) {
@@ -200,6 +202,12 @@ router.post("/operator/chat", async (req, res) => {
   const sse = (data: object) => res.write(`data: ${JSON.stringify(data)}\n\n`);
 
   try {
+    // Resolve model and temperature (client settings override env defaults)
+    const resolvedModel = settings?.model?.trim() || MODEL;
+    const resolvedTemp  = typeof settings?.temperature === "number"
+      ? Math.min(Math.max(settings.temperature, 0), 2)
+      : 0.7;
+
     // Build context addendum
     const ctxLines: string[] = [];
     if (context) {
@@ -211,22 +219,52 @@ router.post("/operator/chat", async (req, res) => {
       if (context.selectedChatId)  ctxLines.push(`Открытый чат: ${context.selectedChatTitle || context.selectedChatId}`);
     }
 
+    // Compose system prompt (custom prefix + base)
+    const systemContent = settings?.customSystemPrompt
+      ? `${settings.customSystemPrompt.trim()}\n\n${SYSTEM_PROMPT}${ctxLines.join("\n")}`
+      : SYSTEM_PROMPT + ctxLines.join("\n");
+
+    // Build message list — last user message may carry image attachments (vision)
+    const filteredHistory = messages.slice(-20).filter(m => m.role === "user" || m.role === "assistant");
+    const imageAtts = (attachments ?? []).filter(a => a.type.startsWith("image/")).slice(0, 4);
+
+    const historyMsgs: any[] = filteredHistory.map((m, idx) => {
+      // Inject images into the last user message if present
+      if (imageAtts.length > 0 && m.role === "user" && idx === filteredHistory.length - 1) {
+        return {
+          role: "user",
+          content: [
+            { type: "text", text: m.content },
+            ...imageAtts.map(a => ({ type: "image_url", image_url: { url: a.dataUrl, detail: "auto" } })),
+          ],
+        };
+      }
+      return { role: m.role, content: m.content };
+    });
+
+    // Add non-image attachment info to system context
+    const otherAtts = (attachments ?? []).filter(a => !a.type.startsWith("image/"));
+    if (otherAtts.length > 0) {
+      ctxLines.push(`\nПрикреплённые файлы: ${otherAtts.map(a => a.name).join(", ")}`);
+    }
+
     const chatMessages: any[] = [
-      { role: "system", content: SYSTEM_PROMPT + ctxLines.join("\n") },
-      ...messages.slice(-20).filter(m => m.role === "user" || m.role === "assistant"),
+      { role: "system", content: systemContent },
+      ...historyMsgs,
     ];
 
     let approvalCards: object[] = [];
 
     // ── agentic tool-call loop (max 4 iterations) ──────────────────────────────
     for (let iter = 0; iter < 4; iter++) {
-      let useModel = MODEL;
+      let useModel = resolvedModel;
       let response: any;
 
       try {
         response = await (openai as any).chat.completions.create({
           model: useModel,
           max_completion_tokens: MAX_TOKENS,
+          temperature: resolvedTemp,
           messages: chatMessages,
           tools: TOOLS,
           tool_choice: "auto",
@@ -239,6 +277,7 @@ router.post("/operator/chat", async (req, res) => {
           response = await (openai as any).chat.completions.create({
             model: useModel,
             max_completion_tokens: MAX_TOKENS,
+            temperature: resolvedTemp,
             messages: chatMessages,
             tools: TOOLS,
             tool_choice: "auto",
