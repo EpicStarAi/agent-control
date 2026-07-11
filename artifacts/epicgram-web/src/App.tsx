@@ -2,6 +2,7 @@ import { Route, Switch, Router as WouterRouter } from 'wouter';
 import NotFound from '@/pages/not-found';
 import OnlineDevBadge from '@/components/OnlineDevBadge';
 import TelegramSessionAlertBanner from '@/components/TelegramSessionAlertBanner';
+import DevSessionPanel from '@/components/DevSessionPanel';
 import { Toaster } from '@/components/ui/sonner';
 import { useTelegramSessionWatchdogEffect } from '@/hooks/useTelegramSessionWatchdog';
 import Landing from '@/pages/Landing';
@@ -44,6 +45,7 @@ function App() {
     <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
       <TelegramSessionAlertBanner />
       <OnlineDevBadge />
+      {import.meta.env.DEV && <DevSessionPanel />}
       <Router />
       <Toaster richColors position="top-right" />
     </WouterRouter>

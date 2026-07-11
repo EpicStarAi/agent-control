@@ -803,6 +803,38 @@ const server = http.createServer(async (request, response) => {
       return response.end(html);
     }
 
+    // DEV-ONLY: synthetic session-drop / session-recover triggers.
+    // These endpoints are intentionally blocked in production so they can never
+    // be hit on a deployed instance.  They emit real SSE events onto the shared
+    // event bus, which is exactly what a TDLib auth-state change would do, so
+    // the full banner → toast → recover → clear lifecycle can be exercised
+    // locally without a live Telegram connection.
+    if (process.env.NODE_ENV !== "production") {
+      if (request.method === "POST" && url.pathname === "/dev/session-drop") {
+        const { publish } = await import("./event-bus.mjs");
+        const body = await readJson(request).catch(() => ({}));
+        const accountId = body?.accountId ?? "dev-account";
+        const authorizationState = body?.authorizationState ?? "authorizationStateLoggingOut";
+        publish({
+          type: "auth.state_changed",
+          accountId,
+          data: { authorizationState, unexpectedDrop: true, synthetic: true }
+        });
+        return send(response, 200, { ok: true, synthetic: true, event: "session_drop", accountId, authorizationState });
+      }
+      if (request.method === "POST" && url.pathname === "/dev/session-recover") {
+        const { publish } = await import("./event-bus.mjs");
+        const body = await readJson(request).catch(() => ({}));
+        const accountId = body?.accountId ?? "dev-account";
+        publish({
+          type: "auth.state_changed",
+          accountId,
+          data: { authorizationState: "authorizationStateReady", unexpectedDrop: false, synthetic: true }
+        });
+        return send(response, 200, { ok: true, synthetic: true, event: "session_recover", accountId, authorizationState: "authorizationStateReady" });
+      }
+    }
+
     return send(response, 404, { message: "Not found" });
   } catch (error) {
     return send(response, 500, {
