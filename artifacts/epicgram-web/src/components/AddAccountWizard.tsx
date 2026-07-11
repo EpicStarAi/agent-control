@@ -2,7 +2,7 @@
 // Calls existing backend routes: /accounts/new → /auth/phone → /auth/code → /auth/2fa
 // Never stores phone, code or password in localStorage.
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { apiUrl } from "@/lib/api";
 
 type WizardStep = "phone" | "code" | "twofa" | "success" | "error";
@@ -153,7 +153,20 @@ const AUTH_STATE_LABELS: Record<string, string> = {
 export function AddAccountWizard({ onSuccess, onCancel }: Props) {
   const [step, setStep]           = useState<WizardStep>("phone");
   const [countryIdx, setCountryIdx] = useState(0);
+  const [countryOpen, setCountryOpen] = useState(false);
+  const countryRef = useRef<HTMLDivElement>(null);
   const country = COUNTRIES[countryIdx];
+
+  // close dropdown on outside click
+  useEffect(() => {
+    if (!countryOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (countryRef.current && !countryRef.current.contains(e.target as Node))
+        setCountryOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [countryOpen]);
   const [phone, setPhone]         = useState("");
   const [code, setCode]           = useState("");
   const [password, setPassword]   = useState("");
@@ -294,13 +307,44 @@ export function AddAccountWizard({ onSuccess, onCancel }: Props) {
         <div className="flex flex-col gap-3">
           <div>
             <label className="mb-1.5 block text-[11px] font-medium text-white/50">Страна</label>
-            <select
-              value={countryIdx}
-              onChange={e => setCountryIdx(Number(e.target.value))}
-              className={inputCls}
-            >
-              {COUNTRIES.map((c, i) => <option key={i} value={i}>{c.flag} {c.name} ({c.code})</option>)}
-            </select>
+            <div ref={countryRef} className="relative">
+              {/* trigger button */}
+              <button
+                type="button"
+                onClick={() => setCountryOpen(v => !v)}
+                className={`${inputCls} flex w-full items-center justify-between gap-2`}
+              >
+                <span className="flex items-center gap-2 truncate">
+                  <span className="text-base">{country.flag}</span>
+                  <span className="truncate">{country.name}</span>
+                  <span className="text-white/40">{country.code}</span>
+                </span>
+                <span className="shrink-0 text-[10px] text-white/30">{countryOpen ? "▲" : "▼"}</span>
+              </button>
+
+              {/* dropdown list */}
+              {countryOpen && (
+                <div
+                  className="absolute left-0 right-0 z-50 mt-1 overflow-y-auto rounded-xl border border-white/15 shadow-2xl"
+                  style={{ background: "#0d0d1e", maxHeight: "220px" }}
+                >
+                  {COUNTRIES.map((c, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => { setCountryIdx(i); setCountryOpen(false); }}
+                      className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12.5px] transition-colors hover:bg-white/10 ${
+                        i === countryIdx ? "bg-sky-500/20 text-sky-300" : "text-white/80"
+                      }`}
+                    >
+                      <span className="text-base">{c.flag}</span>
+                      <span className="flex-1 truncate">{c.name}</span>
+                      <span className="shrink-0 text-[11px] text-white/40">{c.code}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <div>
             <label className="mb-1.5 block text-[11px] font-medium text-white/50">Номер телефона</label>
