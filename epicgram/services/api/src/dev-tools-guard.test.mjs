@@ -13,6 +13,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import http from "node:http";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -92,6 +93,41 @@ function post(port, pathname) {
     req.end("{}");
   });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test 0 (static): every /dev/ route in server.mjs sits below the guard check
+// ─────────────────────────────────────────────────────────────────────────────
+test("all /dev/ routes are registered after the DEV_TOOLS_ENABLED guard", () => {
+  const serverPath = fileURLToPath(new URL("./server.mjs", import.meta.url));
+  const lines = readFileSync(serverPath, "utf8").split("\n");
+
+  // Find the guard line — the if-check that gates all /dev/ routes.
+  const guardLineIndex = lines.findIndex(
+    (l) => l.includes('process.env.DEV_TOOLS_ENABLED') && l.includes('"true"')
+  );
+  assert.notEqual(
+    guardLineIndex, -1,
+    "Could not locate the DEV_TOOLS_ENABLED guard line in server.mjs"
+  );
+
+  // Find every line that registers a /dev/ path  (e.g. pathname === "/dev/foo"
+  // or pathname.startsWith("/dev/")).  We look for the literal string /dev/
+  // inside a url.pathname comparison or startsWith call.
+  const devRoutePattern = /url\.pathname[\s\S]*?["'`]\/dev\//;
+  const misplaced = [];
+  lines.forEach((line, idx) => {
+    if (devRoutePattern.test(line) && idx < guardLineIndex) {
+      misplaced.push({ lineNumber: idx + 1, content: line.trim() });
+    }
+  });
+
+  assert.deepEqual(
+    misplaced, [],
+    `Found /dev/ route(s) registered BEFORE the DEV_TOOLS_ENABLED guard ` +
+    `(guard is on line ${guardLineIndex + 1}):\n` +
+    misplaced.map((m) => `  line ${m.lineNumber}: ${m.content}`).join("\n")
+  );
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test 1: endpoints return 404 when DEV_TOOLS_ENABLED is absent
