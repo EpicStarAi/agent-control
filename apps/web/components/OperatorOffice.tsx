@@ -581,42 +581,44 @@ export default function OperatorOffice() {
     let cancelled = false;
     const fetchData = async () => {
       try {
-        // Fetch runtime status + channel list in parallel
-        // Call backend :8788 directly (bypasses Next.js proxy which may return 401 in VS Code HMR)
+        // Fetch via Next.js operator bridge proxy — /api/operator/* routes
+        // proxy to backend :8788 server-side (no CORS, no auth leakage)
         const [statusResp, channelsResp] = await Promise.all([
-          fetch("http://127.0.0.1:8788/telegram/status", { cache: "no-store" }),
-          fetch("http://127.0.0.1:8788/telegram/chats", { cache: "no-store" }),
+          fetch("/api/operator/qclaw/status", { cache: "no-store" }),
+          fetch("/api/operator/publish/channels", { cache: "no-store" }),
         ]);
         if (cancelled) return;
-        const [statusData, chatsData] = await Promise.all([
+        const [statusData, channelsData] = await Promise.all([
           statusResp.json().catch(() => null),
           channelsResp.json().catch(() => null),
         ]);
         if (cancelled) return;
-        // Normalize :8788/telegram/status → runtimeData shape
-        if (statusData?.runtime === "ready") {
-          const acc = statusData.accounts?.[0] ?? null;
+
+        // Normalize Next.js /api/operator/qclaw/status → runtimeData shape
+        // Next.js route returns: { ok, telegram: { connected, authorizationState,
+        //   activeAccount: { idMasked, displayName, username } }, runtime: { tdlib, nativeBindingLoaded } }
+        if (statusData?.ok && statusData?.telegram) {
+          const tg = statusData.telegram;
           setRuntimeData({
             ok: true,
             telegram: {
-              connected: statusData.authorizationState === "authorizationStateReady",
-              authorizationState: statusData.authorizationState,
-              activeAccount: acc ? {
-                idMasked: String(acc.id ?? "").slice(0, 4) + "****",
-                displayName: acc.displayName,
-                username: acc.username ?? null,
-              } : null,
+              connected: Boolean(tg.connected),
+              authorizationState: String(tg.authorizationState ?? ""),
+              activeAccount: tg.activeAccount ?? null,
             },
             runtime: {
-              tdlib: statusData.adapter?.tdlibInfo?.version ?? "ready",
-              nativeBindingLoaded: statusData.adapter?.nativeBindingLoaded ?? false,
+              tdlib: statusData.runtime?.tdlib ?? "unknown",
+              nativeBindingLoaded: Boolean(statusData.runtime?.nativeBindingLoaded),
             },
           });
           setDataMode("real");
         }
-        // Normalize :8788/telegram/chats → channelData shape
-        if (chatsData?.chats) {
-          setChannelData({ ok: true, channels: chatsData.chats ?? [] });
+
+        // Normalize Next.js /api/operator/publish/channels → channelData shape
+        // Next.js route returns: { ok, channels: [{ id, title, type, isChannel, isGroup,
+        //   canPublish, reason, username, memberCount }] }
+        if (channelsData?.ok && Array.isArray(channelsData.channels)) {
+          setChannelData({ ok: true, channels: channelsData.channels });
         }
       } catch {
         // Backend unreachable — silently stay on mock data (already initialized)
@@ -635,28 +637,33 @@ export default function OperatorOffice() {
     setTimeout(async () => {
       let reply: string;
       try {
-        // Direct backend call — bypasses Next.js :3015 proxy (may be stale/401 in VS Code HMR)
-        const resp = await fetch("http://127.0.0.1:8788/telegram/status", { cache: "no-store" });
-        const r = await resp.json().catch(() => null);
+        // Call via Next.js operator bridge proxy — routes to :8788 server-side
+        const resp = await fetch("/api/operator/tools/execute", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            tool: "operator.runtime.status",
+            input: { account_slot: "NOVIKOVA" },
+            task_id: `op-${Date.now().toString(36)}`,
+          }),
+        });
+        const data = await resp.json().catch(() => null);
+        const r = data?.result ?? {};
         const authState = r?.authorizationState ?? "unknown";
         const runtime = r?.runtime ?? "unknown";
         const connected = authState === "authorizationStateReady";
-        const acc = r?.accounts?.[0] ?? null;
 
         reply = [
           `▸ EPICGRAM Operator Office — Bridge Response`,
-          `▸ Source: ${r?.mode ?? "local_backend"}`,
-          `▸ Tool: operator.runtime.status`,
+          `▸ Source: ${data?.mode ?? "operator-office"}`,
+          `▸ Tool: ${data?.tool ?? "operator.runtime.status"}`,
           `▸ Auth state: ${authState}`,
           `▸ Runtime: ${runtime}`,
           `▸ Telegram: ${connected ? "CONNECTED ✓" : "NOT READY ✗"}`,
-          `▸ Account: ${acc?.displayName ?? "NOVIKOVA 💋"}`,
-          `▸ User ID: ${acc?.id ?? "—"}`,
-          `▸ TDLib: ${r?.adapter?.tdlibInfo?.version ?? "unknown"}`,
-          `▸ Native binding: ${r?.adapter?.nativeBindingLoaded ? "LOADED ✓" : "not loaded"}`,
-          `▸ Mode: read_only`,
-          `▸ Requires approval: YES ✓`,
-          `▸ Live send: LOCKED 🔒`,
+          `▸ Mode: ${data?.mode ?? "read_only"}`,
+          `▸ Requires approval: ${data?.requiresApproval !== false ? "YES ✓" : "NO ✗"}`,
+          `▸ Live send: ${data?.liveSend === false ? "LOCKED 🔒" : "ENABLED ⚠️"}`,
+          `▸ Blocked by policy: ${data?.error === "blocked_by_policy" ? "YES ✗" : "NO"}`,
         ].join("\n");
       } catch {
         // Fallback to local envelope if API unreachable
