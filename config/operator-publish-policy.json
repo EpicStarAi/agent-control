@@ -1,0 +1,14 @@
+{
+  "enabled": false,
+  "account_slots": ["NOVIKOVA"],
+  "allowed_channels": [],
+  "max_posts_per_hour": 3,
+  "max_posts_per_day": 12,
+  "min_interval_seconds": 120,
+  "require_idempotency_key": true,
+  "allow_media": false,
+  "allow_delete": false,
+  "allow_edit": false,
+  "rate_limit_window_ms": 3600000,
+  "audit_storage_path": "C:\\Users\\Admin\\agent-control\\data\\operator-audit"
+}

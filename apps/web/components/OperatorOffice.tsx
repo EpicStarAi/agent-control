@@ -241,7 +241,7 @@ function ChannelOSPanel({ channelData }: { channelData: { ok: boolean; channels:
   return (
     <div style={{ fontFamily: "monospace", fontSize: 11, color: C.text }}>
       {channelData.ok && (
-        <div style={{ marginBottom: 10, padding: "6px 10px", background: `${C.green}14`, border: `1px solid ${C.green}33`, fontSize: 9, color: C.green, fontFamily: "monospace", marginBottom: 12 }}>
+        <div style={{ padding: "6px 10px", background: `${C.green}14`, border: `1px solid ${C.green}33`, fontSize: 9, color: C.green, fontFamily: "monospace", marginBottom: 12 }}>
           ✓ LIVE DATA from TDLib · {channelData.channels.length} chats loaded
         </div>
       )}
@@ -557,6 +557,7 @@ export default function OperatorOffice() {
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState(0);
   const [panel, setPanel] = useState<PanelId>(null);
+  const openPanel = (p: PanelId) => setPanel(p);
   const [messages, setMessages] = useState<MessageEntry[]>([]);
 
   // Real data fetched from Operator Office API bridge (falls back to mock gracefully)
@@ -584,8 +585,8 @@ export default function OperatorOffice() {
         // Fetch via Next.js operator bridge proxy — /api/operator/* routes
         // proxy to backend :8788 server-side (no CORS, no auth leakage)
         const [statusResp, channelsResp] = await Promise.all([
-          fetch("/api/operator/qclaw/status", { cache: "no-store" }),
-          fetch("/api/operator/publish/channels", { cache: "no-store" }),
+          fetch("/api/operator/qclaw/status", { cache: "no-store", credentials: "include" }),
+          fetch("/api/operator/publish/channels", { cache: "no-store", credentials: "include" }),
         ]);
         if (cancelled) return;
         const [statusData, channelsData] = await Promise.all([
@@ -641,6 +642,7 @@ export default function OperatorOffice() {
         const resp = await fetch("/api/operator/tools/execute", {
           method: "POST",
           headers: { "content-type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({
             tool: "operator.runtime.status",
             input: { account_slot: "NOVIKOVA" },
@@ -811,7 +813,7 @@ export default function OperatorOffice() {
 
           {/* Status */}
           <div style={{ fontSize: 10, color: C.green, fontFamily: "monospace", textAlign: "center", marginBottom: 4 }}>
-            <Dot color={C.green} pulse /> STATUS: READY
+            <Dot color={C.green} on /> STATUS: READY
           </div>
           <div style={{ fontSize: 9, color: C.muted, fontFamily: "monospace", textAlign: "center", marginBottom: 12 }}>
             authorizationStateReady<br />TDLib 1.8.64 · NOVIKOVA 💋
