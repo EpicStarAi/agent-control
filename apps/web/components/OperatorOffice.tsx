@@ -191,7 +191,11 @@ function Panel({
 }
 
 // ─── Panel: Telegram Desk ─────────────────────────────────────────────────────
-function TelegramDeskPanel({ runtimeData }: { runtimeData: Record<string, unknown> | null }) {
+function TelegramDeskPanel({ runtimeData, dataMode, lastSync }: {
+  runtimeData: Record<string, unknown> | null;
+  dataMode: "real" | "mock";
+  lastSync: string | null;
+}) {
   const tg = (runtimeData?.telegram as Record<string, unknown>) ?? null;
   const connected = Boolean(tg?.connected);
   const authState = (tg?.authorizationState as string) ?? "unknown";
@@ -205,6 +209,14 @@ function TelegramDeskPanel({ runtimeData }: { runtimeData: Record<string, unknow
         <Row label="User ID" value={acc?.idMasked ? String(acc.idMasked) : "—"} />
         <Row label="Username" value={acc?.username ? String(acc.username) : "—"} />
         <Row label="Auth" value={connected ? "AUTHORIZED" : authState} ok={connected} />
+        <Row
+          label="DATA MODE"
+          value={dataMode === "real" ? "LIVE" : "DEMO"}
+          ok={dataMode === "real"}
+        />
+        {lastSync && (
+          <Row label="LAST SYNC" value={new Date(lastSync).toLocaleTimeString()} />
+        )}
       </div>
       <div style={{ padding: 12, background: C.panel, ...pxb(C.accent, 1) }}>
         <SectionHead text="SEND MODE" />
@@ -299,7 +311,11 @@ function OperatorPanel() {
 }
 
 // ─── Panel: Runtime Status ────────────────────────────────────────────────────
-function ServerPanel({ runtimeData }: { runtimeData: Record<string, unknown> | null }) {
+function ServerPanel({ runtimeData, dataMode, lastSync }: {
+  runtimeData: Record<string, unknown> | null;
+  dataMode: "real" | "mock";
+  lastSync: string | null;
+}) {
   // Merge real runtime data with mock static indicators
   const rt = (runtimeData?.runtime as Record<string, unknown>) ?? {};
   const tg = (runtimeData?.telegram as Record<string, unknown>) ?? {};
@@ -338,6 +354,8 @@ function ServerPanel({ runtimeData }: { runtimeData: Record<string, unknown> | n
           ["TDLIB_NATIVE", "loaded (dev)"],
           ["LIVE_SEND", "LOCKED 🔒"],
           ["AUTO_PUBLISH", "disabled"],
+          ["DATA MODE", dataMode === "real" ? "LIVE ✓" : "DEMO ⚠"],
+          ["LAST SYNC", lastSync ? new Date(lastSync).toLocaleTimeString() : "never"],
           ["SECRETS", "not exposed"],
         ].map(([k, v]) => (
           <div key={k} style={{ marginBottom: 4 }}>
@@ -564,6 +582,7 @@ export default function OperatorOffice() {
   const [runtimeData, setRuntimeData] = useState<Record<string, unknown> | null>(null);
   const [channelData, setChannelData] = useState<{ ok: boolean; channels: Record<string, unknown>[] }>({ ok: false, channels: [] });
   const [dataMode, setDataMode] = useState<"real" | "mock">("mock"); // UI label only
+  const [lastSync, setLastSync] = useState<string | null>(null); // ISO timestamp of last successful fetch
 
   // Loading simulation
   useEffect(() => {
@@ -613,6 +632,7 @@ export default function OperatorOffice() {
             },
           });
           setDataMode("real");
+          setLastSync(new Date().toISOString());
         }
 
         // Normalize Next.js /api/operator/publish/channels → channelData shape
@@ -623,6 +643,8 @@ export default function OperatorOffice() {
         }
       } catch {
         // Backend unreachable — silently stay on mock data (already initialized)
+        setDataMode("mock");
+        setLastSync(null);
       }
     };
     fetchData();
@@ -715,8 +737,13 @@ export default function OperatorOffice() {
             🖥 EPICGRAM OPERATOR OFFICE
           </span>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {["DEV / SAFE OFFICE", "LIVE SEND LOCKED 🔒", "MANUAL APPROVAL ONLY"].map((b) => (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {[
+            dataMode === "real" ? "DATA: LIVE ✅" : "DATA: DEMO ⚠",
+            "DEV / SAFE OFFICE",
+            "LIVE SEND LOCKED 🔒",
+            "MANUAL APPROVAL ONLY",
+          ].map((b) => (
             <span key={b} style={{
               background: `${C.accent}18`, border: `1px solid ${C.accent}44`,
               color: C.accent, padding: "2px 8px",
@@ -876,10 +903,10 @@ export default function OperatorOffice() {
       </div>
 
       {/* ── Side Panels ─────────────────────────────────────────────────── */}
-      {panel === "telegram" && <Panel title="TELEGRAM DESK" icon="📨" onClose={closePanel}><TelegramDeskPanel runtimeData={runtimeData} /></Panel>}
+      {panel === "telegram" && <Panel title="TELEGRAM DESK" icon="📨" onClose={closePanel}><TelegramDeskPanel runtimeData={runtimeData} dataMode={dataMode} lastSync={lastSync} /></Panel>}
       {panel === "channels" && <Panel title="CHANNEL OS" icon="📡" onClose={closePanel}><ChannelOSPanel channelData={channelData} /></Panel>}
       {panel === "operator" && <Panel title="AI OPERATOR" icon="🤖" onClose={closePanel}><OperatorPanel /></Panel>}
-      {panel === "server" && <Panel title="RUNTIME STATUS" icon="🖥" onClose={closePanel}><ServerPanel runtimeData={runtimeData} /></Panel>}
+      {panel === "server" && <Panel title="RUNTIME STATUS" icon="🖥" onClose={closePanel}><ServerPanel runtimeData={runtimeData} dataMode={dataMode} lastSync={lastSync} /></Panel>}
       {panel === "content" && <Panel title="CONTENT PLAN" icon="📝" onClose={closePanel}><ContentPanel /></Panel>}
       {panel === "assets" && <Panel title="ASSETS VAULT" icon="🗂" onClose={closePanel}><AssetsPanel /></Panel>}
       {panel === "automation" && <Panel title="APPROVAL QUEUE" icon="⚡" onClose={closePanel}><AutomationPanel /></Panel>}
