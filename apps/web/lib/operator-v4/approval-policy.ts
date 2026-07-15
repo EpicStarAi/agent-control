@@ -1,6 +1,6 @@
 import type { ActionClass, AutonomyMode, RiskLevel } from "./types";
 
-const ALWAYS_MANUAL: ReadonlySet<ActionClass> = new Set([
+const ALWAYS_MANUAL: ReadonlySet<ActionClass> = new Set<ActionClass>([
   "deploy",
   "money",
   "account_management",
@@ -36,7 +36,12 @@ export function decideApproval(input: ApprovalPolicyInput): ApprovalPolicyDecisi
   }
 
   if (input.mode === "supervised") {
-    const requiresApproval = !["read", "analysis", "draft"].includes(input.actionClass);
+    const safeActions: ReadonlySet<ActionClass> = new Set<ActionClass>([
+      "read",
+      "analysis",
+      "draft",
+    ]);
+    const requiresApproval = !safeActions.has(input.actionClass);
     return {
       requiresApproval,
       reason: requiresApproval ? "supervised_write_action" : "supervised_safe_action",
