@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { OPERATOR_V4_TOOLS } from "../../../../lib/operator-v4/tool-registry";
+import { OPERATOR_V4_TOOLS } from "../../../../../lib/operator-v4/tool-registry";
 
 export const dynamic = "force-dynamic";
 
