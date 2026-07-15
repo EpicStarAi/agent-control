@@ -1,34 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { auditTransition } from "../../../../../lib/operator-v4/audit";
+import {
+  getRuntimeRecord,
+  updateRuntimeRecord,
+} from "../../../../../lib/operator-v4/runtime-store";
 import { executeOperatorV4Tool } from "../../../../../lib/operator-v4/tool-executor";
-import type {
-  ApprovalSnapshot,
-  ToolExecutionRequest,
-} from "../../../../../lib/operator-v4/types";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as {
-    executionRequest?: ToolExecutionRequest;
-    approval?: ApprovalSnapshot | null;
+    executionRequestId?: unknown;
   };
 
-  if (!body.executionRequest || typeof body.executionRequest !== "object") {
+  if (typeof body.executionRequestId !== "string") {
     return NextResponse.json(
-      { ok: false, state: "failed", reason: "execution_request_required" },
+      { ok: false, state: "failed", reason: "execution_request_id_required" },
       { status: 400 },
     );
   }
 
-  auditTransition(body.executionRequest, "risk_checking", {
+  const record = getRuntimeRecord(body.executionRequestId);
+  if (!record) {
+    return NextResponse.json(
+      { ok: false, state: "failed", reason: "execution_request_not_found" },
+      { status: 404 },
+    );
+  }
+
+  auditTransition(record.request, "risk_checking", {
     reason: "pre_execution_risk_recheck",
   });
 
   const result = await executeOperatorV4Tool({
-    request: body.executionRequest,
-    approval: body.approval ?? null,
+    request: record.request,
+    approval: record.approval,
     riskContext: {
       accountWarm: true,
       accountDailyActions: 0,
@@ -39,7 +46,13 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  auditTransition(body.executionRequest, result.state, {
+  const nextRequest = {
+    ...record.request,
+    state: result.state,
+  };
+  updateRuntimeRecord(record.request.id, { request: nextRequest });
+
+  auditTransition(nextRequest, result.state, {
     reason: result.reason,
     risk: result.risk,
     metadata: {
@@ -48,5 +61,7 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  return NextResponse.json(result, { status: result.status ?? (result.ok ? 200 : 400) });
+  return NextResponse.json(result, {
+    status: result.status ?? (result.ok ? 200 : 400),
+  });
 }
