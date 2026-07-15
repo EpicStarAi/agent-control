@@ -6,7 +6,7 @@ on:
       ref:
         description: Git ref to deploy to epic-gram.com
         required: true
-        default: feature/epic-ai-os-v4-pa
+        default: main
       confirm:
         description: Type DEPLOY_EPICGRAM_MVP
         required: true
@@ -61,4 +61,5 @@ jobs:
         run: |
           test "$(curl -ksS -o /dev/null -w '%{http_code}' https://epic-gram.com/login)" = "200"
           test "$(curl -ksS -o /dev/null -w '%{http_code}' https://epic-gram.com/client)" = "200"
+          test "$(curl -ksS -o /dev/null -w '%{http_code}' https://epic-gram.com/tma/profile)" = "200"
           test "$(curl -ksS -o /dev/null -w '%{http_code}' https://epic-gram.com/api/telegram/status)" = "200"
