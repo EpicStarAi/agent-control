@@ -4,7 +4,7 @@ set -Eeuo pipefail
 REPO_URL="${REPO_URL:-https://github.com/EpicStarAi/agent-control.git}"
 REF="${REF:-feature/epic-ai-os-v4-pa}"
 CANDIDATE_DIR="${CANDIDATE_DIR:-/opt/epicgram-candidate-v4-pa}"
-PORT="${PORT:-3016}"
+PORT="${PORT:-3017}"
 PM2_NAME="${PM2_NAME:-epicgram-v4-pa-candidate}"
 API_BASE_URL="${EPICGRAM_API_BASE_URL:-http://127.0.0.1:8788}"
 
@@ -39,21 +39,44 @@ npm run lint --if-present
 log "Building"
 NEXT_TELEMETRY_DISABLED=1 npm run build
 
+log "Verifying operator-v4 routes exist in build output"
+find apps/web/.next/server -type f | grep -E '/operator-v4/(page|route)\.(js|html)$' >/dev/null \
+  || fail "operator-v4 page is missing from Next.js build output"
+find apps/web/.next/server -type f | grep -E '/api/operator/v4/manifest/route\.js$' >/dev/null \
+  || fail "operator-v4 manifest route is missing from Next.js build output"
+
+if command -v ss >/dev/null && ss -ltn "sport = :${PORT}" | grep -q LISTEN; then
+  fail "candidate port ${PORT} is already occupied; refusing to stop an unknown process"
+fi
+
 log "Starting candidate on port ${PORT}; production is not touched"
 pm2 delete "${PM2_NAME}" >/dev/null 2>&1 || true
-EPICGRAM_API_BASE_URL="${API_BASE_URL}" PORT="${PORT}" pm2 start npm --name "${PM2_NAME}" -- start -- -p "${PORT}"
+EPICGRAM_API_BASE_URL="${API_BASE_URL}" PORT="${PORT}" \
+  pm2 start npm \
+    --name "${PM2_NAME}" \
+    --cwd "${CANDIDATE_DIR}" \
+    --update-env \
+    -- start -- -p "${PORT}"
 pm2 save
 
 log "Waiting for candidate"
-for _ in $(seq 1 30); do
-  if curl -fsS "http://127.0.0.1:${PORT}/api/operator/v4/manifest" >/dev/null; then
+ready=0
+for _ in $(seq 1 45); do
+  status="$(curl -sS -o /tmp/operator-v4-manifest.json -w '%{http_code}' "http://127.0.0.1:${PORT}/api/operator/v4/manifest" || true)"
+  if [[ "${status}" == "200" ]]; then
+    ready=1
     break
   fi
   sleep 2
 done
 
+if [[ "${ready}" != "1" ]]; then
+  pm2 logs "${PM2_NAME}" --lines 120 --nostream || true
+  fail "candidate did not become ready on port ${PORT}"
+fi
+
 log "Smoke testing"
-curl -fsS "http://127.0.0.1:${PORT}/api/operator/v4/manifest" | grep -q 'EPIC AI OS v4'
+grep -q 'EPIC AI OS v4' /tmp/operator-v4-manifest.json
 curl -fsS "http://127.0.0.1:${PORT}/operator-v4" >/dev/null
 curl -fsS -X POST "http://127.0.0.1:${PORT}/api/operator/v4/plan" \
   -H 'content-type: application/json' \
