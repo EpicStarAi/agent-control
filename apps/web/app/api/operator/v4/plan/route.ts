@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { buildDirectorPlan } from "../../../../../lib/operator-v4/director-planner";
+import { saveRuntimeRecord } from "../../../../../lib/operator-v4/runtime-store";
 import type { AutonomyMode } from "../../../../../lib/operator-v4/types";
 
 export const dynamic = "force-dynamic";
@@ -21,10 +22,7 @@ export async function POST(request: NextRequest) {
   };
 
   if (typeof body.message !== "string" || body.message.trim().length === 0) {
-    return NextResponse.json(
-      { error: "message_required" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "message_required" }, { status: 400 });
   }
 
   const autonomyMode = body.autonomyMode ?? "copilot";
@@ -32,10 +30,7 @@ export async function POST(request: NextRequest) {
     typeof autonomyMode !== "string" ||
     !AUTONOMY_MODES.has(autonomyMode as AutonomyMode)
   ) {
-    return NextResponse.json(
-      { error: "invalid_autonomy_mode" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "invalid_autonomy_mode" }, { status: 400 });
   }
 
   const result = await buildDirectorPlan({
@@ -47,9 +42,15 @@ export async function POST(request: NextRequest) {
     accountId: typeof body.accountId === "string" ? body.accountId : undefined,
   });
 
+  saveRuntimeRecord(result.executionRequest, result.approval);
+
   return NextResponse.json({
-    ...result,
-    executionEnabled: false,
+    plan: result.plan,
+    executionRequestId: result.executionRequest.id,
+    executionRequest: result.executionRequest,
+    approval: result.approval,
+    approvalPolicy: result.approvalPolicy,
+    executionEnabled: result.executionRequest.toolName === "telegram.list_chats",
     nextAction: result.approval ? "render_inline_approval" : "risk_recheck",
   });
 }
