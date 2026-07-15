@@ -45,12 +45,23 @@ find apps/web/.next/server -type f | grep -E '/operator-v4/(page|route)\.(js|htm
 find apps/web/.next/server -type f | grep -E '/api/operator/v4/manifest/route\.js$' >/dev/null \
   || fail "operator-v4 manifest route is missing from Next.js build output"
 
+log "Stopping previous candidate process if it exists"
+pm2 delete "${PM2_NAME}" >/dev/null 2>&1 || true
+
+# Give the previous Next.js process time to release the listening socket.
+for _ in $(seq 1 15); do
+  if ! command -v ss >/dev/null || ! ss -ltn "sport = :${PORT}" | grep -q LISTEN; then
+    break
+  fi
+  sleep 1
+done
+
 if command -v ss >/dev/null && ss -ltn "sport = :${PORT}" | grep -q LISTEN; then
-  fail "candidate port ${PORT} is already occupied; refusing to stop an unknown process"
+  owner="$(ss -ltnp "sport = :${PORT}" 2>/dev/null | tail -n +2 | head -n 1 || true)"
+  fail "candidate port ${PORT} is still occupied after stopping ${PM2_NAME}. Listener: ${owner:-unknown}"
 fi
 
 log "Starting candidate on port ${PORT}; production is not touched"
-pm2 delete "${PM2_NAME}" >/dev/null 2>&1 || true
 EPICGRAM_API_BASE_URL="${API_BASE_URL}" PORT="${PORT}" \
   pm2 start npm \
     --name "${PM2_NAME}" \
