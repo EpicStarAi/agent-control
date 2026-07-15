@@ -18,7 +18,7 @@ function stableSerialize(value: unknown): string {
     return `{${entries.join(",")}}`;
   }
 
-  return JSON.stringify(value);
+  return JSON.stringify(value) ?? "null";
 }
 
 export async function sha256(value: unknown): Promise<string> {
