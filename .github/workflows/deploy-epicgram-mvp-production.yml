@@ -19,9 +19,7 @@ jobs:
   deploy:
     if: ${{ inputs.confirm == 'DEPLOY_EPICGRAM_MVP' }}
     runs-on: ubuntu-latest
-    # Candidate deploys already prove these VPS credentials are valid.
-    # Reuse that environment to avoid the malformed production-only SSH key.
-    environment: candidate
+    environment: production
     steps:
       - name: Validate required secrets
         env:
