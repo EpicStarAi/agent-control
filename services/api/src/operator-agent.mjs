@@ -9,7 +9,48 @@ const SYS = `Ты — EPIC☠STAR, AI-оператор Telegram-клиента. 
 {"action":"list_chats"}
 {"action":"read_messages","chatId":"<id из списка>","chatTitle":"<название>"}
 {"action":"send_message","chatId":"<id из списка>","chatTitle":"<название>","text":"<текст сообщения>"}
-Правила: chatId бери ТОЛЬКО из переданного списка, не выдумывай. Если чат непонятен — верни action reply с уточняющим вопросом. Отправку (send_message) ты лишь ПРЕДЛАГАЕШЬ — выполнит оператор после подтверждения. Голос дерзкий, короткий, без токсика.`;
+Правила:
+1. chatId бери ТОЛЬКО из переданного списка, не выдумывай.
+2. Если чат непонятен — верни action reply с уточняющим вопросом.
+3. send_message разрешён только при явной команде пользователя отправить сообщение: «отправь», «пошли», «отправить», «send», «send it», «напиши в чат и отправь».
+4. Запросы на анализ, диагностику, чтение, список, объяснение, сводку или черновик должны возвращать reply/read_messages/list_chats, но НЕ send_message.
+5. При фразах «не отправляй», «ничего не выполняй», «только анализ», «только черновик», «read-only», «readonly» send_message запрещён безусловно.
+6. Отправку (send_message) ты лишь ПРЕДЛАГАЕШЬ — выполнит оператор после отдельного подтверждения.
+Голос дерзкий, короткий, без токсика.`;
+
+const HARD_DENY_PATTERNS = [
+  /не\s+отправляй/i,
+  /не\s+отправлять/i,
+  /ничего\s+не\s+выполняй/i,
+  /ничего\s+не\s+делай/i,
+  /только\s+анализ/i,
+  /только\s+черновик/i,
+  /без\s+отправк/i,
+  /read[\s-]?only/i,
+  /readonly/i,
+  /не\s+создавай\s+action/i,
+  /не\s+вызывай\s+send_message/i
+];
+
+const EXPLICIT_SEND_PATTERNS = [
+  /(^|\s)отправь(\s|$)/i,
+  /(^|\s)пошли(\s|$)/i,
+  /(^|\s)отправить(\s|$)/i,
+  /напиши[\s\S]{0,80}и\s+отправь/i,
+  /send\s+(it|this|message)/i,
+  /(^|\s)send(\s|$)/i
+];
+
+function hasHardDeny(text) {
+  const source = String(text || "");
+  return HARD_DENY_PATTERNS.some((pattern) => pattern.test(source));
+}
+
+function hasExplicitSendIntent(text) {
+  const source = String(text || "");
+  if (hasHardDeny(source)) return false;
+  return EXPLICIT_SEND_PATTERNS.some((pattern) => pattern.test(source));
+}
 
 function aiCfg() {
   return {
@@ -62,6 +103,10 @@ async function callBrain(messages) {
 }
 
 export async function runOperator({ text, history = [], accountId } = {}) {
+  const operatorText = String(text || "Привет");
+  const explicitSendIntent = hasExplicitSendIntent(operatorText);
+  const hardDeny = hasHardDeny(operatorText);
+
   accountId = await resolveReadyAccount(accountId);
   let chats = [];
   try {
@@ -69,9 +114,18 @@ export async function runOperator({ text, history = [], accountId } = {}) {
     chats = (cs?.body?.chats || []).slice(0, 40).map((c) => ({ id: String(c.id ?? c.chatId ?? ""), title: c.title || c.name || c.displayName || String(c.id ?? "") }));
   } catch {}
   const chatList = chats.length ? chats.map((c) => `- ${c.title} :: ${c.id}`).join("\n") : "(чатов нет / аккаунт не авторизован)";
-  const msgs = [{ role: "system", content: SYS }, { role: "system", content: "Доступные чаты:\n" + chatList }];
+  const intentPolicy = hardDeny
+    ? "ТЕКУЩАЯ КОМАНДА READ-ONLY: send_message ЗАПРЕЩЁН. Верни только reply/read_messages/list_chats."
+    : explicitSendIntent
+      ? "ТЕКУЩАЯ КОМАНДА содержит явное намерение отправки. send_message допустим как pending action."
+      : "ТЕКУЩАЯ КОМАНДА не содержит явного намерения отправки. send_message ЗАПРЕЩЁН.";
+  const msgs = [
+    { role: "system", content: SYS },
+    { role: "system", content: intentPolicy },
+    { role: "system", content: "Доступные чаты:\n" + chatList }
+  ];
   for (const h of history.slice(-10)) msgs.push({ role: h.isOutgoing ? "assistant" : "user", content: String(h.content || "") });
-  msgs.push({ role: "user", content: String(text || "Привет") });
+  msgs.push({ role: "user", content: operatorText });
 
   const raw = await callBrain(msgs);
   const j = parseJson(raw) || { action: "reply", text: raw || "…" };
@@ -86,12 +140,20 @@ export async function runOperator({ text, history = [], accountId } = {}) {
       return { kind: "reply", text: `Последние сообщения «${j.chatTitle || j.chatId}»:\n` + (arr || "(пусто)") };
     } catch { return { kind: "reply", text: "Не смог прочитать этот чат." }; }
   }
-  if (j.action === "send_message" && j.chatId && j.text) {
-    return {
-      kind: "pending",
-      reply: `Готов отправить в «${j.chatTitle || j.chatId}»:\n«${j.text}»`,
-      action: { tool: "send_message", chatId: String(j.chatId), chatTitle: j.chatTitle || "", text: String(j.text), accountId: accountId || "" }
-    };
+  if (j.action === "send_message") {
+    if (!explicitSendIntent || hardDeny) {
+      return {
+        kind: "reply",
+        text: "Запрос обработан в режиме без отправки. ACTION_CREATED=false\nTELEGRAM_MUTATION=false"
+      };
+    }
+    if (j.chatId && j.text) {
+      return {
+        kind: "pending",
+        reply: `Готов отправить в «${j.chatTitle || j.chatId}»:\n«${j.text}»`,
+        action: { tool: "send_message", chatId: String(j.chatId), chatTitle: j.chatTitle || "", text: String(j.text), accountId: accountId || "" }
+      };
+    }
   }
   return { kind: "reply", text: j.text || raw || "…" };
 }
