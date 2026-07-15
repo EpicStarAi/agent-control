@@ -11,7 +11,7 @@ const MAX_RECORDS = 500;
 
 function trimStore() {
   if (records.size <= MAX_RECORDS) return;
-  const oldest = [...records.entries()]
+  const oldest = Array.from(records.entries())
     .sort(([, left], [, right]) => left.updatedAt.localeCompare(right.updatedAt))
     .slice(0, records.size - MAX_RECORDS);
   for (const [id] of oldest) records.delete(id);
