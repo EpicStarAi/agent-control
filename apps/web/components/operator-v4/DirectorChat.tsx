@@ -21,35 +21,11 @@ interface ChatMessage {
   text: string;
 }
 
-interface ExecutionRequest {
-  id: string;
-  planId: string;
-  toolName: string;
-  arguments: Record<string, unknown>;
-  argumentsHash: string;
-  agentId: string;
-  requestedBy: string;
-  autonomyMode: AutonomyMode;
-  state: string;
-  createdAt: string;
-  expiresAt: string;
-}
-
-interface ApprovalSnapshot {
-  id: string;
-  executionRequestId: string;
-  toolName: string;
-  agentId: string;
-  argumentsHash: string;
-  decision: "pending" | "allow" | "deny" | "expired";
-  createdAt: string;
-  expiresAt: string;
-}
-
 interface PendingAction {
   planSummary: string;
-  executionRequest: ExecutionRequest;
-  approval: ApprovalSnapshot;
+  executionRequestId: string;
+  toolName: string;
+  arguments: Record<string, unknown>;
 }
 
 const INITIAL_MESSAGES: ChatMessage[] = [
@@ -61,8 +37,7 @@ const INITIAL_MESSAGES: ChatMessage[] = [
 ];
 
 function formatResult(result: unknown): string {
-  if (typeof result === "string") return result;
-  return JSON.stringify(result, null, 2);
+  return typeof result === "string" ? result : JSON.stringify(result, null, 2);
 }
 
 export default function DirectorChat() {
@@ -79,6 +54,10 @@ export default function DirectorChat() {
     [mode],
   );
 
+  function addMessage(role: MessageRole, text: string) {
+    setMessages((current) => [...current, { id: crypto.randomUUID(), role, text }]);
+  }
+
   async function submitMessage(event: FormEvent) {
     event.preventDefault();
     const message = input.trim();
@@ -87,10 +66,7 @@ export default function DirectorChat() {
     setInput("");
     setError(null);
     setBusy(true);
-    setMessages((current) => [
-      ...current,
-      { id: crypto.randomUUID(), role: "user", text: message },
-    ]);
+    addMessage("user", message);
 
     try {
       const response = await fetch("/api/operator/v4/plan", {
@@ -107,27 +83,20 @@ export default function DirectorChat() {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "plan_failed");
 
-      setMessages((current) => [
-        ...current,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          text: body.plan?.summary ?? "План подготовлен.",
-        },
-      ]);
+      addMessage("assistant", body.plan?.summary ?? "План подготовлен.");
 
       if (body.approval) {
         setPendingAction({
           planSummary: body.plan.summary,
-          executionRequest: body.executionRequest,
-          approval: body.approval,
+          executionRequestId: body.executionRequestId,
+          toolName: body.executionRequest.toolName,
+          arguments: body.executionRequest.arguments,
         });
       } else {
-        await executeAction(body.executionRequest, null);
+        await executeAction(body.executionRequestId);
       }
     } catch (requestError) {
-      const messageText = requestError instanceof Error ? requestError.message : "unknown_error";
-      setError(messageText);
+      setError(requestError instanceof Error ? requestError.message : "unknown_error");
     } finally {
       setBusy(false);
     }
@@ -144,40 +113,33 @@ export default function DirectorChat() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           decision,
-          executionRequest: pendingAction.executionRequest,
-          approval: pendingAction.approval,
+          executionRequestId: pendingAction.executionRequestId,
         }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "approval_failed");
 
       if (decision === "deny") {
-        setMessages((current) => [
-          ...current,
-          { id: crypto.randomUUID(), role: "system", text: "Действие отклонено оператором." },
-        ]);
+        addMessage("system", "Действие отклонено оператором.");
         setPendingAction(null);
         return;
       }
 
+      const requestId = pendingAction.executionRequestId;
       setPendingAction(null);
-      await executeAction(body.executionRequest, body.approval);
+      await executeAction(requestId);
     } catch (requestError) {
-      const messageText = requestError instanceof Error ? requestError.message : "unknown_error";
-      setError(messageText);
+      setError(requestError instanceof Error ? requestError.message : "unknown_error");
     } finally {
       setBusy(false);
     }
   }
 
-  async function executeAction(
-    executionRequest: ExecutionRequest,
-    approval: ApprovalSnapshot | null,
-  ) {
+  async function executeAction(executionRequestId: string) {
     const response = await fetch("/api/operator/v4/execute", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ executionRequest, approval }),
+      body: JSON.stringify({ executionRequestId }),
     });
     const body = await response.json();
 
@@ -185,14 +147,7 @@ export default function DirectorChat() {
       throw new Error(body.reason ?? "execution_failed");
     }
 
-    setMessages((current) => [
-      ...current,
-      {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        text: `Инструмент выполнен.\n\n${formatResult(body.result)}`,
-      },
-    ]);
+    addMessage("assistant", `Инструмент выполнен.\n\n${formatResult(body.result)}`);
   }
 
   return (
@@ -217,6 +172,11 @@ export default function DirectorChat() {
         <div className="px-3">
           <button
             type="button"
+            onClick={() => {
+              setMessages(INITIAL_MESSAGES);
+              setPendingAction(null);
+              setError(null);
+            }}
             className="flex w-full items-center gap-3 rounded-xl border border-black/10 bg-white/70 px-3 py-2.5 text-sm hover:bg-white"
           >
             <MessageSquarePlus size={17} />
@@ -258,7 +218,10 @@ export default function DirectorChat() {
         <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-5">
           <div className="flex-1 space-y-7 overflow-y-auto py-8">
             {messages.map((message) => (
-              <article key={message.id} className={message.role === "user" ? "ml-auto max-w-[80%]" : "max-w-[92%]"}>
+              <article
+                key={message.id}
+                className={message.role === "user" ? "ml-auto max-w-[80%]" : "max-w-[92%]"}
+              >
                 <p className="mb-1 text-xs font-medium text-black/45">
                   {message.role === "user" ? "Вы" : message.role === "assistant" ? "Director" : "Система"}
                 </p>
@@ -284,9 +247,9 @@ export default function DirectorChat() {
                     <p className="text-sm font-semibold">Разрешить Director использовать инструмент?</p>
                     <p className="mt-1 text-sm text-black/65">{pendingAction.planSummary}</p>
                     <div className="mt-3 rounded-xl bg-black/[0.045] p-3 font-mono text-xs">
-                      <div>{pendingAction.executionRequest.toolName}</div>
+                      <div>{pendingAction.toolName}</div>
                       <pre className="mt-2 overflow-x-auto whitespace-pre-wrap">
-                        {JSON.stringify(pendingAction.executionRequest.arguments, null, 2)}
+                        {JSON.stringify(pendingAction.arguments, null, 2)}
                       </pre>
                     </div>
                     <div className="mt-4 flex gap-2">
@@ -335,7 +298,7 @@ export default function DirectorChat() {
                 className="w-full resize-none bg-transparent px-1 text-sm outline-none placeholder:text-black/35"
               />
               <div className="flex items-center justify-between pt-2">
-                <span className="text-xs text-black/40">{modeLabel} · действия проходят policy/risk gate</span>
+                <span className="text-xs text-black/40">{modeLabel} · server-side approval · risk gate</span>
                 <button
                   type="submit"
                   disabled={!input.trim() || busy}
