@@ -1,0 +1,65 @@
+name: Deploy Operator v4 Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to deploy
+        required: true
+        default: feature/epic-ai-os-v4-pa
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: candidate
+    steps:
+      - name: Validate required secrets
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          test -n "$VPS_HOST"
+          test -n "$VPS_USER"
+          test -n "$VPS_SSH_KEY"
+
+      - name: Configure SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy isolated candidate
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          DEPLOY_REF: ${{ inputs.ref }}
+        run: |
+          ssh "$VPS_USER@$VPS_HOST" \
+            "DEPLOY_REF='$DEPLOY_REF' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd /opt
+          curl -fsSL "https://raw.githubusercontent.com/EpicStarAi/agent-control/${DEPLOY_REF}/scripts/deploy-operator-v4-candidate.sh" \
+            -o /tmp/deploy-operator-v4-candidate.sh
+          chmod +x /tmp/deploy-operator-v4-candidate.sh
+          /tmp/deploy-operator-v4-candidate.sh
+          REMOTE
+
+      - name: Verify candidate endpoints over SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh "$VPS_USER@$VPS_HOST" <<'REMOTE'
+          set -euo pipefail
+          curl -fsS http://127.0.0.1:3016/operator-v4 >/dev/null
+          curl -fsS http://127.0.0.1:3016/api/operator/v4/manifest >/dev/null
+          curl -fsS -X POST http://127.0.0.1:3016/api/operator/v4/plan \
+            -H 'content-type: application/json' \
+            --data '{"message":"Покажи последние Telegram-чаты NOVIKOVA","autonomyMode":"copilot","accountId":"novikova"}' >/dev/null
+          pm2 status operator-v4-candidate
+          REMOTE
