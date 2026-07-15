@@ -57,10 +57,10 @@ jobs:
         run: |
           ssh -o BatchMode=yes -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 "$VPS_USER@$VPS_HOST" <<'REMOTE'
           set -euo pipefail
-          curl -fsS http://127.0.0.1:3016/operator-v4 >/dev/null
-          curl -fsS http://127.0.0.1:3016/api/operator/v4/manifest >/dev/null
-          curl -fsS -X POST http://127.0.0.1:3016/api/operator/v4/plan \
+          curl -fsS http://127.0.0.1:3017/operator-v4 >/dev/null
+          curl -fsS http://127.0.0.1:3017/api/operator/v4/manifest >/dev/null
+          curl -fsS -X POST http://127.0.0.1:3017/api/operator/v4/plan \
             -H 'content-type: application/json' \
             --data '{"message":"Покажи последние Telegram-чаты NOVIKOVA","autonomyMode":"copilot","accountId":"novikova"}' >/dev/null
-          pm2 status operator-v4-candidate
+          pm2 status epicgram-v4-pa-candidate
           REMOTE
