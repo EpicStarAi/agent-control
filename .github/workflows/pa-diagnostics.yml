@@ -13,8 +13,11 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - name: Install
-        run: npm ci || npm install
+      - name: Install diagnostics
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          (npm ci || npm install) 2>&1 | tee install.log
       - name: Lint diagnostics
         continue-on-error: true
         run: |
@@ -33,6 +36,7 @@ jobs:
         with:
           name: pa-diagnostics
           path: |
+            install.log
             lint.log
             build.log
           if-no-files-found: warn
