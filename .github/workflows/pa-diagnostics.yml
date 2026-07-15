@@ -1,0 +1,38 @@
+name: P-A diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci || npm install
+      - name: Lint diagnostics
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run lint --if-present 2>&1 | tee lint.log
+      - name: Build diagnostics
+        continue-on-error: true
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee build.log
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pa-diagnostics
+          path: |
+            lint.log
+            build.log
+          if-no-files-found: warn
