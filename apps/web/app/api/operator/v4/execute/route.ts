@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { auditTransition } from "../../../../../lib/operator-v4/audit";
 import { executeOperatorV4Tool } from "../../../../../lib/operator-v4/tool-executor";
 import type {
   ApprovalSnapshot,
@@ -21,6 +22,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  auditTransition(body.executionRequest, "risk_checking", {
+    reason: "pre_execution_risk_recheck",
+  });
+
   const result = await executeOperatorV4Tool({
     request: body.executionRequest,
     approval: body.approval ?? null,
@@ -31,6 +36,15 @@ export async function POST(request: NextRequest) {
       targetAllowlisted: true,
       proxyHealthy: true,
       minimumIntervalMs: 0,
+    },
+  });
+
+  auditTransition(body.executionRequest, result.state, {
+    reason: result.reason,
+    risk: result.risk,
+    metadata: {
+      ok: result.ok,
+      status: result.status,
     },
   });
 
