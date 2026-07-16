@@ -1,0 +1,67 @@
+name: P0 Client Auth CI
+
+on:
+  push:
+    branches:
+      - feature/epic-ai-os-v4-pa
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "apps/web/app/login/**"
+      - "apps/web/app/client/**"
+      - "apps/web/components/SimpleTelegramLogin.tsx"
+      - "apps/web/components/TelegramBrowserSessionBinder.tsx"
+      - "apps/web/components/TelegramClientGate.tsx"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/p0-client-auth-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p0-client-auth-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      EPICGRAM_LIVE_SEND: "false"
+      TELEGRAM_MUTATION: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Assert P0 auth gate files
+        shell: bash
+        run: |
+          test -f apps/web/components/TelegramBrowserSessionBinder.tsx
+          test -f apps/web/components/TelegramClientGate.tsx
+          grep -q "TelegramClientGate" apps/web/app/client/page.tsx
+          grep -q "TelegramBrowserSessionBinder" apps/web/app/login/page.tsx
+          grep -q "sessionStorage" apps/web/components/TelegramClientGate.tsx
+          grep -q "authorizationStateReady" apps/web/components/TelegramClientGate.tsx
+
+      - name: Assert no live-send enablement
+        shell: bash
+        run: |
+          ! grep -R --line-number --exclude-dir=node_modules --exclude-dir=.next -E 'EPICGRAM_LIVE_SEND\s*=\s*["'"']?true|TELEGRAM_MUTATION\s*=\s*["'"']?true' apps/web services || (echo "Live-send enablement detected" && exit 1)
