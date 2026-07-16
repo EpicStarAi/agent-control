@@ -1,9 +1,12 @@
 import { NextRequest } from "next/server";
-import { proxyTelegramRequest } from "../../_proxy";
+import { getPrincipal, denyMutation } from "@/lib/telegramGuard";
 
-// Submit Telegram 2FA (cloud) password. The password is forwarded to the
-// backend TDLib runtime only; it is never stored or logged client-side.
-export async function POST(request: NextRequest) {
-  const body = await request.text();
-  return proxyTelegramRequest("/telegram/auth/2fa", { method: "POST", body });
+// INCIDENT hotfix/client-auth-guard: this mutation route had no session check.
+// Denied server-side by default; the request body is never forwarded and no
+// client-supplied approval flag is honoured.
+export const dynamic = "force-dynamic";
+
+export async function POST(_request: NextRequest) {
+  const principal = await getPrincipal();
+  return denyMutation("/api/telegram/auth/2fa", "POST", principal, "auth_2fa");
 }

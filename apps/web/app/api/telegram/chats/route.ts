@@ -1,8 +1,18 @@
 import { NextRequest } from "next/server";
-import { proxyTelegramRequest } from "../_proxy";
+import { requirePrincipal, resolveBoundAccountId, safeEmptyState, guardedJson } from "@/lib/telegramGuard";
 
-export async function GET(request: NextRequest) {
-  const accountId = request.nextUrl.searchParams.get("accountId");
-  const query = accountId ? `?accountId=${encodeURIComponent(accountId)}` : "";
-  return proxyTelegramRequest(`/telegram/chats${query}`);
+// INCIDENT hotfix/client-auth-guard: this route previously forwarded the
+// browser-supplied `accountId` straight to the backend with no session check,
+// returning the live chat list to anonymous callers. The query parameter is
+// now ignored entirely — the account may only come from the caller's session.
+export const dynamic = "force-dynamic";
+
+export async function GET(_request: NextRequest) {
+  const auth = await requirePrincipal("/api/telegram/chats", "GET");
+  if (!auth.ok) return auth.response;
+
+  const accountId = await resolveBoundAccountId(auth.principal);
+  if (!accountId) return guardedJson({ ...safeEmptyState("no_binding"), chats: [] }, 200);
+
+  return guardedJson({ ...safeEmptyState("no_binding"), chats: [] }, 200);
 }
