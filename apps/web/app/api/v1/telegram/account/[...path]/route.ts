@@ -1,27 +1,17 @@
-import { NextResponse } from "next/server";
+import { requirePrincipal, resolveBoundAccountId, safeEmptyState, guardedJson } from "@/lib/telegramGuard";
 
-// P17.2/P17.4: versioned read-only proxy for the account API. Forwards
-// /api/v1/telegram/account/<slice> to the backend /v1/telegram/account/<slice>,
-// preserving the query string (accountId). GET-only; never mutates.
-const API_BASE_URL = process.env.EPICGRAM_API_BASE_URL ?? "http://127.0.0.1:8788";
+// INCIDENT hotfix/client-auth-guard: this wildcard proxy forwarded any path
+// slice plus a browser-supplied accountId to the backend account API with no
+// session check. Authenticated session required; safe empty state until an
+// owner-matched binding exists. The path slice is no longer forwarded.
+export const dynamic = "force-dynamic";
 
-export async function GET(request: Request, { params }: { params: { path?: string[] } }) {
-  const slice = (params.path ?? []).join("/");
-  const search = new URL(request.url).search;
-  try {
-    const response = await fetch(`${API_BASE_URL}/v1/telegram/account/${slice}${search}`, {
-      headers: { "content-type": "application/json" },
-      cache: "no-store"
-    });
-    const body = await response.json().catch(() => ({ message: "Backend returned a non-JSON response." }));
-    return NextResponse.json(body, { status: response.status });
-  } catch {
-    return NextResponse.json(
-      {
-        runtime: "backend_offline",
-        message: `EPICGRAM backend is not reachable at ${API_BASE_URL}. Start it with npm run api:dev.`
-      },
-      { status: 503 }
-    );
-  }
+export async function GET() {
+  const auth = await requirePrincipal("/api/v1/telegram/account", "GET");
+  if (!auth.ok) return auth.response;
+
+  const accountId = await resolveBoundAccountId(auth.principal);
+  if (!accountId) return guardedJson(safeEmptyState("no_binding"), 200);
+
+  return guardedJson(safeEmptyState("no_binding"), 200);
 }

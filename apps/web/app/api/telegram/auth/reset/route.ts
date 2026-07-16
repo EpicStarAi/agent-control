@@ -1,10 +1,12 @@
 import { NextRequest } from "next/server";
-import { proxyTelegramRequest } from "../../_proxy";
+import { getPrincipal, denyMutation } from "@/lib/telegramGuard";
 
-export async function POST(request: NextRequest) {
-  const payload = await request.json().catch(() => ({}));
-  return proxyTelegramRequest("/telegram/auth/reset", {
-    method: "POST",
-    body: JSON.stringify(payload)
-  });
+// INCIDENT hotfix/client-auth-guard: this mutation route had no session check.
+// Denied server-side by default; the request body is never forwarded and no
+// client-supplied approval flag is honoured.
+export const dynamic = "force-dynamic";
+
+export async function POST(_request: NextRequest) {
+  const principal = await getPrincipal();
+  return denyMutation("/api/telegram/auth/reset", "POST", principal, "auth_reset");
 }

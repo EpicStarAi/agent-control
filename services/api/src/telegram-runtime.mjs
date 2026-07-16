@@ -1015,11 +1015,39 @@ async function appendOutbox(entry) {
 // EPICGRAM_AI_SEND_MODE is honored and never weakened: any value other than an
 // explicit auto mode requires the operator approval flag to be present.
 export async function sendMessage(payload) {
+  // INCIDENT hotfix/client-auth-guard — server-side mutation kill switch.
+  //
+  // This function previously derived its authorisation from
+  // `payload.operatorApproved`, i.e. from the HTTP request body. The web client
+  // hardcoded `operatorApproved: true`, so the "approval gate" authorised every
+  // caller — including unauthenticated ones — to send real messages from the
+  // live TDLib account.
+  //
+  // Mutations are now disabled server-side by default and the caller-supplied
+  // approval flag is ignored completely. This check runs FIRST: before reading
+  // state, before touching TDLib, and before any argument validation, so no
+  // request body can reach the send path while the switch is off.
+  const mutationsEnabled = String(process.env.TELEGRAM_MUTATION ?? "false").trim().toLowerCase() === "true";
+  if (!mutationsEnabled) {
+    return {
+      status: 403,
+      body: {
+        sent: false,
+        executed: false,
+        mutationsEnabled: false,
+        message: "Telegram-мутации отключены (TELEGRAM_MUTATION=false). Действие не выполнено."
+      }
+    };
+  }
+
   const state = await readState();
   const accountId = accountIdFromPayload(payload, state);
   const chatId = payload?.chatId;
   const text = String(payload?.text ?? "").trim();
-  const operatorApproved = payload?.operatorApproved === true;
+  // NOTE: intentionally NOT read from payload. Approval must be established by
+  // the server (authenticated principal + owner-matched account + payload hash
+  // + final confirmation), never asserted by the client.
+  const operatorApproved = false;
   const sendMode = process.env.EPICGRAM_AI_SEND_MODE || "operator_approval_required";
 
   if (!chatId) return { status: 400, body: { message: "chatId is required" } };
