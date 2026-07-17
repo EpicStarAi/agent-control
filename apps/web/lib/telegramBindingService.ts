@@ -287,9 +287,13 @@ export async function startQr(
     // Start QR in TDLib
     const result = await startQrTdlib(binding.tdlibAccountId);
     const body = (result?.body ?? result) as Record<string, unknown>;
-    const ok = (result as { status?: number }).status === 200;
+    // Backend replies 200 (idempotent — QR already waiting) or 202 (fresh QR
+    // requested, awaiting other-device confirmation). Either counts as success.
+    // The body has no `ok` field on this path; success is inferred from status.
+    const status = (result as { status?: number }).status;
+    const ok = status === 200 || status === 202;
 
-    if (!ok || !(body as Record<string, unknown>)?.ok) {
+    if (!ok) {
       await db.updateAuthState({
         workspaceId: principal.workspaceId,
         authState: "error",
