@@ -92,15 +92,21 @@ async function getMessagesTdlib(
 }
 
 // Detect if TDLib auth is ready from status response
+// Backend returns: { account: { authorizationState, status, username, phone }, authorized: boolean }
 function extractAuthState(statusBody: Record<string, unknown>): TelegramBindingAuthState {
-  const accounts = statusBody?.accounts as Array<Record<string, unknown>> | undefined;
-  const acc = accounts?.[0];
-  const authState = acc?.authorizationState as string | undefined;
-  if (authState === "authorizationStateReady" || acc?.status === "ready") return "ready";
-  if (authState === "authorizationStateWaitPhoneNumber") return "init";
-  if (authState === "authorizationStateWaitCode") return "waiting_code";
-  if (authState === "authorizationStateWaitPassword") return "waiting_password";
-  if (authState === "authorizationStateWaitOtherDeviceConfirmation") return "waiting_qr";
+  const authorized = statusBody?.authorized as boolean | undefined;
+  const account = statusBody?.account as Record<string, unknown> | undefined;
+  const authState = account?.authorizationState as string | undefined;
+  const status = account?.status as string | undefined;
+
+  // QR scan success: TDLib is now authorized
+  if (authorized === true || authState === "authorizationStateReady" || status === "ready") {
+    return "ready";
+  }
+  if (authState === "authorizationStateWaitPhoneNumber" || status === "waitPhone") return "init";
+  if (authState === "authorizationStateWaitCode" || status === "waitCode") return "waiting_code";
+  if (authState === "authorizationStateWaitPassword" || status === "waitPassword") return "waiting_password";
+  if (authState === "authorizationStateWaitOtherDeviceConfirmation" || status === "waitQr") return "waiting_qr";
   return "init";
 }
 
@@ -171,7 +177,7 @@ export async function getStatus(
     // If waiting_qr, poll TDLib live state
     if (binding.authState === "waiting_qr" || binding.authState === "waiting_code" || binding.authState === "waiting_password") {
       const tdlibStatus = await getTdlibStatus(binding.tdlibAccountId);
-      const body = (tdlibStatus?.body ?? tdlibStatus) as Record<string, unknown>;
+      const body = tdlibStatus?.body ?? tdlibStatus;
       const liveAuthState = extractAuthState(body as Record<string, unknown>);
 
       if (liveAuthState === "ready") {
@@ -179,8 +185,8 @@ export async function getStatus(
         const updated = await db.updateAuthState({
           workspaceId: principal.workspaceId,
           authState: "ready",
-          username: (body?.account as Record<string, unknown>)?.username as string | null ?? null,
-          phoneMasked: (body?.account as Record<string, unknown>)?.phoneMasked as string | null ?? binding.phoneMasked,
+          username: ((body as Record<string, unknown>)?.account as Record<string, unknown>)?.username as string | null ?? null,
+          phoneMasked: ((body as Record<string, unknown>)?.account as Record<string, unknown>)?.phoneMasked as string | null ?? binding.phoneMasked,
         });
         return { ok: true, status: buildBindingStatus(updated, null) };
       }
@@ -208,7 +214,7 @@ export async function getStatus(
     // Build authFlow for pending states
     if (binding.authState === "waiting_qr") {
       const tdlibStatus = await getTdlibStatus(binding.tdlibAccountId);
-      const body = (tdlibStatus?.body ?? tdlibStatus) as Record<string, unknown>;
+      const body = tdlibStatus?.body ?? tdlibStatus;
       const flow: TelegramAuthFlow = {
         type: "qr",
         qrLink: (body as Record<string, unknown>)?.qrLink as string | null ?? null,
@@ -286,14 +292,10 @@ export async function startQr(
 
     // Start QR in TDLib
     const result = await startQrTdlib(binding.tdlibAccountId);
-    const body = (result?.body ?? result) as Record<string, unknown>;
-    // Backend replies 200 (idempotent — QR already waiting) or 202 (fresh QR
-    // requested, awaiting other-device confirmation). Either counts as success.
-    // The body has no `ok` field on this path; success is inferred from status.
-    const status = (result as { status?: number }).status;
-    const ok = status === 200 || status === 202;
+    const body = result?.body ?? result;
+    const ok = (result as { status?: number }).status === 200;
 
-    if (!ok) {
+    if (!ok || !(body as Record<string, unknown>)?.ok) {
       await db.updateAuthState({
         workspaceId: principal.workspaceId,
         authState: "error",
@@ -359,7 +361,7 @@ export async function submitPhone(
     });
 
     const result = await startPhoneTdlib(normalized, binding.tdlibAccountId);
-    const body = (result?.body ?? result) as Record<string, unknown>;
+    const body = result?.body ?? result;
 
     // phone auth itself returns 200 even if it sent the code
     // We accept any 200 as success and move to waiting_code state
@@ -413,15 +415,15 @@ export async function submitCode(
     }
 
     const result = await submitCodeTdlib(code.trim(), binding.tdlibAccountId);
-    const body = (result?.body ?? result) as Record<string, unknown>;
-    const authState = extractAuthState(body);
+    const body = result?.body ?? result;
+    const authState = extractAuthState(body as Record<string, unknown>);
 
     if (authState === "ready") {
       await db.updateAuthState({
         workspaceId: principal.workspaceId,
         authState: "ready",
-        username: (body as Record<string, unknown>)?.account && typeof body.account === "object"
-          ? (body.account as Record<string, unknown>).username as string | null
+        username: typeof (body as Record<string, unknown>)?.account === "object"
+          ? ((body as Record<string, unknown>).account as Record<string, unknown>).username as string | null ?? binding.username
           : binding.username,
       });
       const updated = await db.getByWorkspace(principal.workspaceId);
@@ -481,8 +483,8 @@ export async function submit2fa(
     }
 
     const result = await submit2faTdlib(password, binding.tdlibAccountId);
-    const body = (result?.body ?? result) as Record<string, unknown>;
-    const authState = extractAuthState(body);
+    const body = result?.body ?? result;
+    const authState = extractAuthState(body as Record<string, unknown>);
 
     if (authState === "ready") {
       await db.updateAuthState({ workspaceId: principal.workspaceId, authState: "ready" });
@@ -572,8 +574,8 @@ export async function getChats(
     }
 
     const result = await getChatsTdlib(binding.tdlibAccountId, limit);
-    const body = (result?.body ?? result) as Record<string, unknown>;
-    const chats = ((body as Record<string, unknown>)?.chats ?? []) as unknown[];
+    const body = result?.body ?? result;
+    const chats = ((body as Record<string, unknown>)?.chats as unknown[]) ?? [];
     return { ok: true, chats, source: `tdlib:${binding.tdlibAccountId}` };
   } catch {
     return { ok: false, reason: "Не удалось загрузить чаты. Проверьте соединение." };
@@ -602,8 +604,8 @@ export async function getMessages(
     }
 
     const result = await getMessagesTdlib(binding.tdlibAccountId, chatId, limit);
-    const body = (result?.body ?? result) as Record<string, unknown>;
-    const messages = ((body as Record<string, unknown>)?.messages ?? []) as unknown[];
+    const body = result?.body ?? result;
+    const messages = ((body as Record<string, unknown>)?.messages as unknown[]) ?? [];
     return { ok: true, messages, chatId };
   } catch {
     return { ok: false, reason: "Не удалось загрузить сообщения." };
