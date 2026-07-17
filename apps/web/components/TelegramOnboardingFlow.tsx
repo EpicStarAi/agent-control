@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 // TelegramOnboardingFlow — P0 Per-User Telegram Binding UI
 // Embedded inside EpicGramShell. No routing, no demo/mock data.
 
@@ -244,7 +244,7 @@ function PasswordInput({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-  ﻿  if (!pwd) return;
+    if (!pwd) return;
     onSubmit(pwd);
   };
 
@@ -292,14 +292,21 @@ function PasswordInput({
 // Success / Error / Closed states
 // ---------------------------------------------------------------------------
 function SuccessPanel({ onClose }: { onClose: () => void }) {
+  // Auto-close after 2s and refresh the chat list / binding display
+  useEffect(() => {
+    const t = setTimeout(() => onClose(), 2000);
+    return () => clearTimeout(t);
+  }, [onClose]);
+
   return (
     <div className="flex flex-col items-center gap-3 py-6 text-center">
       <div className="text-5xl">✅</div>
       <div className="text-base font-semibold text-emerald-300">Telegram подключён!</div>
       <div className="text-sm text-white/50">Привязка активна. Сообщения доступны.</div>
+      <div className="text-xs text-white/30 animate-pulse">Закрытие окна…</div>
       <button
         onClick={onClose}
-        className="mt-2 rounded-xl border border-white/10 bg-white/5 px-6 py-2 text-sm text-white/70 hover:bg-white/10 transition-colors"
+        className="mt-1 rounded-xl border border-white/10 bg-white/5 px-6 py-2 text-sm text-white/70 hover:bg-white/10 transition-colors"
       >
         Закрыть
       </button>
@@ -396,8 +403,8 @@ export function TelegramOnboardingFlow({ binding, onStateChange }: OnboardingPro
           cache: "no-store",
         });
         if (!res.ok) return;
-        const data = await res.json();
-        notifyChange(data.status as BindingStatus);
+        const data: BindingStatus = await res.json();
+        notifyChange(data);
       } catch {
         // abort/silent
       }
@@ -488,7 +495,7 @@ export function TelegramOnboardingFlow({ binding, onStateChange }: OnboardingPro
       const data = await res.json();
       if (data.ok) {
         notifyChange(data.status as BindingStatus);
-        const ﻿newState = (data.status as BindingStatus).binding?.authState;
+        const newState = (data.status as BindingStatus).binding?.authState;
         if (newState === "waiting_password") {
           setStep("password");
         } else if (newState === "ready") {
