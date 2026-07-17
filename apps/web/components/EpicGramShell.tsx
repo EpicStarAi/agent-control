@@ -473,7 +473,7 @@ export function EpicGramShell({ section }: Props) {
     let cancelled = false;
 
     async function syncTelegramStatus() {
-      const response = await fetch("/api/telegram/status", { cache: "no-store" });
+      const response = await fetch("/api/telegram/binding/status", { cache: "no-store" });
       const status = (await response.json()) as TelegramStatus;
       if (cancelled) return;
 
@@ -548,7 +548,7 @@ export function EpicGramShell({ section }: Props) {
 
     async function loadTelegramChats() {
       setChatSyncMessage("Синхронизация TDLib...");
-      const response = await fetch(`/api/telegram/chats?accountId=${encodeURIComponent(activeAccountId)}`, { cache: "no-store" });
+      const response = await fetch(`/api/telegram/binding/chats?limit=30`, { cache: "no-store" });
       const data = (await response.json()) as TelegramChatsResponse;
       if (!cancelled && response.ok) {
         setTelegramChats(data.chats ?? []);
@@ -589,7 +589,7 @@ export function EpicGramShell({ section }: Props) {
     setMessagesLoading(true);
 
     async function loadTelegramMessages() {
-      const response = await fetch(`/api/telegram/messages?accountId=${encodeURIComponent(activeAccountId)}&chatId=${encodeURIComponent(selectedTelegramChatId)}`, { cache: "no-store" });
+      const response = await fetch(`/api/telegram/binding/messages?chat_id=${encodeURIComponent(selectedTelegramChatId)}&limit=50`, { cache: "no-store" });
       const data = (await response.json()) as TelegramMessagesResponse;
       if (!cancelled && response.ok) setTelegramMessages(data.messages ?? []);
       if (!cancelled) setMessagesLoading(false);
@@ -671,7 +671,7 @@ export function EpicGramShell({ section }: Props) {
     }
 
     setChatSyncMessage("Синхронизация TDLib...");
-    const response = await fetch(`/api/telegram/chats?accountId=${encodeURIComponent(activeAccountId)}`, { cache: "no-store" });
+    const response = await fetch(`/api/telegram/binding/chats?limit=30`, { cache: "no-store" });
     const data = (await response.json()) as TelegramChatsResponse;
     if (response.ok) {
       setTelegramChats(data.chats ?? []);
@@ -683,7 +683,7 @@ export function EpicGramShell({ section }: Props) {
 
   async function refreshTelegramMessages() {
     if (!selectedTelegramChatId) return;
-    const response = await fetch(`/api/telegram/messages?accountId=${encodeURIComponent(activeAccountId)}&chatId=${encodeURIComponent(selectedTelegramChatId)}`, { cache: "no-store" });
+    const response = await fetch(`/api/telegram/binding/messages?chat_id=${encodeURIComponent(selectedTelegramChatId)}&limit=50`, { cache: "no-store" });
     const data = (await response.json()) as TelegramMessagesResponse;
     if (response.ok) setTelegramMessages(data.messages ?? []);
   }
@@ -755,14 +755,10 @@ export function EpicGramShell({ section }: Props) {
       return;
     }
     setAuthFlowActive(true);
-    const response = await fetch("/api/telegram/auth/qr", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountId: activeAccountId })
-    });
-    const data = (await response.json()) as { message?: string; qrLink?: string };
-    setQrLink(data.qrLink ?? "");
-    setAuthMessage(data.message ?? (response.ok ? "QR авторизация запрошена." : "QR авторизация не запустилась."));
+    const response = await fetch("/api/telegram/binding/qr", { method: "POST" });
+    const data = (await response.json()) as { ok?: boolean; status?: { authFlow?: { qrLink?: string | null } | null }; reason?: string };
+    setQrLink(data.status?.authFlow?.qrLink ?? "");
+    setAuthMessage(data.reason ?? (data.ok ? "QR авторизация запрошена." : "QR авторизация не запустилась."));
   }
 
   async function requestPhoneAuth() {
@@ -773,26 +769,26 @@ export function EpicGramShell({ section }: Props) {
     setAuthFlowActive(true);
     setQrLink("");
     setQrDataUrl("");
-    const response = await fetch("/api/telegram/auth/phone", {
+    const response = await fetch("/api/telegram/binding/phone", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountId: activeAccountId, phoneNumber: phone })
+      body: JSON.stringify({ phone })
     });
-    const data = (await response.json()) as { message?: string };
-    setAuthMessage(data.message ?? (response.ok ? "Код запрошен. Проверьте Telegram." : "Код не отправлен. Проверьте номер и backend."));
+    const data = (await response.json()) as { ok?: boolean; reason?: string };
+    setAuthMessage(data.reason ?? (data.ok ? "Код запрошен. Проверьте Telegram." : "Код не отправлен. Проверьте номер и backend."));
   }
 
   async function requestCodeAuth() {
     setAuthFlowActive(true);
-    const response = await fetch("/api/telegram/auth/code", {
+    const response = await fetch("/api/telegram/binding/code", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountId: activeAccountId, code })
+      body: JSON.stringify({ code })
     });
-    const data = (await response.json()) as { message?: string };
-    setAuthMessage(data.message ?? (response.ok ? "Код отправлен на проверку." : "Код не принят Telegram."));
+    const data = (await response.json()) as { ok?: boolean; reason?: string };
+    setAuthMessage(data.reason ?? (data.ok ? "Код отправлен на проверку." : "Код не принят Telegram."));
     if (response.ok) {
-      const statusResponse = await fetch("/api/telegram/status", { cache: "no-store" });
+      const statusResponse = await fetch("/api/telegram/binding/status", { cache: "no-store" });
       const status = (await statusResponse.json()) as TelegramStatus;
       setTelegramStatus(status);
       if (isTelegramReady(status)) {
@@ -806,16 +802,16 @@ export function EpicGramShell({ section }: Props) {
 
   async function requestTwoFaAuth() {
     setAuthFlowActive(true);
-    const response = await fetch("/api/telegram/auth/2fa", {
+    const response = await fetch("/api/telegram/binding/2fa", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountId: activeAccountId, password: pass2fa })
+      body: JSON.stringify({ password: pass2fa })
     });
-    const data = (await response.json()) as { message?: string };
+    const data = (await response.json()) as { ok?: boolean; reason?: string };
     setPass2fa("");
-    setAuthMessage(data.message ?? (response.ok ? "2FA отправлен на проверку." : "2FA не принят."));
+    setAuthMessage(data.reason ?? (data.ok ? "2FA отправлен на проверку." : "2FA не принят."));
     if (response.ok) {
-      const statusResponse = await fetch("/api/telegram/status", { cache: "no-store" });
+      const statusResponse = await fetch("/api/telegram/binding/status", { cache: "no-store" });
       const status = (await statusResponse.json()) as TelegramStatus;
       setTelegramStatus(status);
       if (isTelegramReady(status)) {
@@ -887,17 +883,13 @@ export function EpicGramShell({ section }: Props) {
   }
 
   async function resetAuth() {
-    const response = await fetch("/api/telegram/auth/reset", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountId: activeAccountId })
-    });
-    const data = (await response.json()) as { message?: string };
+    const response = await fetch("/api/telegram/binding/reset", { method: "POST" });
+    const data = (await response.json()) as { ok?: boolean; reason?: string };
     setQrLink("");
     setQrDataUrl("");
     setCode("");
     setAuthFlowActive(false);
-    setAuthMessage(data.message ?? (response.ok ? "Авторизация сброшена." : "Не удалось сбросить авторизацию."));
+    setAuthMessage(data.reason ?? (data.ok ? "Авторизация сброшена." : "Не удалось сбросить авторизацию."));
   }
 
   const railAccounts = telegramStatus?.accounts ?? [];
