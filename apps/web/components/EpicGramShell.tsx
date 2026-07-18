@@ -35,6 +35,7 @@ import {
   X
 } from "lucide-react";
 import type { Section } from "@/data/mock";
+import type { BindingStatus } from "../lib/telegramBindings";
 
 type Props = { section: Section };
 type AuthMode = "qr" | "phone";
@@ -225,7 +226,47 @@ const routeItems = [
   { href: "/settings", label: "Настройки", icon: Settings }
 ];
 
-function isTelegramReady(status: TelegramStatus | null) {
+// Transform BindingStatus (from /api/telegram/binding/status) into TelegramStatus
+// so the rest of EpicGramShell's derived state (telegramReady, railAccounts, etc.)
+// works without further changes.
+function bindingStatusToTelegramStatus(bs: BindingStatus): TelegramStatus {
+  if (!bs.bound || !bs.binding) {
+    return { runtime: "offline" };
+  }
+  const { binding } = bs;
+  const authStateMap: Record<string, string> = {
+    ready:        "authorizationStateReady",
+    waiting_qr:   "authorizationStateWaitCode",
+    waiting_code: "authorizationStateWaitCode",
+    waiting_password: "authorizationStateWaitPassword",
+    error:        "authorizationStateWaitCode",
+    closed:       "authorizationStateClosed",
+    init:         "authorizationStateClosing",
+  };
+  const account: TelegramAccount = {
+    slotId:     binding.tdlibAccountId,
+    id:         binding.id,
+    label:      binding.displayName || binding.username || binding.tdlibAccountId,
+    status:     binding.authState === "ready" ? "ready" : "pending",
+    active:     true,
+    authorizationState: authStateMap[binding.authState] ?? "authorizationStateClosing",
+    displayName: binding.displayName ?? binding.username ?? undefined,
+    username:   binding.username,
+    phoneMasked: binding.phoneMasked,
+  };
+  return {
+    runtime: binding.authState === "ready" ? "ready" : "pending",
+    activeAccountId: binding.tdlibAccountId,
+    authorizationState: authStateMap[binding.authState] ?? "authorizationStateClosing",
+    account,
+    accounts: [account],
+  };
+}
+
+function isTelegramReady(status: TelegramStatus | null, bindingReady?: boolean) {
+  // Primary: check the BindingStatus-driven runtime
+  if (bindingReady) return true;
+  // Fallback: legacy TelegramStatus fields (for TelegramWorkspace / non-binding callers)
   return status?.runtime === "ready" || status?.authorizationState === "authorizationStateReady";
 }
 
@@ -357,6 +398,7 @@ export function EpicGramShell({ section }: Props) {
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [authMessage, setAuthMessage] = useState("TDLib backend пока не подключен.");
   const [telegramStatus, setTelegramStatus] = useState<TelegramStatus | null>(null);
+  const [bindingStatus, setBindingStatus] = useState<BindingStatus | null>(null);
   const [telegramChats, setTelegramChats] = useState<TelegramChat[]>([]);
   const [selectedTelegramChatId, setSelectedTelegramChatId] = useState("");
   const [telegramMessages, setTelegramMessages] = useState<TelegramMessage[]>([]);
@@ -372,8 +414,10 @@ export function EpicGramShell({ section }: Props) {
   const [memoryCount, setMemoryCount] = useState<number | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [redButtonNotice, setRedButtonNotice] = useState("");
-  const telegramReady = isTelegramReady(telegramStatus);
-  const activeAccountId = telegramStatus?.activeAccountId ?? primaryTelegramAccount(telegramStatus)?.slotId ?? "main";
+  const telegramReady = isTelegramReady(telegramStatus, bindingStatus?.bound === true && bindingStatus?.binding?.authState === "ready");
+  const activeAccountId = bindingStatus?.bound
+    ? (bindingStatus.binding?.tdlibAccountId ?? telegramStatus?.activeAccountId ?? "main")
+    : (telegramStatus?.activeAccountId ?? primaryTelegramAccount(telegramStatus)?.slotId ?? "main");
 
   useEffect(() => {
     clearClientCaches(false).catch(() => undefined);
@@ -469,31 +513,53 @@ export function EpicGramShell({ section }: Props) {
     };
   }, [qrLink]);
 
+  // Poll binding status: keeps both bindingStatus and telegramStatus in sync.
+  // When auth flow completes (binding becomes ready), the auth modal is closed here
+  // so the shell reflects the new state immediately.
   useEffect(() => {
     let cancelled = false;
 
     async function syncTelegramStatus() {
-      const response = await fetch("/api/telegram/binding/status", { cache: "no-store" });
-      const status = (await response.json()) as TelegramStatus;
-      if (cancelled) return;
+      try {
+        const response = await fetch("/api/telegram/binding/status", { cache: "no-store" });
+        if (!response.ok || cancelled) return;
+        const bs = (await response.json()) as BindingStatus;
+        if (cancelled) return;
 
-      setTelegramStatus(status);
-      if (authOpen && status.qrLink) setQrLink(status.qrLink);
+        setBindingStatus(bs);
+        setTelegramStatus(bindingStatusToTelegramStatus(bs));
 
-      if (authOpen && authFlowActive && isTelegramReady(status)) {
-        const accountName = primaryTelegramAccount(status)?.displayName;
-        setQrLink("");
-        setQrDataUrl("");
-        setAuthOpen(false);
-        setAuthFlowActive(false);
-        setAuthMessage(accountName ? `Telegram авторизован: ${accountName}` : "Telegram аккаунт авторизован.");
+        // Propagate QR link to the auth modal if it is open
+        if (authOpen && bs.authFlow?.qrLink) setQrLink(bs.authFlow.qrLink);
+
+        // Auth flow completed: binding is now ready → close the auth modal
+        if (
+          authOpen &&
+          authFlowActive &&
+          bs.bound &&
+          bs.binding?.authState === "ready"
+        ) {
+          const accountName = bs.binding?.username ?? bs.binding?.displayName ?? null;
+          setQrLink("");
+          setQrDataUrl("");
+          setAuthOpen(false);
+          setAuthFlowActive(false);
+          setAuthMessage(
+            accountName
+              ? `Telegram авторизован: ${accountName}`
+              : "Telegram аккаунт авторизован."
+          );
+        }
+      } catch {
+        // Network errors: silent, keep previous state
       }
     }
 
     syncTelegramStatus().catch(() => undefined);
+    const interval = authOpen ? 2000 : 5000;
     const timer = window.setInterval(() => {
       syncTelegramStatus().catch(() => undefined);
-    }, authOpen ? 2000 : 5000);
+    }, interval);
 
     return () => {
       cancelled = true;
@@ -537,6 +603,7 @@ export function EpicGramShell({ section }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [telegramStatus, activeAccountId]);
 
+  // Reload chats whenever binding becomes ready or account switches
   useEffect(() => {
     if (!telegramReady) {
       setTelegramChats([]);
@@ -565,7 +632,8 @@ export function EpicGramShell({ section }: Props) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [activeAccountId, telegramReady]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAccountId, telegramReady, bindingStatus?.bound, bindingStatus?.binding?.authState]);
 
   useEffect(() => {
     if (telegramChats.length === 0) {
@@ -745,6 +813,9 @@ export function EpicGramShell({ section }: Props) {
   }
 
   function activeSlotIsReady() {
+    // Primary: check the binding state directly
+    if (bindingStatus?.bound && bindingStatus?.binding?.authState === "ready") return true;
+    // Fallback: check the transformed telegramStatus account
     const slot = telegramStatus?.accounts?.find((a) => a.slotId === activeAccountId);
     return Boolean(slot && (slot.status === "ready" || slot.authorizationState === "authorizationStateReady"));
   }
@@ -789,10 +860,11 @@ export function EpicGramShell({ section }: Props) {
     setAuthMessage(data.reason ?? (data.ok ? "Код отправлен на проверку." : "Код не принят Telegram."));
     if (response.ok) {
       const statusResponse = await fetch("/api/telegram/binding/status", { cache: "no-store" });
-      const status = (await statusResponse.json()) as TelegramStatus;
-      setTelegramStatus(status);
-      if (isTelegramReady(status)) {
-        const accountName = primaryTelegramAccount(status)?.displayName;
+      const bs = (await statusResponse.json()) as BindingStatus;
+      setBindingStatus(bs);
+      setTelegramStatus(bindingStatusToTelegramStatus(bs));
+      if (bs.bound && bs.binding?.authState === "ready") {
+        const accountName = bs.binding?.username ?? bs.binding?.displayName ?? null;
         setAuthOpen(false);
         setAuthFlowActive(false);
         setAuthMessage(accountName ? `Telegram авторизован: ${accountName}` : "Telegram аккаунт авторизован.");
@@ -812,10 +884,11 @@ export function EpicGramShell({ section }: Props) {
     setAuthMessage(data.reason ?? (data.ok ? "2FA отправлен на проверку." : "2FA не принят."));
     if (response.ok) {
       const statusResponse = await fetch("/api/telegram/binding/status", { cache: "no-store" });
-      const status = (await statusResponse.json()) as TelegramStatus;
-      setTelegramStatus(status);
-      if (isTelegramReady(status)) {
-        const accountName = primaryTelegramAccount(status)?.displayName;
+      const bs = (await statusResponse.json()) as BindingStatus;
+      setBindingStatus(bs);
+      setTelegramStatus(bindingStatusToTelegramStatus(bs));
+      if (bs.bound && bs.binding?.authState === "ready") {
+        const accountName = bs.binding?.username ?? bs.binding?.displayName ?? null;
         setAuthOpen(false);
         setAuthFlowActive(false);
         setAuthMessage(accountName ? `Telegram авторизован: ${accountName}` : "Telegram аккаунт авторизован.");
@@ -892,7 +965,25 @@ export function EpicGramShell({ section }: Props) {
     setAuthMessage(data.reason ?? (data.ok ? "Авторизация сброшена." : "Не удалось сбросить авторизацию."));
   }
 
-  const railAccounts = telegramStatus?.accounts ?? [];
+  // Prefer binding-derived accounts; fall back to legacy telegramStatus accounts
+  const railAccounts: TelegramAccount[] = ((): TelegramAccount[] => {
+    if (bindingStatus?.bound && bindingStatus.binding) {
+      const b = bindingStatus.binding;
+      const isReady = b.authState === "ready";
+      return [{
+        slotId:            b.tdlibAccountId,
+        id:                b.id,
+        label:             b.displayName || b.username || b.tdlibAccountId,
+        status:            isReady ? "ready" : "pending",
+        active:            true,
+        authorizationState: isReady ? "authorizationStateReady" : "authorizationStateClosing",
+        displayName:       b.displayName ?? b.username ?? undefined,
+        username:          b.username,
+        phoneMasked:       b.phoneMasked,
+      }];
+    }
+    return telegramStatus?.accounts ?? [];
+  })();
   const unreadActiveTotal = telegramChats.reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
 
   return (
