@@ -46,12 +46,13 @@ export function registerTelegramReadTools(registry) {
       required: ["chatId"],
       properties: {
         chatId: { type: ["string", "number"] },
+        accountId: { type: ["string", "number"] },
         limit: { type: "integer", minimum: 1, maximum: 100 },
         fromMessageId: { type: ["string", "number"] }
       },
       additionalProperties: false
     },
-    execute: async (input = {}) => getMessages(requireChatId(input), input)
+    execute: async (input = {}) => getMessages({ ...input, chatId: requireChatId(input) })
   });
 
   return registry;
