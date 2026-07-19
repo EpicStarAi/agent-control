@@ -1,8 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TelegramBindingWizard } from "./TelegramBindingWizard";
+import { OnboardingGate } from "./OnboardingGate";
+import { SectionNav } from "./SectionNav";
 import {
   Archive,
   AlertTriangle,
@@ -215,17 +216,8 @@ const localItems: LocalItem[] = [
   }
 ];
 
-const routeItems = [
-  { href: "/client", label: "Рабочая область", icon: MessageCircle },
-  { href: "/platform", label: "Платформа", icon: Smartphone },
-  { href: "/council", label: "Совет", icon: Sparkles },
-  { href: "/missions", label: "Миссии", icon: Inbox },
-  { href: "/chats", label: "Чаты", icon: Users },
-  { href: "/accounts", label: "Аккаунты", icon: User },
-  { href: "/agents", label: "AI-агенты", icon: Cpu },
-  { href: "/logs", label: "Журнал аудита", icon: FileClock },
-  { href: "/settings", label: "Настройки", icon: Settings }
-];
+// Section navigation moved to <SectionNav/> (reference-structured, grouped, with
+// honest "готовится" states). See components/SectionNav.tsx.
 
 function isTelegramReady(status: TelegramStatus | null) {
   // Bridged per-user shape: /api/telegram/status returns runtime "owner_bound" +
@@ -913,9 +905,10 @@ export function EpicGramShell({ section }: Props) {
   const unreadActiveTotal = telegramChats.reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
 
   return (
-    <main className="h-screen min-h-0 overflow-hidden bg-tg-bg text-tg-text">
+    <main className="min-h-0 overflow-hidden bg-tg-bg text-tg-text" style={{ height: "100dvh" }}>
       <TelegramBindingWizard />
-      <div className="fixed right-4 top-4 z-30 flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-2xl border border-tg-line bg-tg-panel/95 p-2 shadow-telegram backdrop-blur">
+      <OnboardingGate />
+      <div className="fixed right-4 z-30 flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-2xl border border-tg-line bg-tg-panel/95 p-2 shadow-telegram backdrop-blur" style={{ top: "max(1rem, env(safe-area-inset-top))" }}>
         <button
           onClick={toggleSound}
           className={`flex h-10 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-semibold ${soundEnabled ? "bg-tg-active text-white" : "bg-tg-bg text-tg-muted hover:bg-tg-hover hover:text-white"}`}
@@ -1136,7 +1129,17 @@ function OperatorDock({
   selectedTelegramChatId: string;
   telegramMessages: any[];
 }) {
-  const [open, setOpen] = useState(true);
+  // Closed by default so the panel never covers the chat on first paint. On a
+  // wide screen it opens as a side panel; on mobile it stays closed behind the
+  // FAB and opens full-screen on demand. Also opens on the shared
+  // `epicgram:operator:open` event (menu / onboarding "Открыть оператора").
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth >= 640) setOpen(true);
+    const onOpen = () => setOpen(true);
+    window.addEventListener("epicgram:operator:open", onOpen);
+    return () => window.removeEventListener("epicgram:operator:open", onOpen);
+  }, []);
   const [msgs, setMsgs] = useState<OpMsg[]>([
     { role: "op", text: "На связи. Я EPIC💀CLAW AI. Пиши задачу, кидай фото/видео/аудио — разрулю." }
   ]);
@@ -1340,7 +1343,8 @@ function OperatorDock({
     return (
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-red-600 px-4 py-3 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_22px_rgba(220,38,38,.5)] hover:bg-red-500"
+        className="fixed right-4 z-40 flex items-center gap-2 rounded-full bg-red-600 px-4 py-3 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_22px_rgba(220,38,38,.5)] hover:bg-red-500"
+        style={{ bottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
       >
         <Bot className="h-5 w-5" /> EPIC💀CLAW AI
       </button>
@@ -1348,8 +1352,14 @@ function OperatorDock({
   }
 
   return (
-    <div className="fixed right-0 top-0 z-40 flex h-screen w-[340px] max-w-[88vw] flex-col border-l border-tg-line bg-tg-panel/98 shadow-telegram backdrop-blur">
-      <div className="flex items-center justify-between border-b border-tg-line px-4 py-3">
+    <div
+      className="fixed inset-0 z-50 flex w-full flex-col bg-tg-panel/98 shadow-telegram backdrop-blur sm:inset-y-0 sm:left-auto sm:right-0 sm:w-[380px] sm:max-w-[92vw] sm:border-l sm:border-tg-line"
+      style={{ height: "100dvh" }}
+    >
+      <div
+        className="flex items-center justify-between border-b border-tg-line px-4 py-3"
+        style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
+      >
         <div className="flex items-center gap-2 font-black uppercase tracking-wide text-white">
           <Bot className="h-5 w-5 text-red-500" /> EPIC💀CLAW AI
         </div>
@@ -1431,7 +1441,10 @@ function OperatorDock({
           ))}
         </div>
       )}
-      <div className="flex items-end gap-2 border-t border-tg-line p-3">
+      <div
+        className="flex items-end gap-2 border-t border-tg-line p-3"
+        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+      >
         <button
           onClick={() => fileRef.current?.click()}
           className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-tg-bg text-tg-muted hover:text-white"
@@ -2144,8 +2157,8 @@ function TelegramMenu({
   onAddAccount?: () => void;
 }) {
   return (
-    <div className="absolute inset-y-0 left-0 z-20 w-full border-r border-tg-line bg-tg-panel shadow-telegram">
-      <div className="relative overflow-hidden bg-gradient-to-br from-[#2a0c16] to-[#101218] p-5">
+    <div className="absolute inset-y-0 left-0 z-20 flex w-full flex-col overflow-y-auto border-r border-tg-line bg-tg-panel shadow-telegram">
+      <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-[#2a0c16] to-[#101218] p-5">
         <div className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:linear-gradient(rgba(255,59,92,.7)_1px,transparent_1px),linear-gradient(90deg,rgba(255,59,92,.7)_1px,transparent_1px)] [background-size:26px_26px]" />
         <button onClick={onClose} className="relative mb-6 grid h-14 w-14 place-items-center rounded-2xl bg-epic-ink ring-1 ring-tg-line epic-glow" aria-label="Закрыть меню">
           <EpicStarMark className="h-10 w-10" />
@@ -2191,21 +2204,16 @@ function TelegramMenu({
           Подключить Telegram
         </button>
       </div>
-      <nav className="py-2">
-        {routeItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <Link key={item.href} href={item.href} className="flex items-center gap-4 px-5 py-3 text-sm text-tg-text hover:bg-tg-hover">
-              <Icon className="h-5 w-5 text-tg-muted" />
-              {item.label}
-            </Link>
-          );
-        })}
-        <div className="my-2 border-t border-tg-line" />
-        <MenuItem icon={Archive} label="Избранное" value="пусто" />
+      <SectionNav
+        onNavigate={onClose}
+        onOpenOperator={() => window.dispatchEvent(new CustomEvent("epicgram:operator:open"))}
+        onOpenOnboarding={() => window.dispatchEvent(new CustomEvent("epicgram:onboarding:open"))}
+      />
+      <div className="mx-0 border-t border-tg-line" />
+      <div className="py-2">
         <MenuItem icon={Moon} label="Ночной режим" value="вкл" />
         <MenuItem icon={ShieldCheck} label="Законный режим" value="вкл" />
-      </nav>
+      </div>
     </div>
   );
 }
