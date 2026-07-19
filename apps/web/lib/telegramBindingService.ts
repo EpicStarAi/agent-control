@@ -2,6 +2,18 @@
 // Bridges the binding model to the real TDLib backend.
 // All calls go to the backend at EPICGRAM_API_BASE_URL (:8788).
 // accountId is ALWAYS derived from the server-side binding — never from the client.
+//
+// P-EPICGRAM-CLIENT-PLATFORM-2 (Blocker A fix): a per-user binding MUST own a
+// registered backend slot (POST /telegram/accounts/new). The backend only
+// routes /telegram/auth/* and /telegram/{chats,messages} to an isolated slot
+// when accounts.hasAccount(id) is true; for an UNREGISTERED id it silently
+// falls through to the legacy NOVIKOVA session. Therefore:
+//   1. we register a slot before creating a binding and store the backend id;
+//   2. every backend auth/data call is gated by assertRegisteredSlot(), which
+//      throws unless the id is a registered, non-forbidden slot.
+// This makes it impossible for a binding flow to drive the legacy NOVIKOVA
+// session. Per-account status is read from /telegram/accounts (NOT the legacy
+// /telegram/status, which ignores accountId and returns NOVIKOVA).
 
 import {
   type TelegramBinding,
@@ -26,7 +38,16 @@ const SRC = "per-user-binding";
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+// Hard-block (INCIDENT 20260718): /telegram/logout and /telegram/auth/reset are
+// LEGACY SINGLETON ops on the shared NOVIKOVA client (logout()->logOutTdlib(),
+// resetAuth()->resetTdlibAuthSession({deleteDatabase:true})). No per-user flow
+// may EVER reach them, regardless of accountId.
+const LEGACY_BLOCKED_ROUTES = /^\/telegram\/(logout|auth\/reset)(\/|\?|$)/;
+
 async function backendFetch(path: string, body?: unknown): Promise<Record<string, unknown>> {
+  if (LEGACY_BLOCKED_ROUTES.test(path)) {
+    throw new Error(`legacy_route_hard_blocked:${path}`);
+  }
   const res = await fetch(`${API}${path}`, {
     method: body ? "POST" : "GET",
     headers: { "Content-Type": "application/json", "cache-control": "no-store" },
@@ -37,47 +58,131 @@ async function backendFetch(path: string, body?: unknown): Promise<Record<string
   return { status: res.status, body: data };
 }
 
-async function getTdlibStatus(accountId: string): Promise<Record<string, unknown>> {
-  return backendFetch(`/telegram/status?accountId=${encodeURIComponent(accountId)}`);
+// --- Slot registration + safety gate (Blocker A) ---------------------------
+
+async function listBackendAccounts(): Promise<Array<Record<string, unknown>>> {
+  const res = await backendFetch(`/telegram/accounts`);
+  const body = (res?.body ?? res) as Record<string, unknown>;
+  return (body?.accounts as Array<Record<string, unknown>>) ?? [];
+}
+
+// Backend-contract robustness: a slot is keyed as `id` (live :8788 accounts.mjs)
+// or `slotId` (telegram-runtime state). Match on either so registration and the
+// hard-gate never falsely fail.
+function slotKeyOf(a: Record<string, unknown> | null | undefined): string {
+  if (!a) return "";
+  const k = (a.slotId ?? a.id ?? "") as unknown;
+  return typeof k === "string" ? k : String(k ?? "");
+}
+
+async function backendHasAccount(accountId: string): Promise<boolean> {
+  if (!accountId || isForbiddenAccountId(accountId)) return false;
+  const accounts = await listBackendAccounts();
+  return accounts.some((a) => slotKeyOf(a) === accountId);
+}
+
+// Register a fresh isolated slot in the backend and return its id.
+async function registerBackendSlot(label: string): Promise<string | null> {
+  const res = await backendFetch(`/telegram/accounts/new`, { label });
+  const body = (res?.body ?? res) as Record<string, unknown>;
+  // Backend-contract robustness: live :8788 (accounts.mjs) returns { ok, id };
+  // other builds return the state object keyed by activeAccountId/slotId.
+  const pickId = (v: unknown): string | null =>
+    typeof v === "string" && v.trim() ? v.trim() : null;
+  const id = pickId(body?.id) ?? pickId(body?.activeAccountId) ?? pickId(body?.slotId);
+  if (!id || isForbiddenAccountId(id)) return null;
+  return id;
+}
+
+// HARD GATE: never issue a backend auth/data call for an id that is not a
+// registered, non-forbidden slot. If this throws, the caller returns a safe
+// error — it never falls through to the legacy NOVIKOVA handlers.
+async function assertRegisteredSlot(accountId: string): Promise<void> {
+  if (!accountId || isForbiddenAccountId(accountId)) {
+    throw new Error("unsafe_account_id");
+  }
+  if (!(await backendHasAccount(accountId))) {
+    throw new Error("slot_not_registered");
+  }
+}
+
+// Returns a binding whose tdlibAccountId is guaranteed to be a registered slot.
+// Fresh workspace -> register slot + create binding. Existing binding with an
+// unregistered/forbidden id -> refuse (require reset) rather than risk legacy
+// fall-through.
+async function ensureRegisteredBinding(principal: Principal): Promise<TelegramBinding> {
+  const existing = await db.getByWorkspace(principal.workspaceId);
+  if (existing) {
+    if (
+      existing.tdlibAccountId &&
+      !isForbiddenAccountId(existing.tdlibAccountId) &&
+      (await backendHasAccount(existing.tdlibAccountId))
+    ) {
+      return existing;
+    }
+    // Legacy/unregistered binding — do not proceed onto an unsafe path.
+    throw new Error("binding_slot_unregistered");
+  }
+  const slotId = await registerBackendSlot("EPICGRAM user slot");
+  if (!slotId) throw new Error("slot_registration_failed");
+  return db.create({
+    workspaceId: principal.workspaceId,
+    userId: principal.userId,
+    tdlibAccountId: slotId,
+    displayName: "Telegram",
+  });
+}
+
+async function getSlotStatus(accountId: string): Promise<Record<string, unknown>> {
+  const accounts = await listBackendAccounts();
+  const found = accounts.find((a) => slotKeyOf(a) === accountId) ?? null;
+  return { accounts: found ? [found] : [] };
 }
 
 async function startQrTdlib(accountId: string): Promise<Record<string, unknown>> {
-  return backendFetch(`/telegram/auth/qr`, { accountId });
+  await assertRegisteredSlot(accountId);
+  return backendFetch(`/telegram/accounts/qr`, { id: accountId });
 }
 
 async function startPhoneTdlib(
   phone: string,
   accountId: string
 ): Promise<Record<string, unknown>> {
-  return backendFetch(`/telegram/auth/phone`, { phoneNumber: phone, accountId });
+  await assertRegisteredSlot(accountId);
+  return backendFetch(`/telegram/accounts/phone`, { id: accountId, phone });
 }
 
 async function submitCodeTdlib(
   code: string,
   accountId: string
 ): Promise<Record<string, unknown>> {
-  return backendFetch(`/telegram/auth/code`, { code, accountId });
+  await assertRegisteredSlot(accountId);
+  return backendFetch(`/telegram/accounts/code`, { id: accountId, code });
 }
 
 async function submit2faTdlib(
   password: string,
   accountId: string
 ): Promise<Record<string, unknown>> {
-  return backendFetch(`/telegram/auth/2fa`, { password, accountId });
+  await assertRegisteredSlot(accountId);
+  return backendFetch(`/telegram/accounts/password`, { id: accountId, password });
 }
 
-async function resetTdlib(accountId: string): Promise<Record<string, unknown>> {
-  return backendFetch(`/telegram/auth/reset`, { accountId });
-}
-
-async function logoutTdlib(accountId: string): Promise<Record<string, unknown>> {
-  return backendFetch(`/telegram/logout`, { accountId });
-}
+// NOTE (INCIDENT 20260718): the backend HTTP routes /telegram/auth/reset and
+// /telegram/logout are LEGACY-ONLY — they ignore accountId entirely and always
+// act on the shared NOVIKOVA session (logout() calls TDLib logOut, destroying
+// its authorization). There is NO per-account reset/logout HTTP route on the
+// backend (accounts.removeAccount exists but is not exposed). Therefore this
+// service MUST NOT call either endpoint: doing so logs out NOVIKOVA. resetFlow
+// and unbind below operate on the binding record ONLY. Re-enable a backend call
+// here only after the backend exposes a per-account /telegram/accounts/<id>/
+// logout|reset that routes by id.
 
 async function getChatsTdlib(
   accountId: string,
   limit = 30
 ): Promise<Record<string, unknown>> {
+  await assertRegisteredSlot(accountId);
   return backendFetch(`/telegram/chats?accountId=${encodeURIComponent(accountId)}&limit=${limit}`);
 }
 
@@ -86,28 +191,43 @@ async function getMessagesTdlib(
   chatId: string,
   limit = 50
 ): Promise<Record<string, unknown>> {
+  await assertRegisteredSlot(accountId);
   return backendFetch(
     `/telegram/messages?accountId=${encodeURIComponent(accountId)}&chatId=${encodeURIComponent(chatId)}&limit=${limit}`
   );
 }
 
 // Detect if TDLib auth is ready from status response
-// Backend returns: { account: { authorizationState, status, username, phone }, authorized: boolean }
 function extractAuthState(statusBody: Record<string, unknown>): TelegramBindingAuthState {
-  const authorized = statusBody?.authorized as boolean | undefined;
-  const account = statusBody?.account as Record<string, unknown> | undefined;
-  const authState = account?.authorizationState as string | undefined;
-  const status = account?.status as string | undefined;
-
-  // QR scan success: TDLib is now authorized
-  if (authorized === true || authState === "authorizationStateReady" || status === "ready") {
-    return "ready";
-  }
-  if (authState === "authorizationStateWaitPhoneNumber" || status === "waitPhone") return "init";
-  if (authState === "authorizationStateWaitCode" || status === "waitCode") return "waiting_code";
-  if (authState === "authorizationStateWaitPassword" || status === "waitPassword") return "waiting_password";
-  if (authState === "authorizationStateWaitOtherDeviceConfirmation" || status === "waitQr") return "waiting_qr";
+  const accounts = statusBody?.accounts as Array<Record<string, unknown>> | undefined;
+  const acc = accounts?.[0];
+  // per-account auth responses put authorizationState at TOP LEVEL as { _: "..." };
+  // listAccounts() puts it under accounts[0] as a string. Accept both shapes.
+  const rawTop = statusBody?.authorizationState as unknown;
+  const topState =
+    typeof rawTop === "string"
+      ? rawTop
+      : rawTop && typeof rawTop === "object"
+        ? ((rawTop as Record<string, unknown>)._ as string | undefined)
+        : undefined;
+  const authState = (acc?.authorizationState as string | undefined) ?? topState;
+  const online = acc?.online === true || statusBody?.online === true || acc?.status === "ready";
+  if (authState === "authorizationStateReady" || online) return "ready";
+  if (authState === "authorizationStateWaitPhoneNumber") return "init";
+  if (authState === "authorizationStateWaitCode") return "waiting_code";
+  if (authState === "authorizationStateWaitPassword") return "waiting_password";
+  if (authState === "authorizationStateWaitOtherDeviceConfirmation") return "waiting_qr";
   return "init";
+}
+
+// P-BACKFILL: pull the account identity TDLib exposes once authorized. Per-account
+// auth responses carry it at top-level `account`; status/list carry accounts[0].account.
+function accountIdentityFrom(body: Record<string, unknown>): { displayName: string | null; username: string | null } {
+  const accounts = body?.accounts as Array<Record<string, unknown>> | undefined;
+  const acc = (body?.account as Record<string, unknown> | undefined)
+    ?? (accounts?.[0]?.account as Record<string, unknown> | undefined);
+  const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
+  return { displayName: str(acc?.displayName), username: str(acc?.username) };
 }
 
 // Build a BindingStatus response (safe — no secrets)
@@ -162,7 +282,7 @@ export interface Principal {
 
 /**
  * Get the full binding status for a principal.
- * Resolves the binding from DB, checks live TDLib state if needed.
+ * Resolves the binding from DB, checks live TDLib state (per-account) if needed.
  */
 export async function getStatus(
   principal: Principal
@@ -174,25 +294,23 @@ export async function getStatus(
       return { ok: true, status: buildBindingStatus(null, null) };
     }
 
-    // If waiting_qr, poll TDLib live state
+    // If mid-flow, poll the per-account TDLib state (isolated slot only)
     if (binding.authState === "waiting_qr" || binding.authState === "waiting_code" || binding.authState === "waiting_password") {
-      const tdlibStatus = await getTdlibStatus(binding.tdlibAccountId);
-      const body = tdlibStatus?.body ?? tdlibStatus;
-      const liveAuthState = extractAuthState(body as Record<string, unknown>);
+      const body = await getSlotStatus(binding.tdlibAccountId);
+      const liveAuthState = extractAuthState(body);
 
       if (liveAuthState === "ready") {
-        // Auth completed — update DB
+        const ident = accountIdentityFrom(body);
         const updated = await db.updateAuthState({
           workspaceId: principal.workspaceId,
           authState: "ready",
-          username: ((body as Record<string, unknown>)?.account as Record<string, unknown>)?.username as string | null ?? null,
-          phoneMasked: ((body as Record<string, unknown>)?.account as Record<string, unknown>)?.phoneMasked as string | null ?? binding.phoneMasked,
+          displayName: ident.displayName,
+          username: ident.username,
         });
         return { ok: true, status: buildBindingStatus(updated, null) };
       }
 
       if (liveAuthState !== binding.authState) {
-        // Sync state from TDLib (e.g., error or reset)
         await db.updateAuthState({
           workspaceId: principal.workspaceId,
           authState: liveAuthState,
@@ -200,7 +318,7 @@ export async function getStatus(
         const updated = await db.getByWorkspace(principal.workspaceId);
         const flow: TelegramAuthFlow = {
           type: binding.authState === "waiting_qr" ? "qr" : "phone",
-          qrLink: (tdlibStatus?.body as Record<string, unknown>)?.qrLink as string | null ?? null,
+          qrLink: null,
           qrImageData: null,
           expiresAt: null,
           phoneMasked: binding.phoneMasked,
@@ -211,13 +329,10 @@ export async function getStatus(
       }
     }
 
-    // Build authFlow for pending states
     if (binding.authState === "waiting_qr") {
-      const tdlibStatus = await getTdlibStatus(binding.tdlibAccountId);
-      const body = tdlibStatus?.body ?? tdlibStatus;
       const flow: TelegramAuthFlow = {
         type: "qr",
-        qrLink: (body as Record<string, unknown>)?.qrLink as string | null ?? null,
+        qrLink: null,
         qrImageData: null,
         expiresAt: null,
         phoneMasked: null,
@@ -261,41 +376,29 @@ export async function getStatus(
 
 /**
  * Start QR code auth flow.
- * Creates a new binding if none exists.
+ * Creates a new binding (with a registered backend slot) if none exists.
  */
 export async function startQr(
   principal: Principal
 ): Promise<{ ok: true; status: BindingStatus } | { ok: false; reason: string }> {
   try {
-    let binding = await db.getByWorkspace(principal.workspaceId);
-
-    if (!binding) {
-      const accountId = newTdlibAccountId();
-      binding = await db.create({
-        workspaceId: principal.workspaceId,
-        userId: principal.userId,
-        tdlibAccountId: accountId,
-        displayName: "Telegram",
-      });
-    }
+    const binding = await ensureRegisteredBinding(principal);
 
     if (binding.authState === "ready") {
       return { ok: false, reason: "Аккаунт уже подключён." };
     }
 
-    // Reset any existing in-progress flow
     await db.updateAuthState({
       workspaceId: principal.workspaceId,
       authState: "waiting_qr",
       authError: null,
     });
 
-    // Start QR in TDLib
     const result = await startQrTdlib(binding.tdlibAccountId);
-    const body = result?.body ?? result;
-    const ok = (result as { status?: number }).status === 200;
+    const body = (result?.body ?? result) as Record<string, unknown>;
+    const ok = (result as { status?: number }).status === 200 && Boolean((body as Record<string, unknown>)?.ok);
 
-    if (!ok || !(body as Record<string, unknown>)?.ok) {
+    if (!ok) {
       await db.updateAuthState({
         workspaceId: principal.workspaceId,
         authState: "error",
@@ -305,7 +408,7 @@ export async function startQr(
     }
 
     const qrLink = (body as Record<string, unknown>)?.qrLink as string | null;
-    const qrImageData = (body as Record<string, unknown>)?.qrImageData as string | null;
+    const qrImageData = ((body as Record<string, unknown>)?.qrPng ?? (body as Record<string, unknown>)?.qrImageData) as string | null;
 
     const flow: TelegramAuthFlow = {
       type: "qr",
@@ -320,7 +423,7 @@ export async function startQr(
     const updated = await db.getByWorkspace(principal.workspaceId);
     return { ok: true, status: buildBindingStatus(updated, flow) };
   } catch {
-    return { ok: false, reason: "Не удалось запустить QR-код. Проверьте соединение." };
+    return { ok: false, reason: "Не удалось запустить QR-код. Проверьте соединение или сбросьте привязку." };
   }
 }
 
@@ -337,22 +440,12 @@ export async function submitPhone(
   }
 
   try {
-    let binding = await db.getByWorkspace(principal.workspaceId);
-
-    if (!binding) {
-      binding = await db.create({
-        workspaceId: principal.workspaceId,
-        userId: principal.userId,
-        tdlibAccountId: newTdlibAccountId(),
-        displayName: "Telegram",
-      });
-    }
+    const binding = await ensureRegisteredBinding(principal);
 
     if (binding.authState === "ready") {
       return { ok: false, reason: "Аккаунт уже подключён." };
     }
 
-    // Reset any in-progress flow
     await db.updateAuthState({
       workspaceId: principal.workspaceId,
       authState: "waiting_code",
@@ -361,10 +454,8 @@ export async function submitPhone(
     });
 
     const result = await startPhoneTdlib(normalized, binding.tdlibAccountId);
-    const body = result?.body ?? result;
+    const body = (result?.body ?? result) as Record<string, unknown>;
 
-    // phone auth itself returns 200 even if it sent the code
-    // We accept any 200 as success and move to waiting_code state
     if ((result as { status?: number }).status !== 200) {
       await db.updateAuthState({
         workspaceId: principal.workspaceId,
@@ -374,10 +465,12 @@ export async function submitPhone(
       return { ok: false, reason: tdlibErrorMessage((body as Record<string, unknown>)?.message as string) };
     }
 
-    // If TDLib says already ready (e.g., returning user), mark ready
     const authState = extractAuthState(body as Record<string, unknown>);
     if (authState === "ready") {
-      await db.updateAuthState({ workspaceId: principal.workspaceId, authState: "ready" });
+      const ident = accountIdentityFrom(body as Record<string, unknown>);
+      await db.updateAuthState({ workspaceId: principal.workspaceId, authState: "ready", displayName: ident.displayName, username: ident.username });
+    } else if (authState === "waiting_password") {
+      await db.updateAuthState({ workspaceId: principal.workspaceId, authState: "waiting_password" });
     }
 
     const updated = await db.getByWorkspace(principal.workspaceId);
@@ -388,12 +481,12 @@ export async function submitPhone(
       expiresAt: null,
       phoneMasked: maskPhone(normalized),
       codeLength: 5,
-      message: authFlowMessage("waiting_code", maskPhone(normalized)),
+      message: authFlowMessage(updated?.authState ?? "waiting_code", maskPhone(normalized)),
     };
 
     return { ok: true, status: buildBindingStatus(updated, flow) };
   } catch {
-    return { ok: false, reason: "Не удалось отправить номер. Проверьте соединение." };
+    return { ok: false, reason: "Не удалось отправить номер. Проверьте соединение или сбросьте привязку." };
   }
 }
 
@@ -415,16 +508,16 @@ export async function submitCode(
     }
 
     const result = await submitCodeTdlib(code.trim(), binding.tdlibAccountId);
-    const body = result?.body ?? result;
-    const authState = extractAuthState(body as Record<string, unknown>);
+    const body = (result?.body ?? result) as Record<string, unknown>;
+    const authState = extractAuthState(body);
 
     if (authState === "ready") {
+      const ident = accountIdentityFrom(body);
       await db.updateAuthState({
         workspaceId: principal.workspaceId,
         authState: "ready",
-        username: typeof (body as Record<string, unknown>)?.account === "object"
-          ? ((body as Record<string, unknown>).account as Record<string, unknown>).username as string | null ?? binding.username
-          : binding.username,
+        displayName: ident.displayName,
+        username: ident.username,
       });
       const updated = await db.getByWorkspace(principal.workspaceId);
       return { ok: true, status: buildBindingStatus(updated, null) };
@@ -448,17 +541,14 @@ export async function submitCode(
       return { ok: true, status: buildBindingStatus(updated, flow) };
     }
 
-    // Wrong code or error
     await db.updateAuthState({
       workspaceId: principal.workspaceId,
       authState: "error",
       authError: tdlibErrorMessage((body as Record<string, unknown>)?.message as string),
     });
-    const updated = await db.getByWorkspace(principal.workspaceId);
     return {
       ok: false,
-      reason: tdlibErrorMessage((body as Record<string, unknown>)?.message as string) +
-        " Попробуйте ещё раз.",
+      reason: tdlibErrorMessage((body as Record<string, unknown>)?.message as string) + " Попробуйте ещё раз.",
     };
   } catch {
     return { ok: false, reason: "Не удалось проверить код. Проверьте соединение." };
@@ -483,11 +573,12 @@ export async function submit2fa(
     }
 
     const result = await submit2faTdlib(password, binding.tdlibAccountId);
-    const body = result?.body ?? result;
-    const authState = extractAuthState(body as Record<string, unknown>);
+    const body = (result?.body ?? result) as Record<string, unknown>;
+    const authState = extractAuthState(body);
 
     if (authState === "ready") {
-      await db.updateAuthState({ workspaceId: principal.workspaceId, authState: "ready" });
+      const ident = accountIdentityFrom(body);
+      await db.updateAuthState({ workspaceId: principal.workspaceId, authState: "ready", displayName: ident.displayName, username: ident.username });
       const updated = await db.getByWorkspace(principal.workspaceId);
       return { ok: true, status: buildBindingStatus(updated, null) };
     }
@@ -518,7 +609,10 @@ export async function resetFlow(
       return { ok: true, status: buildBindingStatus(null, null) };
     }
 
-    await resetTdlib(binding.tdlibAccountId).catch(() => null);
+    // Local-only reset. Do NOT call the backend /telegram/auth/reset route: it
+    // is legacy-only and would reset the shared NOVIKOVA session (see INCIDENT
+    // note above). The per-account TDLib client stays as-is; a fresh QR/phone
+    // flow drives it forward again.
     await db.updateAuthState({
       workspaceId: principal.workspaceId,
       authState: "init",
@@ -544,10 +638,19 @@ export async function unbind(
       return { ok: true, status: buildBindingStatus(null, null) };
     }
 
-    // Logout TDLib (ignore errors — session might not exist)
-    await logoutTdlib(binding.tdlibAccountId).catch(() => null);
-
-    // Delete binding record
+    // SAFE per-account unbind. /telegram/logout is hard-blocked (legacy singleton
+    // that logs out shared NOVIKOVA). Instead use /telegram/accounts/remove, which
+    // acts ONLY on this slot's own TDLib client (backend removeAccount() explicitly
+    // guards the novikova id) and deletes the slot's isolated session dir. Best-
+    // effort: a failure never blocks dropping the binding record.
+    const slotId = binding.tdlibAccountId;
+    if (slotId && !isForbiddenAccountId(slotId) && (await backendHasAccount(slotId))) {
+      try {
+        await backendFetch(`/telegram/accounts/remove`, { id: slotId });
+      } catch {
+        // slot cleanup best-effort
+      }
+    }
     await db.remove(principal.workspaceId);
 
     return { ok: true, status: buildBindingStatus(null, null) };
@@ -574,8 +677,8 @@ export async function getChats(
     }
 
     const result = await getChatsTdlib(binding.tdlibAccountId, limit);
-    const body = result?.body ?? result;
-    const chats = ((body as Record<string, unknown>)?.chats as unknown[]) ?? [];
+    const body = (result?.body ?? result) as Record<string, unknown>;
+    const chats = ((body as Record<string, unknown>)?.chats ?? []) as unknown[];
     return { ok: true, chats, source: `tdlib:${binding.tdlibAccountId}` };
   } catch {
     return { ok: false, reason: "Не удалось загрузить чаты. Проверьте соединение." };
@@ -604,10 +707,40 @@ export async function getMessages(
     }
 
     const result = await getMessagesTdlib(binding.tdlibAccountId, chatId, limit);
-    const body = result?.body ?? result;
-    const messages = ((body as Record<string, unknown>)?.messages as unknown[]) ?? [];
+    const body = (result?.body ?? result) as Record<string, unknown>;
+    const messages = ((body as Record<string, unknown>)?.messages ?? []) as unknown[];
     return { ok: true, messages, chatId };
   } catch {
     return { ok: false, reason: "Не удалось загрузить сообщения." };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Etap 2: server-gated per-account text send. Called ONLY from the execute route
+// AFTER the approval gate has verified user+account+chat+payload_hash+TTL+single-use.
+// operatorApproved is set here, server-side — never trusted from the browser.
+// Sends strictly through the bound slot's own runtime; never the legacy singleton.
+// ---------------------------------------------------------------------------
+export async function sendTextThroughSlot(
+  accountId: string,
+  chatId: string,
+  text: string,
+  actionType: string,
+): Promise<{ ok: boolean; telegramMessageId: string | null; code?: string; message?: string }> {
+  await assertRegisteredSlot(accountId);
+  const res = await backendFetch(`/telegram/send`, {
+    accountId,
+    chatId,
+    text,
+    operatorApproved: true,
+    actionType: actionType === "publish_channel" ? "publish_post" : "telegram_send",
+  });
+  const body = (res?.body ?? res) as Record<string, unknown>;
+  const ok = (res as { status?: number }).status === 200 && body?.sent === true;
+  return {
+    ok,
+    telegramMessageId: (body?.sentMessage ?? body?.sentMessageId ?? null) as string | null,
+    code: body?.code as string | undefined,
+    message: body?.message as string | undefined,
+  };
 }

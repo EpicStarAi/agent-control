@@ -82,6 +82,7 @@ export async function updateAuthState(input: {
   authError?: string | null;
   phoneMasked?: string | null;
   username?: string | null;
+  displayName?: string | null;
 }): Promise<TelegramBinding | null> {
   const store = load();
   const idx = store.bindings.findIndex((b) => b.workspaceId === input.workspaceId);
@@ -93,6 +94,7 @@ export async function updateAuthState(input: {
     authError: input.authError ?? b.authError,
     phoneMasked: input.phoneMasked ?? b.phoneMasked,
     username: input.username ?? b.username,
+    displayName: input.displayName ?? b.displayName,
     updatedAt: new Date().toISOString(),
   };
   store.bindings[idx] = updated;
