@@ -155,3 +155,98 @@ button {
     scroll-behavior: auto !important;
   }
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   TGX — authentic Telegram-like palette, scoped to the messenger client only.
+   The global app uses the red "EPIC STAR" tg-* tokens; the client at /client
+   opts into this desaturated blue/grey Telegram look via the `.tgx` wrapper so
+   the familiar interface never leaks its styling into the rest of the app and
+   vice-versa. Dark is the default; `[data-theme="light"]` switches to light.
+   These are our own colour values (Telegram-alike), not copied assets.
+   ────────────────────────────────────────────────────────────────────────── */
+.tgx {
+  /* dark (default) */
+  --tgx-app-bg: #0e1621;
+  --tgx-sidebar-bg: #17212b;
+  --tgx-sidebar-elevated: #1c2733;
+  --tgx-chat-bg: #0e1621;
+  --tgx-header-bg: #17212b;
+  --tgx-border: rgba(255, 255, 255, 0.08);
+  --tgx-border-strong: rgba(255, 255, 255, 0.13);
+  --tgx-hover: #202b36;
+  --tgx-active: #2b5278;
+  --tgx-active-text: #ffffff;
+  --tgx-text: #ffffff;
+  --tgx-text-secondary: #8b9aa8;
+  --tgx-text-faint: #6d7f8f;
+  --tgx-in-bubble: #182533;
+  --tgx-in-text: #ffffff;
+  --tgx-out-bubble: #2b5278;
+  --tgx-out-text: #ffffff;
+  --tgx-accent: #6ab3f3;
+  --tgx-accent-strong: #3390ec;
+  --tgx-badge: #4fa0e0;
+  --tgx-badge-muted: #5b6b78;
+  --tgx-badge-text: #ffffff;
+  --tgx-date-chip-bg: rgba(24, 37, 51, 0.75);
+  --tgx-date-chip-text: #c6d3de;
+  --tgx-danger: #e05a4f;
+  --tgx-scroll-thumb: rgba(255, 255, 255, 0.14);
+  --tgx-pattern: radial-gradient(circle at 18% 12%, rgba(106, 179, 243, 0.06), transparent 30%),
+    radial-gradient(circle at 82% 78%, rgba(43, 82, 120, 0.10), transparent 34%);
+
+  color: var(--tgx-text);
+  background: var(--tgx-app-bg);
+}
+
+.tgx[data-theme="light"] {
+  --tgx-app-bg: #dfe8ef;
+  --tgx-sidebar-bg: #ffffff;
+  --tgx-sidebar-elevated: #f4f6f8;
+  --tgx-chat-bg: #d5e0ea;
+  --tgx-header-bg: #ffffff;
+  --tgx-border: rgba(0, 0, 0, 0.08);
+  --tgx-border-strong: rgba(0, 0, 0, 0.12);
+  --tgx-hover: #f1f4f6;
+  --tgx-active: #3390ec;
+  --tgx-active-text: #ffffff;
+  --tgx-text: #0f1720;
+  --tgx-text-secondary: #707579;
+  --tgx-text-faint: #93999e;
+  --tgx-in-bubble: #ffffff;
+  --tgx-in-text: #0f1720;
+  --tgx-out-bubble: #eeffde;
+  --tgx-out-text: #0f1720;
+  --tgx-accent: #3390ec;
+  --tgx-accent-strong: #2b7de0;
+  --tgx-badge: #3390ec;
+  --tgx-badge-muted: #b6c0c8;
+  --tgx-badge-text: #ffffff;
+  --tgx-date-chip-bg: rgba(255, 255, 255, 0.85);
+  --tgx-date-chip-text: #5b6b78;
+  --tgx-danger: #d64b3f;
+  --tgx-scroll-thumb: rgba(0, 0, 0, 0.18);
+  --tgx-pattern: radial-gradient(circle at 18% 12%, rgba(51, 144, 236, 0.05), transparent 30%),
+    radial-gradient(circle at 82% 78%, rgba(51, 144, 236, 0.05), transparent 34%);
+
+  color: var(--tgx-text);
+}
+
+.tgx-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--tgx-scroll-thumb) transparent;
+}
+.tgx-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.tgx-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.tgx-scroll::-webkit-scrollbar-thumb {
+  background: var(--tgx-scroll-thumb);
+  border-radius: 8px;
+}
+.tgx-scroll:hover {
+  scrollbar-color: var(--tgx-scroll-thumb) transparent;
+}

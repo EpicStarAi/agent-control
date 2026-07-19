@@ -1,22 +1,24 @@
 import { redirect } from "next/navigation";
-import { EpicGramShell } from "@/components/EpicGramShell";
+import { TgClient } from "@/components/tg/TgClient";
 import { getPrincipal } from "@/lib/telegramGuard";
 
-// EPIC GRAM Web Client (перенесён с корня в /client).
+// EPICGRAM Web Client — Telegram-like messenger surface.
 //
-// INCIDENT hotfix/client-auth-guard: this page rendered the full client to any
-// anonymous visitor. It is now a server-side gate — the session is checked
-// before the shell is rendered, so unauthenticated visitors never receive the
-// application markup.
+// The post-login landing renders the familiar two-pane Telegram interface
+// (TgClient) instead of the operator "cabinet". Data is real-only, served
+// through the /api/telegram/* routes: the server resolves the owner-bound slot,
+// enforces the owner match and the send approval gate. The browser never talks
+// to Telegram directly and cannot bypass the gate.
 //
-// This page gate is defence in depth only. The authoritative enforcement lives
-// in each /api/telegram/* route handler, because a page-level gate alone would
-// leave `curl /api/telegram/chats` fully open.
+// INCIDENT hotfix/client-auth-guard: this page is a server-side gate — the
+// session is checked before any client markup is rendered, so unauthenticated
+// visitors never receive the application. This is defence in depth; the
+// authoritative enforcement lives in each /api/telegram/* route handler.
 export const dynamic = "force-dynamic";
 
 export default async function ClientPage() {
   const principal = await getPrincipal();
   if (!principal) redirect("/login?next=/client");
 
-  return <EpicGramShell section="dashboard" />;
+  return <TgClient />;
 }
