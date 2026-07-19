@@ -19,6 +19,30 @@ import type { NextRequest } from "next/server";
 // path, and an API left open behind a page redirect only looks fixed.
 
 const SESSION_COOKIE = "epic_session";
+const PUBLIC_REDIRECT_HOSTS = new Set(["epic-gram.com", "www.epic-gram.com"]);
+
+function normalizePublicHost(value: string | null): string | null {
+  const first = value?.split(",")[0]?.trim().toLowerCase();
+  if (!first) return null;
+
+  const host = first.startsWith("[") ? first : first.split(":")[0];
+  return PUBLIC_REDIRECT_HOSTS.has(host) ? host : null;
+}
+
+function clonePublicRedirectUrl(request: NextRequest) {
+  const url = request.nextUrl.clone();
+  const publicHost =
+    normalizePublicHost(request.headers.get("x-forwarded-host")) ??
+    normalizePublicHost(request.headers.get("host"));
+
+  if (publicHost) {
+    url.protocol = "https:";
+    url.host = publicHost;
+    url.port = "";
+  }
+
+  return url;
+}
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -26,7 +50,7 @@ export function middleware(request: NextRequest) {
 
   if (pathname === "/client" || pathname.startsWith("/client/")) {
     if (!hasSession) {
-      const url = request.nextUrl.clone();
+      const url = clonePublicRedirectUrl(request);
       url.pathname = "/login";
       url.search = `?next=${encodeURIComponent(pathname)}`;
       const redirect = NextResponse.redirect(url);
@@ -42,5 +66,14 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/client/:path*", "/api/telegram/:path*", "/api/v1/telegram/:path*"]
+  matcher: [
+    "/client/:path*",
+    "/api/telegram/:path*",
+    "/api/v1/telegram/:path*",
+    // The entire operator bridge — the verbatim catch-all proxy plus every
+    // dedicated route (command/confirm/schedule/qclaw) — must sit behind the
+    // gate. Enforcement is still duplicated inside each handler (defence in
+    // depth); this only guarantees the surface is covered at the edge too.
+    "/api/operator/:path*"
+  ]
 };

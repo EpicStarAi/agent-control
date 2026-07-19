@@ -31,12 +31,12 @@ const C = {
   purple: "#a78bfa",
 };
 
-// ─── Mock Data ─────────────────────────────────────────────────────────────────
-const ACCOUNT = {
-  slot: "NOVIKOVA", status: "AUTHORIZED", user_id: "7369372055",
-  display: "NOVIKOVA 💋", chats: 60, groups: 12, channels: 4,
-};
-
+// ─── Demo scaffolding ───────────────────────────────────────────────────────
+// Channel/draft/asset placeholders below are clearly-labelled demo content for
+// the office layout. There is deliberately NO hardcoded "connected account"
+// here: account identity and TDLib/authorization state are rendered ONLY from
+// live /api/operator/qclaw/status data, and fall back to an honest
+// "not connected" state — never to a fictional NOVIKOVA session.
 const CHANNELS = [
   { id: "-1003687931514", name: "NoViKoVA💋NEWS🌐", topic: "Новини Новикової", audience: "~210", posts: 18, growth: "+2.1%", status: "active" },
   { id: "-1001199360700", name: "Труха⚡Україна", topic: "Новини України", audience: "~12K", posts: 847, growth: "+0.8%", status: "active" },
@@ -47,7 +47,7 @@ const RUNTIME = [
   { label: "WEB (Next.js)", port: "3015", status: "running", badge: "DEV", ok: true },
   { label: "API (EPICGRAM)", port: "8788", status: "running", badge: "DEV", ok: true },
   { label: "TDLib Adapter", port: "—", status: "loaded", badge: "READY", ok: true },
-  { label: "Telegram Session", port: "—", status: "ready", badge: "NOVIKOVA", ok: true },
+  { label: "Telegram Session", port: "—", status: "не подключена", badge: "НЕ В СЕТИ", ok: false },
   { label: "Publish Policy", port: "—", status: "disabled", badge: "SAFE", ok: true },
   { label: "Live Send", port: "—", status: "LOCKED", badge: "🔒 MANUAL", ok: false },
 ];
@@ -204,8 +204,8 @@ function TelegramDeskPanel({ runtimeData, dataMode, lastSync }: {
     <div style={{ fontFamily: "monospace", fontSize: 11, color: C.text }}>
       <div style={{ marginBottom: 14, padding: 12, background: C.panel, ...pxb(C.accent, 1) }}>
         <SectionHead text="Аккаунт" />
-        <Row label="Слот" value={acc?.displayName ? String(acc.displayName).split(" ")[0] : "NOVIKOVA"} />
-        <Row label="Имя" value={acc?.displayName ? String(acc.displayName) : ACCOUNT.display} />
+        <Row label="Слот" value={acc?.displayName ? String(acc.displayName).split(" ")[0] : "—"} />
+        <Row label="Имя" value={acc?.displayName ? String(acc.displayName) : "Аккаунт не подключён"} />
         <Row label="ID пользователя" value={acc?.idMasked ? String(acc.idMasked) : "—"} />
         <Row label="Логин" value={acc?.username ? String(acc.username) : "—"} />
         <Row label="Авторизация" value={connected ? "Авторизован" : authState} ok={connected} />
@@ -767,6 +767,17 @@ export default function OperatorOffice() {
 
   if (loading) return <LoadingScreen progress={progress} />;
 
+  // Honest operator identity/state — derived ONLY from live qclaw/status data.
+  // No binding -> "not connected"; never a fictional NOVIKOVA / ready session.
+  const _tgMain = (runtimeData?.telegram as Record<string, unknown>) ?? null;
+  const operatorConnected = Boolean(_tgMain?.connected);
+  const _accMain = (_tgMain?.activeAccount as Record<string, unknown>) ?? null;
+  const operatorAccountLabel =
+    operatorConnected && _accMain?.displayName ? String(_accMain.displayName) : "Аккаунт не подключён";
+  const operatorStatusLine = operatorConnected
+    ? `${String(_tgMain?.authorizationState ?? "authorizationStateReady")} · ${operatorAccountLabel}`
+    : "Нет привязанного Telegram-аккаунта";
+
   return (
     <div style={{
       minHeight: "100vh", background: C.bg,
@@ -886,15 +897,15 @@ export default function OperatorOffice() {
           >
             <div style={{ fontSize: 42, marginBottom: 4 }}>🤖</div>
             <div style={{ fontSize: 8, color: C.accent, fontWeight: 700, letterSpacing: "0.1em" }}>ИИ-ОПЕРАТОР</div>
-            <div style={{ fontSize: 8, color: C.muted }}>NOVIKOVA 💋</div>
+            <div style={{ fontSize: 8, color: C.muted }}>{operatorAccountLabel}</div>
           </button>
 
-          {/* Status */}
-          <div style={{ fontSize: 10, color: C.green, fontFamily: "monospace", textAlign: "center", marginBottom: 4 }}>
-            <Dot color={C.green} on /> Готов к работе
+          {/* Status — honest live state, no fictional ready session */}
+          <div style={{ fontSize: 10, color: operatorConnected ? C.green : C.yellow, fontFamily: "monospace", textAlign: "center", marginBottom: 4 }}>
+            <Dot color={operatorConnected ? C.green : C.yellow} on={operatorConnected} /> {operatorConnected ? "Готов к работе" : "Аккаунт не подключён"}
           </div>
           <div style={{ fontSize: 9, color: C.muted, fontFamily: "monospace", textAlign: "center", marginBottom: 12 }}>
-            authorizationStateReady<br />TDLib 1.8.64 · NOVIKOVA 💋
+            {operatorStatusLine}
           </div>
 
           {/* Mode badge */}

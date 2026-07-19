@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getPrincipal, resolveBoundAccount } from "@/lib/telegramGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +71,28 @@ function renderToolResult(routed: any): string {
 }
 
 export async function POST(req: Request) {
+  // Auth (defence in depth). The operator command dispatcher is not open to
+  // anonymous callers even though it only produces drafts / approval cards.
+  const principal = await getPrincipal();
+  if (!principal) {
+    return NextResponse.json(
+      { ok: false, authenticated: false, message: "Требуется аутентифицированная сессия EPICGRAM." },
+      { status: 401, headers: { "cache-control": "no-store" } },
+    );
+  }
+
+  // The account is resolved SERVER-SIDE from the caller's owner-matched binding.
+  // The client-supplied accountId is ignored entirely. No ready binding -> 403
+  // (this endpoint acts on a real slot, so it denies hard rather than soft-empty).
+  const bound = await resolveBoundAccount(principal);
+  if (bound.kind !== "ok") {
+    return NextResponse.json(
+      { ok: false, ownerMatched: bound.kind !== "mismatch", error: "no_binding", message: "К вашему профилю не привязан owner-matched Telegram-аккаунт." },
+      { status: 403, headers: { "cache-control": "no-store" } },
+    );
+  }
+  const accountId = bound.accountId;
+
   let body: any = {};
 
   try {
@@ -94,12 +117,8 @@ export async function POST(req: Request) {
           ? body.conversationId
           : "";
 
-  const accountId =
-    typeof tg?.accountId === "string"
-      ? tg.accountId
-      : typeof body?.accountId === "string"
-        ? body.accountId
-        : "";
+  // accountId is the server-resolved bound slot (above) — the request body's
+  // tgContext.accountId / accountId are deliberately NOT read here.
 
   const chatTitle =
     typeof tg?.chatTitle === "string" && tg.chatTitle
