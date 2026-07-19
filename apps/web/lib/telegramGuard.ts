@@ -2,6 +2,8 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/authData";
 import { SESSION_COOKIE } from "@/lib/auth";
+import * as bindingsDb from "@/lib/telegramBindingsDb";
+import { isForbiddenAccountId } from "@/lib/telegramBindings";
 
 // INCIDENT hotfix/client-auth-guard — server-side authorization gate for the
 // Telegram surface.
@@ -140,23 +142,55 @@ export async function requirePrincipal(
 // ---------------------------------------------------------------------------
 // Account binding
 // ---------------------------------------------------------------------------
+//
+// P-EPICGRAM-CLIENT-PLATFORM-1/2: the authenticated-user -> telegram_account
+// mapping now exists (telegram_bindings, keyed uniquely by workspace_id). The
+// account a caller may reach is resolved SERVER-SIDE from that binding and
+// nothing else:
+//
+//   * workspace scopes the tenant (unique binding per workspace);
+//   * only a binding in authState "ready" resolves to an id;
+//   * a forbidden id (main / novikova / the shared legacy slot) NEVER resolves
+//     — deny-by-default is preserved even if a row somehow points there;
+//   * the client-supplied accountId is still ignored entirely.
+//
+// This is the single place the owner-match decision is made. Do not add a
+// default/fallback account.
 
-// Resolves which Telegram account the authenticated caller owns.
-//
-// There is currently NO authenticated-user -> telegram_account_id -> TDLib
-// session-owner association model in this codebase (lib/auth.ts models
-// User/Session/Workspace and stops there). Until P-EPICGRAM-CLIENT-PLATFORM-1
-// introduces that mapping with a verified owner id, this resolver returns null
-// for everyone and callers fall back to a safe empty state.
-//
-// It deliberately does NOT derive an account from Connection.sessionRef: that
-// value is client-influenced, so honouring it would let any referral-session
-// holder point at the shared "main" slot and reach the live account again —
-// i.e. reintroduce this exact incident behind a login form.
-//
-// Deny-by-default. Do not "fix" this by returning a default/fallback account.
-export async function resolveBoundAccountId(_principal: Principal): Promise<string | null> {
-  return null;
+export type BoundResolution =
+  | { kind: "ok"; accountId: string }
+  | { kind: "none" }
+  | { kind: "mismatch" };
+
+export async function resolveBoundAccount(principal: Principal): Promise<BoundResolution> {
+  let binding;
+  try {
+    binding = await bindingsDb.getByWorkspace(principal.workspaceId);
+  } catch {
+    // DB unavailable -> deny-by-default (safe empty), never fall through.
+    return { kind: "none" };
+  }
+  if (!binding) return { kind: "none" };
+
+  // Owner match: the binding must belong to this principal's tenant. The lookup
+  // is by workspace, so this is normally always true; the explicit check makes
+  // any cross-tenant row a hard 403 rather than a silent read.
+  if (binding.workspaceId !== principal.workspaceId) return { kind: "mismatch" };
+
+  if (binding.authState !== "ready") return { kind: "none" };
+
+  const id = binding.tdlibAccountId;
+  // Never serve the shared legacy NOVIKOVA / main slot behind a login.
+  if (!id || isForbiddenAccountId(id)) return { kind: "mismatch" };
+
+  return { kind: "ok", accountId: id };
+}
+
+// Back-compat resolver used by routes that only branch null -> safe empty.
+// Returns an owner-matched, ready-only, non-forbidden account id, else null.
+export async function resolveBoundAccountId(principal: Principal): Promise<string | null> {
+  const r = await resolveBoundAccount(principal);
+  return r.kind === "ok" ? r.accountId : null;
 }
 
 export function safeEmptyState(reason: "no_binding") {

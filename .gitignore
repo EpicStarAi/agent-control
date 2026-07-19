@@ -29,5 +29,8 @@ build-*.log
 
 .profile-data.json
 
+# P-CLAW-AGENT-CORE — local agent-run fs store (never commit)
+.agent-runs.json
+
 # P27.6 Grok browser profile + local renders (never commit)
 .local/
