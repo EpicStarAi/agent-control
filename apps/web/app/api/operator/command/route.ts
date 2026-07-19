@@ -44,6 +44,14 @@ function isToolCommand(command: string): boolean {
   );
 }
 
+// Fix [MED]: "проанализируй/анализ" must yield a real LLM analysis, not a raw
+// message dump. The backend detectTool() picks get_last_messages whenever the text
+// contains "последн", so we force the summarize_chat tool for analyze intent.
+function isAnalyzeIntent(command: string): boolean {
+  const s = command.toLowerCase();
+  return /проанализир|анализ|analy[sz]e|разбор|осмысл|выжимк/.test(s);
+}
+
 // Render a read-only tool result (no proposedAction) as a plain, readable text.
 function renderToolResult(routed: any): string {
   const text = normalizeText(routed?.result?.text);
@@ -138,12 +146,12 @@ export async function POST(req: Request) {
   // P3.4b: tool-intent commands go to the non-destructive Tool Router v1.
   // It NEVER sends. Draft/prepare come back as an approval-card draft; read-only
   // tools (summary / last messages / competitors / plan) render as info only.
-  if (isToolCommand(command)) {
+  if (isToolCommand(command) || isAnalyzeIntent(command)) {
     try {
       const routedRes = await fetch(`${API_BASE_URL}/ai/route`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ command, instruction: command, chatId, chatTitle, messages }),
+        body: JSON.stringify({ command, instruction: command, chatId, chatTitle, messages, tool: isAnalyzeIntent(command) ? "summarize_chat" : undefined }),
         cache: "no-store",
       });
       const routed = await routedRes.json().catch(() => null);
@@ -164,6 +172,9 @@ export async function POST(req: Request) {
             ok: true,
             text: proposedText,
             draft: proposedText,
+            // Real external action → client shows the approval card ONLY when
+            // pendingAction is present.
+            pendingAction: { actionType: "telegram_send", chatId, chatTitle, text: proposedText, auditId: routed?.auditId ?? null },
             tool,
             auditId: routed?.auditId ?? null,
             model: routed?.model ?? null,
@@ -209,6 +220,7 @@ export async function POST(req: Request) {
             ok: true,
             text: proposedText,
             draft: proposedText,
+            pendingAction: { actionType: "publish_post", chatId, chatTitle, text: proposedText, auditId: routed?.auditId ?? null },
             tool,
             actionType: "publish_post",
             targetChatId: chatId,
@@ -343,6 +355,9 @@ export async function POST(req: Request) {
     if (upstream.ok && data?.ok && draft) {
       return NextResponse.json({
         ok: true,
+        // A prepared draft is INFORMATIONAL — draft preparation never requires
+        // approval. No pendingAction → client renders it as a plain reply.
+        readonly: true,
         text: draft,
         draft,
         auditId: data?.auditId ?? null,
@@ -351,7 +366,7 @@ export async function POST(req: Request) {
         latency_ms: latency,
         activeChatId: chatId,
         messagesCount: messages.length,
-        approval_required: true,
+        approval_required: false,
         mode: "MANUAL_APPROVAL_ONLY",
         runtime_mode: "READ_ONLY",
         actions: [],

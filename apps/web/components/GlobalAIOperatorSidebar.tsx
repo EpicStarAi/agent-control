@@ -36,8 +36,7 @@ export function GlobalAIOperatorSidebar() {
   const [open, setOpen] = useState(true);
   const [tick, setTick] = useState(0);
   const [tgReady, setTgReady] = useState<boolean | null>(null);
-  const [chatInput, setChatInput] = useState("");
-  const [chat, setChat] = useState<AnyRec[]>([]);
+
   const [toast, setToast] = useState("");
 
   useEffect(() => {
@@ -45,7 +44,7 @@ export function GlobalAIOperatorSidebar() {
     const st = load<AnyRec>(LSK, {} as AnyRec);
     const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
     setOpen(typeof st.isOpen === "boolean" ? st.isOpen : !isMobile);
-    setChat(Array.isArray(st.chatHistory) ? st.chatHistory : []);
+
     const onHash = () => setTick((t2) => t2 + 1);
     window.addEventListener("hashchange", onHash);
     const id = setInterval(() => setTick((t2) => t2 + 1), 2500);
@@ -126,18 +125,7 @@ export function GlobalAIOperatorSidebar() {
 
   const navTo = (key: string) => { try { window.location.hash = "#" + key; window.dispatchEvent(new CustomEvent("deepinside:navigate", { detail: key })); } catch {} flash(t("sb.open", loc) + ": " + t("section." + key, loc, key)); };
 
-  const pushChat = (role: string, text: string) => { setChat((prev) => { const next = [...prev, { role, text, at: new Date().toISOString() }].slice(-50); persist({ chatHistory: next }); return next; }); };
-  const answer = (q: string): string => {
-    const s = q.toLowerCase();
-    if (s.indexOf("blocker") >= 0 || s.indexOf("блок") >= 0) return blocker ? ("Заблокировано: " + t(blocker[0], loc) + " — " + blocker[2] + ". " + na) : "Блокеров нет. " + na;
-    if (s.indexOf("next") >= 0 || s.indexOf("след") >= 0 || s.indexOf("нажать") >= 0 || s.indexOf("дал") >= 0) return na;
-    if (s.indexOf("screen") >= 0 || s.indexOf("экран") >= 0 || s.indexOf("explain") >= 0) return sectionName + " (route " + path + (hash ? "#" + hash : "") + "). " + na;
-    if (s.indexOf("state") >= 0 || s.indexOf("состоян") >= 0 || s.indexOf("summary") >= 0 || s.indexOf("сводк") >= 0) return "Readiness " + readiness + "%. " + gates.map((g) => t(g[0], loc) + "=" + g[1]).join(", ") + ". " + na;
-    if (s.indexOf("runbook") >= 0 || s.indexOf("чеклист") >= 0) return "Build → Local Model → Account → Target → Binding → Runbook(Freeze/Evidence/Arm) → Preflight READY → SEND ONE LIVE MESSAGE. " + na;
-    return t("sb.intro", loc) + " " + na;
-  };
-  const send = () => { const q = chatInput.trim(); if (!q) return; pushChat("user", q); const a = answer(q); setChatInput(""); setTimeout(() => pushChat("ai", a), 60); };
-  const quick = (q: string) => { pushChat("user", q); const a = answer(q); setTimeout(() => pushChat("ai", a), 60); };
+
 
   if (!mounted) return null;
 
@@ -189,8 +177,6 @@ export function GlobalAIOperatorSidebar() {
       </div>)}
 
       {card(t("sb.quickActions", loc), <div className="grid grid-cols-2 gap-1 text-[9px]">
-        <button onClick={() => quick("Объясни этот экран")} className="rounded bg-white/10 px-2 py-1 hover:bg-white/20">{t("sb.explainScreen", loc)}</button>
-        <button onClick={() => quick("Покажи блокеры")} className="rounded bg-white/10 px-2 py-1 hover:bg-white/20">{t("sb.showBlockers", loc)}</button>
         <button onClick={() => copy(claudePrompt(), "current state")} className="rounded bg-white/10 px-2 py-1 hover:bg-white/20">{t("sb.copyState", loc)}</button>
         <button onClick={() => copy(claudePrompt(), "Claude fix prompt")} className="rounded bg-white/10 px-2 py-1 hover:bg-white/20">{t("sb.copyClaude", loc)}</button>
         <button onClick={() => navTo("liveprep")} className="rounded bg-emerald-600/20 px-2 py-1 hover:bg-emerald-600/35">{t("nav.openLivePrep", loc)}</button>
@@ -215,22 +201,7 @@ export function GlobalAIOperatorSidebar() {
         {Object.keys(SAFETY).map((k) => { const v = (SAFETY as AnyRec)[k]; return <div key={k} className="flex items-center justify-between"><span className="text-tg-muted">{k}</span><span style={{ color: (v === false || k === "mode" || ((k === "oneMessageOnly" || k === "assistantOnly" || k === "advisoryOnly") && v === true)) ? "#86efac" : (v === true ? "#fca5a5" : "#86efac") }}>{String(v)}</span></div>; })}
       </div>)}
 
-      {card(t("sb.chat", loc), <div className="space-y-1">
-        <div className="max-h-40 space-y-1 overflow-auto rounded bg-black/30 p-1.5">
-          {chat.length === 0 && <div className="text-[10px] text-tg-muted">{t("sb.intro", loc)}</div>}
-          {chat.map((m, i) => <div key={i} className={"text-[10px] " + (m.role === "user" ? "text-cyan-200" : "text-amber-100")}><b>{m.role === "user" ? t("sb.you", loc) : t("sb.ai", loc)}:</b> {m.text}</div>)}
-        </div>
-        <div className="flex gap-1">
-          <input value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") send(); }} placeholder={t("q.whatNext", loc)} className="min-w-0 flex-1 rounded bg-black/40 px-2 py-1 text-[10px] text-tg-text" />
-          <button onClick={send} className="rounded bg-cyan-600/25 px-2 py-1 text-[10px] hover:bg-cyan-600/40">→</button>
-        </div>
-        <div className="flex flex-wrap gap-1">
-          <button onClick={() => quick("Что заблокировано?")} className="rounded bg-white/10 px-1.5 py-0.5 text-[8px] hover:bg-white/20">{t("q.whatBlocked", loc)}</button>
-          <button onClick={() => quick("Что нажать дальше?")} className="rounded bg-white/10 px-1.5 py-0.5 text-[8px] hover:bg-white/20">{t("q.whatNext", loc)}</button>
-          <button onClick={() => quick("Сводка состояния")} className="rounded bg-white/10 px-1.5 py-0.5 text-[8px] hover:bg-white/20">{t("q.summary", loc)}</button>
-          <button onClick={() => quick("Чеклист runbook")} className="rounded bg-white/10 px-1.5 py-0.5 text-[8px] hover:bg-white/20">{t("q.runbook", loc)}</button>
-        </div>
-      </div>)}
+      {card(t("sb.gateInspector", loc) + " · advisory", <div className="text-[10px] text-tg-muted">{t("sb.advisory", loc)}</div>)}
 
       <div className="text-[8px] text-tg-muted">{t("sb.advisory", loc)}</div>
     </div>
