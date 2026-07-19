@@ -19,3 +19,8 @@ export async function logout(token: string): Promise<{ ok: boolean; source: Src 
   if (db.enabled()) { try { return { ...(await db.logout(token)), source: "db" }; } catch {} }
   return { ...store.logout(token), source: "fallback" };
 }
+
+export async function bootstrapLogin(): Promise<LoginRes> {
+  if (db.enabled()) { try { return { ...(await db.bootstrapLogin()), source: "db" }; } catch {} }
+  return { ...store.bootstrapLogin(), source: "fallback" };
+}

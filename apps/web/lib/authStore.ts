@@ -45,3 +45,15 @@ export function logout(token: string): { ok: boolean } {
   if (s) { s.expiresAt = new Date().toISOString(); save(db); }
   return { ok:true };
 }
+
+// Bootstrap login (fs fallback) — owner session without a referral code.
+export function bootstrapLogin(): { ok: boolean; token?: string; user?: User; workspace?: Workspace } {
+  const db = load();
+  const now = new Date().toISOString();
+  const user: User = { id:newId("u"), displayName:"Operator", role:"owner", createdAt:now };
+  const workspace: Workspace = { id:newId("ws"), ownerUserId:user.id, title:"Personal Workspace", createdAt:now };
+  const token = newToken();
+  db.users.push(user); db.workspaces.push(workspace);
+  db.sessions.push({ id:newId("s"), userId:user.id, tokenHash:sha256(token), expiresAt:new Date(Date.now()+SESSION_TTL_MS).toISOString(), createdAt:now });
+  save(db); return { ok:true, token, user, workspace };
+}
