@@ -42,5 +42,14 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/client/:path*", "/api/telegram/:path*", "/api/v1/telegram/:path*"]
+  matcher: [
+    "/client/:path*",
+    "/api/telegram/:path*",
+    "/api/v1/telegram/:path*",
+    // The entire operator bridge — the verbatim catch-all proxy plus every
+    // dedicated route (command/confirm/schedule/qclaw) — must sit behind the
+    // gate. Enforcement is still duplicated inside each handler (defence in
+    // depth); this only guarantees the surface is covered at the edge too.
+    "/api/operator/:path*"
+  ]
 };
