@@ -159,6 +159,29 @@ export async function resolveBoundAccountId(_principal: Principal): Promise<stri
   return null;
 }
 
+// Discriminated result the /api/telegram/* and operator routes consume:
+//   { kind: "ok", accountId }  — caller owns a ready, owner-matched slot
+//   { kind: "mismatch" }       — a binding exists but is NOT owner-matched (403)
+//   { kind: "no_binding" }     — no bound account (safe empty state)
+export type BoundAccountResolution =
+  | { kind: "ok"; accountId: string }
+  | { kind: "mismatch" }
+  | { kind: "no_binding" };
+
+// Thin, deny-by-default wrapper around resolveBoundAccountId that the route
+// handlers already depend on. It intentionally does NOT introduce any new
+// account-resolution behaviour: it delegates to resolveBoundAccountId (which
+// returns null for everyone until P-EPICGRAM-CLIENT-PLATFORM-1 lands the
+// owner-matched binding model), so every caller still falls through to the safe
+// empty state. It can never return "ok" while resolveBoundAccountId returns null,
+// so the incident-containment posture (no cross-user account exposure) is
+// preserved exactly. Owner-mismatch detection is reserved for that later model.
+export async function resolveBoundAccount(principal: Principal): Promise<BoundAccountResolution> {
+  const accountId = await resolveBoundAccountId(principal);
+  if (!accountId) return { kind: "no_binding" };
+  return { kind: "ok", accountId };
+}
+
 export function safeEmptyState(reason: "no_binding") {
   return {
     authenticated: true,
