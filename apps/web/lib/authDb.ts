@@ -72,3 +72,20 @@ export async function logout(token: string): Promise<{ ok: boolean }> {
   await p.query(`UPDATE sessions SET expires_at=now() WHERE token_hash=$1`, [sha256(token)]); // expire, no DELETE
   return { ok: true };
 }
+
+// Bootstrap login — creates an EPICGRAM owner session WITHOUT a referral code.
+// Used by the /login CTA so the entry flow can mint a session before /client.
+// Creates ONLY the EPICGRAM session (user + workspace + session); NEVER any
+// Telegram authorization. No caller-supplied id is trusted — everything is
+// generated server-side.
+export async function bootstrapLogin(): Promise<{ ok: boolean; token?: string; user?: User; workspace?: Workspace }> {
+  const p = await db();
+  const now = new Date(); const uid = newId("u"); const wid = newId("ws");
+  await p.query(`INSERT INTO users(id,display_name,role,created_at) VALUES($1,'Operator','owner',$2)`, [uid, now.toISOString()]);
+  await p.query(`INSERT INTO workspaces(id,owner_user_id,title,created_at) VALUES($1,$2,'Personal Workspace',$3)`, [wid, uid, now.toISOString()]);
+  const token = newToken(); const exp = new Date(Date.now() + SESSION_TTL_MS).toISOString();
+  await p.query(`INSERT INTO sessions(id,user_id,token_hash,expires_at,created_at) VALUES($1,$2,$3,$4,$5)`, [newId("s"), uid, sha256(token), exp, now.toISOString()]);
+  const user = uRow((await p.query(`SELECT * FROM users WHERE id=$1`, [uid])).rows[0]);
+  const workspace = wRow((await p.query(`SELECT * FROM workspaces WHERE id=$1`, [wid])).rows[0]);
+  return { ok: true, token, user, workspace };
+}
