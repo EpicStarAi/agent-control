@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TelegramBindingWizard } from "./TelegramBindingWizard";
 import {
   Archive,
   AlertTriangle,
@@ -35,7 +36,6 @@ import {
   X
 } from "lucide-react";
 import type { Section } from "@/data/mock";
-import type { BindingStatus } from "../lib/telegramBindings";
 
 type Props = { section: Section };
 type AuthMode = "qr" | "phone";
@@ -75,6 +75,7 @@ type TelegramMessage = {
 };
 type TelegramStatus = {
   runtime?: string;
+  connected?: boolean;
   activeAccountId?: string;
   authorizationState?: string;
   qrLink?: string | null;
@@ -226,48 +227,15 @@ const routeItems = [
   { href: "/settings", label: "Настройки", icon: Settings }
 ];
 
-// Transform BindingStatus (from /api/telegram/binding/status) into TelegramStatus
-// so the rest of EpicGramShell's derived state (telegramReady, railAccounts, etc.)
-// works without further changes.
-function bindingStatusToTelegramStatus(bs: BindingStatus): TelegramStatus {
-  if (!bs.bound || !bs.binding) {
-    return { runtime: "offline" };
-  }
-  const { binding } = bs;
-  const authStateMap: Record<string, string> = {
-    ready:        "authorizationStateReady",
-    waiting_qr:   "authorizationStateWaitCode",
-    waiting_code: "authorizationStateWaitCode",
-    waiting_password: "authorizationStateWaitPassword",
-    error:        "authorizationStateWaitCode",
-    closed:       "authorizationStateClosed",
-    init:         "authorizationStateClosing",
-  };
-  const account: TelegramAccount = {
-    slotId:     binding.tdlibAccountId,
-    id:         binding.id,
-    label:      binding.displayName || binding.username || binding.tdlibAccountId,
-    status:     binding.authState === "ready" ? "ready" : "pending",
-    active:     true,
-    authorizationState: authStateMap[binding.authState] ?? "authorizationStateClosing",
-    displayName: binding.displayName ?? binding.username ?? undefined,
-    username:   binding.username,
-    phoneMasked: binding.phoneMasked,
-  };
-  return {
-    runtime: binding.authState === "ready" ? "ready" : "pending",
-    activeAccountId: binding.tdlibAccountId,
-    authorizationState: authStateMap[binding.authState] ?? "authorizationStateClosing",
-    account,
-    accounts: [account],
-  };
-}
-
-function isTelegramReady(status: TelegramStatus | null, bindingReady?: boolean) {
-  // Primary: check the BindingStatus-driven runtime
-  if (bindingReady) return true;
-  // Fallback: legacy TelegramStatus fields (for TelegramWorkspace / non-binding callers)
-  return status?.runtime === "ready" || status?.authorizationState === "authorizationStateReady";
+function isTelegramReady(status: TelegramStatus | null) {
+  // Bridged per-user shape: /api/telegram/status returns runtime "owner_bound" +
+  // connected:true for an owner-matched ready binding.
+  return (
+    status?.runtime === "ready" ||
+    status?.runtime === "owner_bound" ||
+    status?.connected === true ||
+    status?.authorizationState === "authorizationStateReady"
+  );
 }
 
 function primaryTelegramAccount(status: TelegramStatus | null) {
@@ -398,7 +366,6 @@ export function EpicGramShell({ section }: Props) {
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [authMessage, setAuthMessage] = useState("TDLib backend пока не подключен.");
   const [telegramStatus, setTelegramStatus] = useState<TelegramStatus | null>(null);
-  const [bindingStatus, setBindingStatus] = useState<BindingStatus | null>(null);
   const [telegramChats, setTelegramChats] = useState<TelegramChat[]>([]);
   const [selectedTelegramChatId, setSelectedTelegramChatId] = useState("");
   const [telegramMessages, setTelegramMessages] = useState<TelegramMessage[]>([]);
@@ -414,10 +381,8 @@ export function EpicGramShell({ section }: Props) {
   const [memoryCount, setMemoryCount] = useState<number | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [redButtonNotice, setRedButtonNotice] = useState("");
-  const telegramReady = isTelegramReady(telegramStatus, bindingStatus?.bound === true && bindingStatus?.binding?.authState === "ready");
-  const activeAccountId = bindingStatus?.bound
-    ? (bindingStatus.binding?.tdlibAccountId ?? telegramStatus?.activeAccountId ?? "main")
-    : (telegramStatus?.activeAccountId ?? primaryTelegramAccount(telegramStatus)?.slotId ?? "main");
+  const telegramReady = isTelegramReady(telegramStatus);
+  const activeAccountId = telegramStatus?.activeAccountId ?? primaryTelegramAccount(telegramStatus)?.slotId ?? "main";
 
   useEffect(() => {
     clearClientCaches(false).catch(() => undefined);
@@ -513,53 +478,31 @@ export function EpicGramShell({ section }: Props) {
     };
   }, [qrLink]);
 
-  // Poll binding status: keeps both bindingStatus and telegramStatus in sync.
-  // When auth flow completes (binding becomes ready), the auth modal is closed here
-  // so the shell reflects the new state immediately.
   useEffect(() => {
     let cancelled = false;
 
     async function syncTelegramStatus() {
-      try {
-        const response = await fetch("/api/telegram/binding/status", { cache: "no-store" });
-        if (!response.ok || cancelled) return;
-        const bs = (await response.json()) as BindingStatus;
-        if (cancelled) return;
+      const response = await fetch("/api/telegram/status", { cache: "no-store" });
+      const status = (await response.json()) as TelegramStatus;
+      if (cancelled) return;
 
-        setBindingStatus(bs);
-        setTelegramStatus(bindingStatusToTelegramStatus(bs));
+      setTelegramStatus(status);
+      if (authOpen && status.qrLink) setQrLink(status.qrLink);
 
-        // Propagate QR link to the auth modal if it is open
-        if (authOpen && bs.authFlow?.qrLink) setQrLink(bs.authFlow.qrLink);
-
-        // Auth flow completed: binding is now ready → close the auth modal
-        if (
-          authOpen &&
-          authFlowActive &&
-          bs.bound &&
-          bs.binding?.authState === "ready"
-        ) {
-          const accountName = bs.binding?.username ?? bs.binding?.displayName ?? null;
-          setQrLink("");
-          setQrDataUrl("");
-          setAuthOpen(false);
-          setAuthFlowActive(false);
-          setAuthMessage(
-            accountName
-              ? `Telegram авторизован: ${accountName}`
-              : "Telegram аккаунт авторизован."
-          );
-        }
-      } catch {
-        // Network errors: silent, keep previous state
+      if (authOpen && authFlowActive && isTelegramReady(status)) {
+        const accountName = primaryTelegramAccount(status)?.displayName;
+        setQrLink("");
+        setQrDataUrl("");
+        setAuthOpen(false);
+        setAuthFlowActive(false);
+        setAuthMessage(accountName ? `Telegram авторизован: ${accountName}` : "Telegram аккаунт авторизован.");
       }
     }
 
     syncTelegramStatus().catch(() => undefined);
-    const interval = authOpen ? 2000 : 5000;
     const timer = window.setInterval(() => {
       syncTelegramStatus().catch(() => undefined);
-    }, interval);
+    }, authOpen ? 2000 : 5000);
 
     return () => {
       cancelled = true;
@@ -603,7 +546,6 @@ export function EpicGramShell({ section }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [telegramStatus, activeAccountId]);
 
-  // Reload chats whenever binding becomes ready or account switches
   useEffect(() => {
     if (!telegramReady) {
       setTelegramChats([]);
@@ -615,7 +557,7 @@ export function EpicGramShell({ section }: Props) {
 
     async function loadTelegramChats() {
       setChatSyncMessage("Синхронизация TDLib...");
-      const response = await fetch(`/api/telegram/binding/chats?limit=30`, { cache: "no-store" });
+      const response = await fetch(`/api/telegram/chats?accountId=${encodeURIComponent(activeAccountId)}`, { cache: "no-store" });
       const data = (await response.json()) as TelegramChatsResponse;
       if (!cancelled && response.ok) {
         setTelegramChats(data.chats ?? []);
@@ -632,8 +574,7 @@ export function EpicGramShell({ section }: Props) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAccountId, telegramReady, bindingStatus?.bound, bindingStatus?.binding?.authState]);
+  }, [activeAccountId, telegramReady]);
 
   useEffect(() => {
     if (telegramChats.length === 0) {
@@ -657,7 +598,7 @@ export function EpicGramShell({ section }: Props) {
     setMessagesLoading(true);
 
     async function loadTelegramMessages() {
-      const response = await fetch(`/api/telegram/binding/messages?chat_id=${encodeURIComponent(selectedTelegramChatId)}&limit=50`, { cache: "no-store" });
+      const response = await fetch(`/api/telegram/messages?accountId=${encodeURIComponent(activeAccountId)}&chatId=${encodeURIComponent(selectedTelegramChatId)}`, { cache: "no-store" });
       const data = (await response.json()) as TelegramMessagesResponse;
       if (!cancelled && response.ok) setTelegramMessages(data.messages ?? []);
       if (!cancelled) setMessagesLoading(false);
@@ -739,7 +680,7 @@ export function EpicGramShell({ section }: Props) {
     }
 
     setChatSyncMessage("Синхронизация TDLib...");
-    const response = await fetch(`/api/telegram/binding/chats?limit=30`, { cache: "no-store" });
+    const response = await fetch(`/api/telegram/chats?accountId=${encodeURIComponent(activeAccountId)}`, { cache: "no-store" });
     const data = (await response.json()) as TelegramChatsResponse;
     if (response.ok) {
       setTelegramChats(data.chats ?? []);
@@ -751,7 +692,7 @@ export function EpicGramShell({ section }: Props) {
 
   async function refreshTelegramMessages() {
     if (!selectedTelegramChatId) return;
-    const response = await fetch(`/api/telegram/binding/messages?chat_id=${encodeURIComponent(selectedTelegramChatId)}&limit=50`, { cache: "no-store" });
+    const response = await fetch(`/api/telegram/messages?accountId=${encodeURIComponent(activeAccountId)}&chatId=${encodeURIComponent(selectedTelegramChatId)}`, { cache: "no-store" });
     const data = (await response.json()) as TelegramMessagesResponse;
     if (response.ok) setTelegramMessages(data.messages ?? []);
   }
@@ -813,9 +754,6 @@ export function EpicGramShell({ section }: Props) {
   }
 
   function activeSlotIsReady() {
-    // Primary: check the binding state directly
-    if (bindingStatus?.bound && bindingStatus?.binding?.authState === "ready") return true;
-    // Fallback: check the transformed telegramStatus account
     const slot = telegramStatus?.accounts?.find((a) => a.slotId === activeAccountId);
     return Boolean(slot && (slot.status === "ready" || slot.authorizationState === "authorizationStateReady"));
   }
@@ -826,10 +764,14 @@ export function EpicGramShell({ section }: Props) {
       return;
     }
     setAuthFlowActive(true);
-    const response = await fetch("/api/telegram/binding/qr", { method: "POST" });
-    const data = (await response.json()) as { ok?: boolean; status?: { authFlow?: { qrLink?: string | null } | null }; reason?: string };
-    setQrLink(data.status?.authFlow?.qrLink ?? "");
-    setAuthMessage(data.reason ?? (data.ok ? "QR авторизация запрошена." : "QR авторизация не запустилась."));
+    const response = await fetch("/api/telegram/auth/qr", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accountId: activeAccountId })
+    });
+    const data = (await response.json()) as { message?: string; qrLink?: string };
+    setQrLink(data.qrLink ?? "");
+    setAuthMessage(data.message ?? (response.ok ? "QR авторизация запрошена." : "QR авторизация не запустилась."));
   }
 
   async function requestPhoneAuth() {
@@ -840,31 +782,30 @@ export function EpicGramShell({ section }: Props) {
     setAuthFlowActive(true);
     setQrLink("");
     setQrDataUrl("");
-    const response = await fetch("/api/telegram/binding/phone", {
+    const response = await fetch("/api/telegram/auth/phone", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone })
+      body: JSON.stringify({ accountId: activeAccountId, phoneNumber: phone })
     });
-    const data = (await response.json()) as { ok?: boolean; reason?: string };
-    setAuthMessage(data.reason ?? (data.ok ? "Код запрошен. Проверьте Telegram." : "Код не отправлен. Проверьте номер и backend."));
+    const data = (await response.json()) as { message?: string };
+    setAuthMessage(data.message ?? (response.ok ? "Код запрошен. Проверьте Telegram." : "Код не отправлен. Проверьте номер и backend."));
   }
 
   async function requestCodeAuth() {
     setAuthFlowActive(true);
-    const response = await fetch("/api/telegram/binding/code", {
+    const response = await fetch("/api/telegram/auth/code", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code })
+      body: JSON.stringify({ accountId: activeAccountId, code })
     });
-    const data = (await response.json()) as { ok?: boolean; reason?: string };
-    setAuthMessage(data.reason ?? (data.ok ? "Код отправлен на проверку." : "Код не принят Telegram."));
+    const data = (await response.json()) as { message?: string };
+    setAuthMessage(data.message ?? (response.ok ? "Код отправлен на проверку." : "Код не принят Telegram."));
     if (response.ok) {
-      const statusResponse = await fetch("/api/telegram/binding/status", { cache: "no-store" });
-      const bs = (await statusResponse.json()) as BindingStatus;
-      setBindingStatus(bs);
-      setTelegramStatus(bindingStatusToTelegramStatus(bs));
-      if (bs.bound && bs.binding?.authState === "ready") {
-        const accountName = bs.binding?.username ?? bs.binding?.displayName ?? null;
+      const statusResponse = await fetch("/api/telegram/status", { cache: "no-store" });
+      const status = (await statusResponse.json()) as TelegramStatus;
+      setTelegramStatus(status);
+      if (isTelegramReady(status)) {
+        const accountName = primaryTelegramAccount(status)?.displayName;
         setAuthOpen(false);
         setAuthFlowActive(false);
         setAuthMessage(accountName ? `Telegram авторизован: ${accountName}` : "Telegram аккаунт авторизован.");
@@ -874,21 +815,20 @@ export function EpicGramShell({ section }: Props) {
 
   async function requestTwoFaAuth() {
     setAuthFlowActive(true);
-    const response = await fetch("/api/telegram/binding/2fa", {
+    const response = await fetch("/api/telegram/auth/2fa", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: pass2fa })
+      body: JSON.stringify({ accountId: activeAccountId, password: pass2fa })
     });
-    const data = (await response.json()) as { ok?: boolean; reason?: string };
+    const data = (await response.json()) as { message?: string };
     setPass2fa("");
-    setAuthMessage(data.reason ?? (data.ok ? "2FA отправлен на проверку." : "2FA не принят."));
+    setAuthMessage(data.message ?? (response.ok ? "2FA отправлен на проверку." : "2FA не принят."));
     if (response.ok) {
-      const statusResponse = await fetch("/api/telegram/binding/status", { cache: "no-store" });
-      const bs = (await statusResponse.json()) as BindingStatus;
-      setBindingStatus(bs);
-      setTelegramStatus(bindingStatusToTelegramStatus(bs));
-      if (bs.bound && bs.binding?.authState === "ready") {
-        const accountName = bs.binding?.username ?? bs.binding?.displayName ?? null;
+      const statusResponse = await fetch("/api/telegram/status", { cache: "no-store" });
+      const status = (await statusResponse.json()) as TelegramStatus;
+      setTelegramStatus(status);
+      if (isTelegramReady(status)) {
+        const accountName = primaryTelegramAccount(status)?.displayName;
         setAuthOpen(false);
         setAuthFlowActive(false);
         setAuthMessage(accountName ? `Telegram авторизован: ${accountName}` : "Telegram аккаунт авторизован.");
@@ -956,38 +896,25 @@ export function EpicGramShell({ section }: Props) {
   }
 
   async function resetAuth() {
-    const response = await fetch("/api/telegram/binding/reset", { method: "POST" });
-    const data = (await response.json()) as { ok?: boolean; reason?: string };
+    const response = await fetch("/api/telegram/auth/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accountId: activeAccountId })
+    });
+    const data = (await response.json()) as { message?: string };
     setQrLink("");
     setQrDataUrl("");
     setCode("");
     setAuthFlowActive(false);
-    setAuthMessage(data.reason ?? (data.ok ? "Авторизация сброшена." : "Не удалось сбросить авторизацию."));
+    setAuthMessage(data.message ?? (response.ok ? "Авторизация сброшена." : "Не удалось сбросить авторизацию."));
   }
 
-  // Prefer binding-derived accounts; fall back to legacy telegramStatus accounts
-  const railAccounts: TelegramAccount[] = ((): TelegramAccount[] => {
-    if (bindingStatus?.bound && bindingStatus.binding) {
-      const b = bindingStatus.binding;
-      const isReady = b.authState === "ready";
-      return [{
-        slotId:            b.tdlibAccountId,
-        id:                b.id,
-        label:             b.displayName || b.username || b.tdlibAccountId,
-        status:            isReady ? "ready" : "pending",
-        active:            true,
-        authorizationState: isReady ? "authorizationStateReady" : "authorizationStateClosing",
-        displayName:       b.displayName ?? b.username ?? undefined,
-        username:          b.username,
-        phoneMasked:       b.phoneMasked,
-      }];
-    }
-    return telegramStatus?.accounts ?? [];
-  })();
+  const railAccounts = telegramStatus?.accounts ?? [];
   const unreadActiveTotal = telegramChats.reduce((sum, c) => sum + (c.unreadCount ?? 0), 0);
 
   return (
     <main className="h-screen min-h-0 overflow-hidden bg-tg-bg text-tg-text">
+      <TelegramBindingWizard />
       <div className="fixed right-4 top-4 z-30 flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-2xl border border-tg-line bg-tg-panel/95 p-2 shadow-telegram backdrop-blur">
         <button
           onClick={toggleSound}
@@ -1197,7 +1124,7 @@ export function EpicGramShell({ section }: Props) {
   );
 }
 
-type OpAction = { tool: string; chatId: string; chatTitle: string; text: string; accountId?: string; auditId?: string; actionType?: string };
+type OpAction = { tool: string; chatId: string; chatTitle: string; text: string; accountId?: string; auditId?: string; actionType?: string; approvalId?: string; token?: string; stage?: string };
 type OpMsg = { role: "user" | "op"; text: string; files?: string[]; pending?: OpAction | null };
 
 function OperatorDock({
@@ -1211,22 +1138,22 @@ function OperatorDock({
 }) {
   const [open, setOpen] = useState(true);
   const [msgs, setMsgs] = useState<OpMsg[]>([
-    { role: "op", text: "На связи. Я EPIC☠STAR — оператор. Пиши задачу, кидай фото/видео/аудио — разрулю." }
+    { role: "op", text: "На связи. Я EPIC💀CLAW AI. Пиши задачу, кидай фото/видео/аудио — разрулю." }
   ]);
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([{ id: "p_main", name: "Основной" }]);
   const [activeId, setActiveId] = useState("p_main");
-  // P3.8b: per-pending-card scheduled datetime (local input value), keyed by msg index.
-  const [scheduleAt, setScheduleAt] = useState<Record<number, string>>({});
+  // Guards double-submit on the approval card (holds the confirming message index).
+  const [confirming, setConfirming] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 1e9, behavior: "smooth" });
   }, [msgs, open]);
 
-  const GREET: OpMsg[] = [{ role: "op", text: "На связи. Я EPIC☠STAR — оператор. Пиши задачу, кидай фото/видео/аудио — разрулю." }];
+  const GREET: OpMsg[] = [{ role: "op", text: "На связи. Я EPIC💀CLAW AI. Пиши задачу, кидай фото/видео/аудио — разрулю." }];
   useEffect(() => {
     try {
       const rp = localStorage.getItem("epicstar_op_projects");
@@ -1297,87 +1224,92 @@ function OperatorDock({
         })
       });
       const d = await r.json().catch(() => null);
-      if (d && d.kind === "pending" && d.action) {
-        setMsgs((p) => [...p, { role: "op", text: d.reply || "Подтвердить действие?", pending: d.action as OpAction }]);
-      } else if (d && d.ok && d.readonly) {
-        // P3.4b: read-only Tool Router result — informational only, no send card.
-        setMsgs((p) => [...p, { role: "op", text: String(d.text || "").trim() || "Готово." }]);
-      } else if (d && d.ok && (d.text || d.draft)) {
-        const proposed = String(d.draft || d.text || "").trim();
+      // The approval card appears ONLY when the backend proposes a REAL external
+      // action (pendingAction). Drafts, analysis, summaries, read-only results and
+      // plain answers render as a normal reply with no controls.
+      if (d && d.ok && d.pendingAction && String(d.pendingAction.text || "").trim()) {
+        const pa = d.pendingAction;
         setMsgs((p) => [
           ...p,
           {
             role: "op",
-            text: proposed || "Оператор подготовил ответ.",
+            text: String(d.text || pa.text || "").trim() || "Готово.",
             pending: {
               tool: "tg_send",
               accountId: activeAccountId,
-              chatId: selectedTelegramChatId || activeId,
-              chatTitle: selectedTelegramChatId || "Telegram chat",
-              text: proposed,
-              auditId: (d && d.auditId) || undefined,
-              actionType: (d && d.actionType) || undefined,
+              chatId: pa.chatId || selectedTelegramChatId || activeId,
+              chatTitle: pa.chatTitle || selectedTelegramChatId || "Telegram chat",
+              text: String(pa.text || "").trim(),
+              auditId: pa.auditId || undefined,
+              actionType: pa.actionType || "telegram_send",
             },
           },
         ]);
+      } else if (d && d.ok && (d.text || d.draft)) {
+        setMsgs((p) => [...p, { role: "op", text: String(d.text || d.draft || "").trim() || "Готово." }]);
       } else {
-        const reply = (d && (d.text || d.error)) || "⚠ оператор не ответил";
+        const reply = (d && (d.text || d.error)) || "⚠ EPIC💀CLAW AI не ответил";
         setMsgs((p) => [...p, { role: "op", text: reply }]);
       }
     } catch {
-      setMsgs((p) => [...p, { role: "op", text: "⚠ нет связи с мозгом" }]);
+      setMsgs((p) => [...p, { role: "op", text: "⚠ Нет связи с EPIC💀CLAW AI" }]);
     } finally {
       setBusy(false);
     }
   }
 
-  async function confirmAction(idx: number, action: OpAction) {
-    setMsgs((p) => p.map((m, i) => (i === idx ? { ...m, pending: null } : m)));
-
-    if (action.tool === "tg_send") {
-      try {
-        const cleanText = String(action.text || "").trim();
-        if (!cleanText) {
-          setMsgs((p) => [...p, { role: "op", text: "⚠ Пустой текст для отправки" }]);
-          return;
-        }
-
-        const r = await fetch("/api/telegram/send", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            accountId: action.accountId || activeAccountId,
-            chatId: action.chatId || selectedTelegramChatId,
-            text: cleanText,
-            operatorApproved: true,
-            auditId: action.auditId,
-            actionType: action.actionType || "telegram_send",
-          }),
-        });
-
-        const d = await r.json().catch(() => null);
-        if (!r.ok || d?.ok === false || d?.error) {
-          throw new Error(d?.error || d?.message || `Telegram send failed HTTP ${r.status}`);
-        }
-
-        setMsgs((p) => [...p, { role: "op", text: "✅ Отправлено в Telegram оператором" }]);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        setMsgs((p) => [...p, { role: "op", text: `⚠ Не удалось отправить в Telegram: ${msg}` }]);
-      }
-      return;
-    }
-
+  function finishCard(idx: number, text: string) {
+    setMsgs((p) => p.map((m, i) => (i === idx ? { ...m, pending: null } : m)).concat([{ role: "op", text }]));
+  }
+  function humanReason(reason?: string): string {
+    const r = String(reason || "").toLowerCase();
+    if (!r) return "Действие не выполнено.";
+    if (r.includes("мутаци") || r.includes("mutation") || r.includes("send_disabled")) return "Отправка выключена (безопасный режим).";
+    if (r.includes("not_allowlisted")) return "Этот чат не в списке разрешённых для отправки.";
+    if (r.includes("owner_mismatch") || r.includes("запрещ")) return "Доступ к этой сессии запрещён.";
+    if (r.includes("payload_hash_mismatch")) return "Содержание изменилось — подтвердите заново.";
+    if (r.includes("replay")) return "Действие уже выполнено.";
+    if (r.includes("expired")) return "Срок подтверждения истёк. Повторите.";
+    if (r.includes("no_binding")) return "Telegram не подключён.";
+    if (r.includes("runtime_media_unsupported")) return "Отправка медиа пока не поддержана.";
+    return reason || "Действие не выполнено.";
+  }
+  async function gateExecute(idx: number, approvalId: string, token: string, action: OpAction, at: string) {
     try {
-      const r = await fetch("/api/operator/confirm", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action })
-      });
-      const d = await r.json().catch(() => null);
-      setMsgs((p) => [...p, { role: "op", text: (d && d.message) || "Готово" }]);
-    } catch {
-      setMsgs((p) => [...p, { role: "op", text: "⚠ не удалось выполнить" }]);
+      const r = await fetch("/api/telegram/binding/send", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ approvalId, token, chatId: action.chatId, actionType: at, text: action.text }) });
+      const d = await r.json().catch(() => ({}));
+      if (d?.sent) finishCard(idx, `✅ Отправлено${d.telegramMessageId ? ` (id ${d.telegramMessageId})` : ""}`);
+      else finishCard(idx, `⚠ ${humanReason(d?.reason || d?.message)}`);
+    } catch { finishCard(idx, "⚠ Нет связи с сервером."); }
+  }
+  // Real approval: reuse the per-user binding/send gate (user+account+action+payload
+  // hash, single-use). The AI never sends — only an explicit operator confirm does.
+  // Channel publishing requires a genuine second confirmation.
+  async function confirmAction(idx: number, action: OpAction) {
+    if (confirming !== null) return; // no double-submit
+    setConfirming(idx);
+    try {
+      const at = action.actionType === "publish_post" ? "publish_channel" : "send_text";
+      const text = String(action.text || "").trim();
+      if (!text) { finishCard(idx, "⚠ Пустой текст для отправки"); return; }
+      const post = (path: string, body: unknown) => fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((x) => x.json()).catch(() => ({}));
+      if (action.stage === "await2" && action.approvalId && action.token) {
+        const c2 = await post("/api/telegram/binding/send/confirm", { approvalId: action.approvalId, token: action.token });
+        if (!c2?.ok) { finishCard(idx, `⚠ ${humanReason(c2?.reason)}`); return; }
+        await gateExecute(idx, action.approvalId, action.token, action, at);
+        return;
+      }
+      const pr = await post("/api/telegram/binding/send/prepare", { chatId: action.chatId, actionType: at, text });
+      if (!pr?.ok) { finishCard(idx, `⚠ ${humanReason(pr?.reason)}`); return; }
+      const c = await post("/api/telegram/binding/send/confirm", { approvalId: pr.approvalId, token: pr.token });
+      if (!c?.ok) { finishCard(idx, `⚠ ${humanReason(c?.reason)}`); return; }
+      if (c.needsSecondConfirmation) {
+        setMsgs((p) => p.map((m, i) => (i === idx ? { ...m, pending: { ...(m.pending as OpAction), approvalId: pr.approvalId, token: pr.token, stage: "await2" } } : m)));
+        return;
+      }
+      await gateExecute(idx, pr.approvalId, pr.token, action, at);
+    } finally {
+      setConfirming(null);
     }
   }
 
@@ -1401,45 +1333,8 @@ function OperatorDock({
     } catch {}
   }
 
-  // P3.8b: enqueue the draft into the schedule queue (operator action). This
-  // NEVER sends now and NEVER calls /api/telegram/send — it only enqueues; the
-  // post publishes later via the manual tick. Uses the SELECTED operator chatId.
-  async function scheduleAction(idx: number, action: OpAction | null) {
-    const dueLocal = scheduleAt[idx];
-    const text = String(action?.text || "").trim();
-    const chatId = action?.chatId || selectedTelegramChatId;
-    if (!chatId) { setMsgs((p) => [...p, { role: "op", text: "⚠ Нет выбранного чата — не могу запланировать." }]); return; }
-    if (!dueLocal) { setMsgs((p) => [...p, { role: "op", text: "⚠ Укажи дату и время публикации." }]); return; }
-    if (!text) { setMsgs((p) => [...p, { role: "op", text: "⚠ Пустой текст — нечего планировать." }]); return; }
-    let dueIso = "";
-    const d = new Date(dueLocal);
-    if (isNaN(d.getTime())) { setMsgs((p) => [...p, { role: "op", text: "⚠ Неверная дата/время." }]); return; }
-    dueIso = d.toISOString();
-    try {
-      const r = await fetch("/api/operator/schedule", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          text,
-          dueAt: dueIso,
-          auditId: action?.auditId,
-          actionType: "schedule_post",
-          accountId: action?.accountId || activeAccountId,
-          chatId,
-          chatTitle: action?.chatTitle || chatId,
-        }),
-      });
-      const dd = await r.json().catch(() => null);
-      if (!r.ok || !dd?.ok) throw new Error(dd?.error || dd?.message || `HTTP ${r.status}`);
-      setMsgs((p) =>
-        p.map((m, i) => (i === idx ? { ...m, pending: null } : m))
-          .concat([{ role: "op", text: `⏰ Запланировано: ${dueIso} (${dd.scheduleId || "sch"}). Публикация — по tick.` }]),
-      );
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setMsgs((p) => [...p, { role: "op", text: `⚠ Не удалось запланировать: ${msg}` }]);
-    }
-  }
+  // Scheduling is now natural-language ("опубликуй завтра в 10:00"); the operator
+  // asks for a time if it is missing. No per-message scheduler control.
 
   if (!open) {
     return (
@@ -1447,7 +1342,7 @@ function OperatorDock({
         onClick={() => setOpen(true)}
         className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-red-600 px-4 py-3 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_22px_rgba(220,38,38,.5)] hover:bg-red-500"
       >
-        <Bot className="h-5 w-5" /> AI-Оператор
+        <Bot className="h-5 w-5" /> EPIC💀CLAW AI
       </button>
     );
   }
@@ -1456,7 +1351,7 @@ function OperatorDock({
     <div className="fixed right-0 top-0 z-40 flex h-screen w-[340px] max-w-[88vw] flex-col border-l border-tg-line bg-tg-panel/98 shadow-telegram backdrop-blur">
       <div className="flex items-center justify-between border-b border-tg-line px-4 py-3">
         <div className="flex items-center gap-2 font-black uppercase tracking-wide text-white">
-          <Bot className="h-5 w-5 text-red-500" /> AI-Оператор
+          <Bot className="h-5 w-5 text-red-500" /> EPIC💀CLAW AI
         </div>
         <button onClick={() => setOpen(false)} className="text-tg-muted hover:text-white" title="Свернуть">
           <X className="h-5 w-5" />
@@ -1486,33 +1381,32 @@ function OperatorDock({
             {m.files && m.files.length ? <div className="mb-1 text-xs text-tg-muted">📎 {m.files.join(", ")}</div> : null}
             <div className="whitespace-pre-wrap">{m.text}</div>
             {m.pending ? (
-              <div className="mt-2 flex flex-col gap-2">
-                <div className="flex gap-2">
+              <div className="mt-2 rounded-xl border-2 border-red-500 bg-red-950/25 p-3" style={{ animation: "epicApprovalPulse 1.6s ease-in-out infinite" }}>
+                <style>{"@keyframes epicApprovalPulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.55)}50%{box-shadow:0 0 0 4px rgba(239,68,68,0)}}"}</style>
+                <div className="text-[11px] font-black uppercase tracking-wide text-red-300">⚠ Требуется подтверждение · EPIC💀CLAW AI</div>
+                <div className="mt-2 space-y-1 text-[12px]">
+                  <div className="flex gap-2"><span className="w-14 shrink-0 text-tg-muted">Действие</span><span className="min-w-0 flex-1 break-words font-semibold text-white">{(m.pending as OpAction).actionType === "publish_post" ? "Публикация поста в канал" : "Отправка сообщения"}</span></div>
+                  <div className="flex gap-2"><span className="w-14 shrink-0 text-tg-muted">Куда</span><span className="min-w-0 flex-1 break-words text-white">{(m.pending as OpAction).chatTitle || (m.pending as OpAction).chatId}</span></div>
+                  <div className="flex gap-2"><span className="w-14 shrink-0 text-tg-muted">Превью</span><span className="min-w-0 flex-1 break-words text-white/90">{String((m.pending as OpAction).text || "").slice(0, 120)}{String((m.pending as OpAction).text || "").length > 120 ? "…" : ""}</span></div>
+                  <div className="flex gap-2"><span className="w-14 shrink-0 text-tg-muted">Время</span><span className="min-w-0 flex-1 text-white/70">{new Date().toLocaleString("ru-RU")}</span></div>
+                </div>
+                {(m.pending as OpAction).stage === "await2" && (
+                  <div className="mt-2 text-[11px] font-bold text-amber-300">Необратимое действие в канал — подтвердите ещё раз.</div>
+                )}
+                <div className="mt-2 flex gap-2">
                   <button
                     onClick={() => confirmAction(i, m.pending as OpAction)}
-                    className="rounded-lg bg-red-600 px-3 py-1 text-xs font-bold text-white hover:bg-red-500"
+                    disabled={confirming !== null}
+                    className="flex-1 rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-500 disabled:opacity-50"
                   >
-                    ✅ Отправить
+                    {confirming === i ? "…" : ((m.pending as OpAction).stage === "await2" ? "Подтвердить публикацию" : "Подтвердить")}
                   </button>
                   <button
                     onClick={() => rejectAction(i, m.pending as OpAction)}
-                    className="rounded-lg bg-tg-active px-3 py-1 text-xs text-white"
+                    disabled={confirming !== null}
+                    className="flex-1 rounded-lg border border-tg-line bg-tg-bg px-3 py-2 text-xs text-white disabled:opacity-50"
                   >
-                    ✖ Отмена
-                  </button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="datetime-local"
-                    value={scheduleAt[i] || ""}
-                    onChange={(e) => setScheduleAt((s) => ({ ...s, [i]: e.target.value }))}
-                    className="rounded-lg border border-tg-line bg-tg-bg px-2 py-1 text-xs text-tg-text"
-                  />
-                  <button
-                    onClick={() => scheduleAction(i, m.pending as OpAction)}
-                    className="rounded-lg bg-tg-active px-3 py-1 text-xs text-white hover:bg-tg-hover"
-                  >
-                    ⏰ Запланировать
+                    Отклонить
                   </button>
                 </div>
               </div>
@@ -2023,10 +1917,10 @@ function SettingsWorkspace({
       <section className="rounded-2xl bg-tg-panel p-4 shadow-telegram">
         <div className="mb-3 flex items-center gap-2 font-semibold text-tg-accent">
           <ShieldCheck className="h-5 w-5" />
-          AI Operator · Second Pilot · безопасность
+          EPIC💀CLAW AI · безопасность
         </div>
         <div className="overflow-hidden rounded-xl bg-tg-bg">
-          <InfoRow label="AI Operator" value="EPICSTAR · MANUAL_APPROVAL_ONLY" />
+          <InfoRow label="EPIC💀CLAW AI" value="MANUAL_APPROVAL_ONLY" />
           <InfoRow label="Режим отправки" value={aiStatus?.sendMode === "operator_approval_required" ? "только после подтверждения" : "не настроен"} />
           <InfoRow label="Approval Gate" value="ON — человек подтверждает" />
           <InfoRow label="Auto-send / bulk" value="OFF" />
