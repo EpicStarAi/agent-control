@@ -189,6 +189,7 @@ export async function updateAuthState(input: {
   authError?: string | null;
   phoneMasked?: string | null;
   username?: string | null;
+  displayName?: string | null;
 }): Promise<TelegramBinding | null> {
   if (enabled()) {
     try {
@@ -200,7 +201,8 @@ export async function updateAuthState(input: {
            auth_error = $3,
            phone_masked = COALESCE($4, phone_masked),
            username = COALESCE($5, username),
-           updated_at = $6
+           display_name = COALESCE($6, display_name),
+           updated_at = $7
          WHERE workspace_id = $1
          RETURNING *`,
         [
@@ -209,6 +211,7 @@ export async function updateAuthState(input: {
           input.authError ?? null,
           input.phoneMasked ?? null,
           input.username ?? null,
+          input.displayName ?? null,
           now,
         ]
       );
