@@ -8,7 +8,7 @@ import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
-type PanelId = "telegram" | "channels" | "operator" | "server" | "content" | "assets" | "automation" | null;
+type PanelId = "telegram" | "channels" | "operator" | "server" | "content" | "assets" | "automation" | "agent" | null;
 type MessageEntry = { role: "operator" | "user"; text: string; ts: string };
 type ActionEnvelope = { ok: boolean; source: string; action: string; requiresApproval: boolean; liveSend: boolean; mode: string };
 
@@ -570,6 +570,274 @@ function LoadingScreen({ progress }: { progress: number }) {
   );
 }
 
+// ─── Panel: Agent Run (P-CLAW-AGENT-CORE stage 1) ──────────────────────────────
+// Drives the authenticated agent LOOP: POST /api/operator/run starts a run, then
+// GET /api/operator/run/[id] is polled so every step shows its plain-language
+// intent + honest status. partial / unverified / awaiting_approval render
+// DISTINCTLY from a green success — an unverified step is never a check-mark.
+type AgentStepView = {
+  index: number;
+  tool: string;
+  intent: string;
+  risk: "read" | "draft" | "mutation";
+  attempt: number;
+  status: string;
+  claimed: string;
+  verified: { method: string; passed: boolean; evidence: string } | null;
+  error: string | null;
+};
+type AgentRunView = {
+  id: string;
+  goal: string;
+  status: string;
+  reason: string | null;
+  accountBound: boolean;
+  plan: { index: number; tool: string; intent: string; risk: string }[];
+  steps: AgentStepView[];
+};
+
+const RUN_TERMINAL = new Set(["succeeded", "failed", "cancelled"]);
+
+function statusColor(status: string): string {
+  switch (status) {
+    case "success":
+    case "succeeded":
+      return C.green;
+    case "partial":
+      return C.yellow;
+    case "unverified":
+      return C.blue;
+    case "awaiting_approval":
+    case "waiting_approval":
+      return C.purple;
+    case "failed":
+      return "#f87171";
+    case "cancelled":
+      return C.muted;
+    default:
+      return C.accent; // running / planning
+  }
+}
+
+function statusLabel(status: string): string {
+  const map: Record<string, string> = {
+    planning: "планирование",
+    running: "выполняется",
+    waiting_approval: "ждёт подтверждения",
+    awaiting_approval: "ждёт подтверждения",
+    waiting_input: "ждёт ввода",
+    succeeded: "успех",
+    success: "подтверждено",
+    partial: "частично",
+    unverified: "не проверено",
+    failed: "ошибка",
+    cancelled: "отменён"
+  };
+  return map[status] ?? status;
+}
+
+function riskLabel(risk: string): string {
+  return risk === "mutation" ? "мутация" : risk === "draft" ? "черновик" : "чтение";
+}
+
+function AgentRunPanel() {
+  const [goal, setGoal] = useState("");
+  const [run, setRun] = useState<AgentRunView | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearTimeout(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  useEffect(() => stopPolling, []);
+
+  const poll = async (id: string) => {
+    try {
+      const r = await fetch(`/api/operator/run/${id}`, { cache: "no-store", credentials: "include" });
+      if (r.status === 401) {
+        setError("Требуется вход в EPICGRAM.");
+        return;
+      }
+      const j = await r.json().catch(() => null);
+      if (j?.ok && j.run) {
+        setRun(j.run as AgentRunView);
+        if (!RUN_TERMINAL.has(j.run.status) && j.run.status !== "waiting_approval") {
+          pollRef.current = setTimeout(() => poll(id), 1200);
+        }
+      }
+    } catch {
+      /* transient — try once more shortly */
+      pollRef.current = setTimeout(() => poll(id), 2000);
+    }
+  };
+
+  const start = async () => {
+    const g = goal.trim();
+    if (!g || busy) return;
+    setBusy(true);
+    setError(null);
+    setRun(null);
+    stopPolling();
+    try {
+      const r = await fetch("/api/operator/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ goal: g })
+      });
+      if (r.status === 401) {
+        setError("Требуется вход в EPICGRAM — запуск агента доступен только авторизованному оператору.");
+        return;
+      }
+      const j = await r.json().catch(() => null);
+      if (j?.ok && j.run) {
+        setRun(j.run as AgentRunView);
+        poll(j.run.id);
+      } else {
+        setError(j?.reason ? `Не удалось запустить: ${j.reason}` : "Не удалось запустить агента.");
+      }
+    } catch {
+      setError("Сеть недоступна.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancel = async () => {
+    if (!run) return;
+    try {
+      await fetch(`/api/operator/run/${run.id}/cancel`, {
+        method: "POST",
+        credentials: "include"
+      });
+      poll(run.id);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const running = run != null && !RUN_TERMINAL.has(run.status);
+
+  return (
+    <div style={{ fontFamily: "monospace", fontSize: 11, color: C.text }}>
+      <div style={{ padding: 12, background: C.panel, ...pxb(C.accent, 1), marginBottom: 12 }}>
+        <SectionHead text="Цель агента" />
+        <textarea
+          value={goal}
+          onChange={(e) => setGoal(e.target.value)}
+          placeholder="напр.: собери последние сообщения канала, проанализируй, подготовь черновик поста"
+          rows={3}
+          style={{
+            width: "100%", boxSizing: "border-box", resize: "vertical",
+            background: C.surface, border: `1px solid ${C.line}`, color: C.text,
+            padding: "7px 9px", fontFamily: "monospace", fontSize: 10, outline: "none", marginBottom: 8
+          }}
+        />
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={start}
+            disabled={!goal.trim() || busy}
+            style={{
+              flex: 1, background: goal.trim() && !busy ? `${C.accent}22` : C.panel,
+              border: `1px solid ${goal.trim() && !busy ? `${C.accent}66` : C.line}`,
+              color: goal.trim() && !busy ? C.accent : C.muted,
+              padding: "7px 10px", cursor: goal.trim() && !busy ? "pointer" : "default",
+              fontFamily: "monospace", fontSize: 11, fontWeight: 700, letterSpacing: "0.05em"
+            }}
+          >{busy ? "Запуск..." : "▶ Запустить цикл"}</button>
+          {running && (
+            <button
+              onClick={cancel}
+              style={{
+                background: `${C.ember}22`, border: `1px solid ${C.ember}66`, color: C.ember,
+                padding: "7px 12px", cursor: "pointer", fontFamily: "monospace", fontSize: 11, fontWeight: 700
+              }}
+            >■ Стоп</button>
+          )}
+        </div>
+        {error && (
+          <div style={{ marginTop: 8, padding: "6px 8px", background: "#f8717114", border: "1px solid #f8717133", color: "#f87171", fontSize: 9 }}>
+            {error}
+          </div>
+        )}
+      </div>
+
+      {run && (
+        <div style={{ padding: 12, background: C.panel, ...pxb(statusColor(run.status), 1), marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+            <span style={{ color: C.muted, fontSize: 9 }}>RUN · {run.id.slice(0, 14)}…</span>
+            <span style={{ color: statusColor(run.status), fontWeight: 700, fontSize: 10 }}>
+              ● {statusLabel(run.status)}
+            </span>
+          </div>
+          <div style={{ color: C.text, fontSize: 10, marginBottom: 6 }}>{run.goal}</div>
+          {run.reason && (
+            <div style={{ color: C.muted, fontSize: 9 }}>причина: {run.reason}</div>
+          )}
+          {!run.accountBound && (
+            <div style={{ marginTop: 6, color: C.yellow, fontSize: 9 }}>
+              Telegram-аккаунт не привязан — мутации будут ждать подтверждения.
+            </div>
+          )}
+        </div>
+      )}
+
+      {run && run.steps.length > 0 && (
+        <div style={{ marginBottom: 4 }}>
+          <SectionHead text={`Шаги (${run.steps.length})`} />
+          {run.steps.map((s) => (
+            <div key={`${s.index}.${s.attempt}`} style={{ marginBottom: 8, padding: 10, background: C.surface, ...pxb(statusColor(s.status), 1) }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ color: C.muted, fontSize: 9 }}>
+                  #{s.index + 1} · {s.tool} · <span style={{ color: s.risk === "mutation" ? C.ember : C.muted }}>{riskLabel(s.risk)}</span>
+                  {s.attempt > 1 ? ` · попытка ${s.attempt}` : ""}
+                </span>
+                <span style={{ color: statusColor(s.status), fontWeight: 700, fontSize: 9 }}>
+                  {s.status === "success" ? "✓ " : s.status === "failed" ? "✕ " : s.status === "unverified" ? "? " : s.status === "partial" ? "≈ " : s.status === "awaiting_approval" ? "⏸ " : "… "}
+                  {statusLabel(s.status)}
+                </span>
+              </div>
+              <div style={{ color: C.text, fontSize: 10, marginBottom: 3 }}>{s.intent}</div>
+              {s.claimed && (
+                <div style={{ color: C.muted, fontSize: 9, whiteSpace: "pre-wrap" }}>▸ {s.claimed.slice(0, 280)}</div>
+              )}
+              {s.verified ? (
+                <div style={{ marginTop: 4, fontSize: 8, color: s.verified.passed ? C.green : "#f87171" }}>
+                  проверка [{s.verified.method}]: {s.verified.passed ? "пройдена" : "НЕ пройдена"} · {s.verified.evidence}
+                </div>
+              ) : (
+                s.status !== "running" && s.status !== "awaiting_approval" && (
+                  <div style={{ marginTop: 4, fontSize: 8, color: C.blue }}>проверка недоступна — статус не «успех»</div>
+                )
+              )}
+              {s.error && (
+                <div style={{ marginTop: 3, fontSize: 8, color: "#f87171" }}>ошибка: {s.error}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {run && run.steps.length === 0 && run.plan.length > 0 && (
+        <div>
+          <SectionHead text="План" />
+          {run.plan.map((p) => (
+            <div key={p.index} style={{ marginBottom: 6, padding: 8, background: C.surface, ...pxb(C.line, 1) }}>
+              <span style={{ color: C.muted, fontSize: 9 }}>#{p.index + 1} · {p.tool} · {riskLabel(p.risk)}</span>
+              <div style={{ color: C.text, fontSize: 10 }}>{p.intent}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function OperatorOffice() {
   const [loading, setLoading] = useState(true);
@@ -927,6 +1195,8 @@ export default function OperatorOffice() {
             icon="🖥" color={C.blue} active={panel === "server"} onClick={() => openPanel("server")} />
           <Zone label="ИИ-оператор" sub="режим · пам'ять · дії"
             icon="🤖" color={C.green} active={panel === "operator"} onClick={() => openPanel("operator")} />
+          <Zone label="Агентный цикл" sub="план · шаги · проверка"
+            icon="🧭" color={C.purple} active={panel === "agent"} onClick={() => openPanel("agent")} />
           <Zone label="Очередь согласования" sub="очередь · согласование · расписание"
             icon="⚡" color={C.yellow} active={panel === "automation"} onClick={() => openPanel("automation")} />
 
@@ -957,6 +1227,7 @@ export default function OperatorOffice() {
       {panel === "telegram" && <Panel title="Telegram" icon="📨" onClose={closePanel}><TelegramDeskPanel runtimeData={runtimeData} dataMode={dataMode} lastSync={lastSync} /></Panel>}
       {panel === "channels" && <Panel title="Управление каналами" icon="📡" onClose={closePanel}><ChannelOSPanel channelData={channelData} /></Panel>}
       {panel === "operator" && <Panel title="ИИ-оператор" icon="🤖" onClose={closePanel}><OperatorPanel /></Panel>}
+      {panel === "agent" && <Panel title="Агентный цикл" icon="🧭" onClose={closePanel}><AgentRunPanel /></Panel>}
       {panel === "server" && <Panel title="Состояние системы" icon="🖥" onClose={closePanel}><ServerPanel runtimeData={runtimeData} dataMode={dataMode} lastSync={lastSync} /></Panel>}
       {panel === "content" && <Panel title="Контент-план" icon="📝" onClose={closePanel}><ContentPanel /></Panel>}
       {panel === "assets" && <Panel title="Медиатека" icon="🗂" onClose={closePanel}><AssetsPanel /></Panel>}
