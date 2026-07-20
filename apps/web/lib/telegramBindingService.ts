@@ -4,16 +4,14 @@
 // accountId is ALWAYS derived from the server-side binding — never from the client.
 //
 // P-EPICGRAM-CLIENT-PLATFORM-2 (Blocker A fix): a per-user binding MUST own a
-// registered backend slot (POST /telegram/accounts/new). The backend only
-// routes /telegram/auth/* and /telegram/{chats,messages} to an isolated slot
-// when accounts.hasAccount(id) is true; for an UNREGISTERED id it silently
-// falls through to the legacy NOVIKOVA session. Therefore:
+// registered backend slot (POST /telegram/accounts/new). Auth/data calls then
+// pass that server-owned accountId into the backend's TDLib routes. Therefore:
 //   1. we register a slot before creating a binding and store the backend id;
 //   2. every backend auth/data call is gated by assertRegisteredSlot(), which
 //      throws unless the id is a registered, non-forbidden slot.
 // This makes it impossible for a binding flow to drive the legacy NOVIKOVA
 // session. Per-account status is read from /telegram/accounts (NOT the legacy
-// /telegram/status, which ignores accountId and returns NOVIKOVA).
+// legacy singleton state.
 
 import {
   type TelegramBinding,
@@ -61,9 +59,13 @@ async function backendFetch(path: string, body?: unknown): Promise<Record<string
 // --- Slot registration + safety gate (Blocker A) ---------------------------
 
 async function listBackendAccounts(): Promise<Array<Record<string, unknown>>> {
-  const res = await backendFetch(`/telegram/accounts`);
+  const res = await backendFetch(`/v1/accounts`);
   const body = (res?.body ?? res) as Record<string, unknown>;
-  return (body?.accounts as Array<Record<string, unknown>>) ?? [];
+  if (Array.isArray(body?.accounts)) return body.accounts as Array<Record<string, unknown>>;
+
+  const fallback = await backendFetch(`/telegram/status`);
+  const fallbackBody = (fallback?.body ?? fallback) as Record<string, unknown>;
+  return (fallbackBody?.accounts as Array<Record<string, unknown>>) ?? [];
 }
 
 // Backend-contract robustness: a slot is keyed as `id` (live :8788 accounts.mjs)
@@ -141,7 +143,7 @@ async function getSlotStatus(accountId: string): Promise<Record<string, unknown>
 
 async function startQrTdlib(accountId: string): Promise<Record<string, unknown>> {
   await assertRegisteredSlot(accountId);
-  return backendFetch(`/telegram/accounts/qr`, { id: accountId });
+  return backendFetch(`/telegram/auth/qr`, { accountId });
 }
 
 async function startPhoneTdlib(
@@ -149,7 +151,7 @@ async function startPhoneTdlib(
   accountId: string
 ): Promise<Record<string, unknown>> {
   await assertRegisteredSlot(accountId);
-  return backendFetch(`/telegram/accounts/phone`, { id: accountId, phone });
+  return backendFetch(`/telegram/auth/phone`, { accountId, phoneNumber: phone });
 }
 
 async function submitCodeTdlib(
@@ -157,7 +159,7 @@ async function submitCodeTdlib(
   accountId: string
 ): Promise<Record<string, unknown>> {
   await assertRegisteredSlot(accountId);
-  return backendFetch(`/telegram/accounts/code`, { id: accountId, code });
+  return backendFetch(`/telegram/auth/code`, { accountId, code });
 }
 
 async function submit2faTdlib(
@@ -165,7 +167,7 @@ async function submit2faTdlib(
   accountId: string
 ): Promise<Record<string, unknown>> {
   await assertRegisteredSlot(accountId);
-  return backendFetch(`/telegram/accounts/password`, { id: accountId, password });
+  return backendFetch(`/telegram/auth/2fa`, { accountId, password });
 }
 
 // NOTE (INCIDENT 20260718): the backend HTTP routes /telegram/auth/reset and
@@ -646,7 +648,7 @@ export async function unbind(
     const slotId = binding.tdlibAccountId;
     if (slotId && !isForbiddenAccountId(slotId) && (await backendHasAccount(slotId))) {
       try {
-        await backendFetch(`/telegram/accounts/remove`, { id: slotId });
+        await backendFetch(`/telegram/accounts/remove`, { accountId: slotId });
       } catch {
         // slot cleanup best-effort
       }

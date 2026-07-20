@@ -3,7 +3,7 @@ import { getPrincipal, resolveBoundAccount } from "@/lib/telegramGuard";
 
 // Operator Office runtime status — ACCOUNT-AWARE (fix [HIGH]).
 // Chain: OperatorOffice -> /api/operator/qclaw/status -> resolveBoundAccount(principal)
-//        -> backend GET /telegram/accounts (127.0.0.1:8788) -> the caller's OWN slot.
+//        -> backend GET /v1/accounts (127.0.0.1:8788) -> the caller's OWN slot.
 // It NEVER reads legacy /telegram/status (the shared NOVIKOVA singleton). No ready
 // binding -> safe empty (not connected, no account). Owner mismatch -> 403.
 // Auth: valid EPICGRAM session cookie required; unauthenticated -> 401.
@@ -66,7 +66,7 @@ export async function GET() {
   let slot: BackendAccount | null = null;
   let reachable = false;
   try {
-    const resp = await fetch(`${API_BASE_URL}/telegram/accounts`, {
+    const resp = await fetch(`${API_BASE_URL}/v1/accounts`, {
       method: "GET",
       headers: { "content-type": "application/json" },
       cache: "no-store",
