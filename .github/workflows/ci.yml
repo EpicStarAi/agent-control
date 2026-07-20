@@ -1,40 +1,33 @@
 name: CI
 
-# P0 CI skeleton for EPIC GRAM (Next.js apps/web). Lint + build only.
-# No deploy, no secrets. Deploy is a separate, manually-approved step.
-
 on:
-  push:
-    branches: [main]
   pull_request:
-    branches: [main]
+  push:
+    branches:
+      - main
+      - release/**
 
 jobs:
-  web:
-    name: web (lint + build)
+  test-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: "24"
           cache: npm
 
       - name: Install
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Lint
-        run: npm run lint --if-present
+        run: npm run lint
 
-      - name: Test
-        env:
-          NEXT_TELEMETRY_DISABLED: "1"
+      - name: Unit and security tests
         run: npm run test
 
       - name: Build
-        env:
-          # Build must not require real secrets. Provide safe placeholders only.
-          NEXT_TELEMETRY_DISABLED: "1"
         run: npm run build
