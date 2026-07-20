@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TelegramBindingWizard } from "./TelegramBindingWizard";
 import {
@@ -20,6 +21,10 @@ import {
   MoreVertical,
   PanelRight,
   Paperclip,
+  Pause,
+  Pin,
+  PinOff,
+  Play,
   QrCode,
   Radio,
   RefreshCw,
@@ -27,6 +32,7 @@ import {
   Send,
   Settings,
   ShieldCheck,
+  SkipForward,
   Smartphone,
   Sparkles,
   User,
@@ -35,6 +41,9 @@ import {
   VolumeX,
   X
 } from "lucide-react";
+import { VisualExecutionLayer } from "./VisualExecutionLayer";
+import type { AgentVisualStep, AgentStepStatus, VisualTarget } from "@/lib/uiActionRegistry";
+import { UI_ACTION_REGISTRY } from "@/lib/uiActionRegistry";
 type Section = "dashboard" | "chats" | "agents" | "accounts" | "logs" | "settings";
 
 type Props = { section: Section };
@@ -1003,7 +1012,7 @@ export function EpicGramShell({ section }: Props) {
               <button onClick={() => setMenuOpen((value) => !value)} className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-tg-muted hover:bg-tg-hover hover:text-tg-text" aria-label="Открыть меню">
                 <Menu className="h-5 w-5" />
               </button>
-              <label className="flex h-10 min-w-0 flex-1 items-center gap-3 rounded-full bg-tg-bg px-4 text-tg-muted">
+              <label data-ui-target="chat-search" className="flex h-10 min-w-0 flex-1 items-center gap-3 rounded-full bg-tg-bg px-4 text-tg-muted">
                 <Search className="h-4 w-4" />
                 <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="w-full bg-transparent text-sm outline-none placeholder:text-tg-muted" placeholder="Поиск" />
               </label>
@@ -1033,7 +1042,7 @@ export function EpicGramShell({ section }: Props) {
             })}
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div data-ui-target="chat-list" className="min-h-0 flex-1 overflow-y-auto">
             {useTelegramChats
               ? visibleTelegramChats.length > 0
                 ? visibleTelegramChats.map((chat) => (
@@ -1198,6 +1207,63 @@ export function EpicGramShell({ section }: Props) {
 
 type OpAction = { tool: string; chatId: string; chatTitle: string; text: string; accountId?: string; auditId?: string; actionType?: string; approvalId?: string; token?: string; stage?: string };
 type OpMsg = { role: "user" | "op"; text: string; files?: string[]; pending?: OpAction | null };
+type OperatorWindowState = "CLOSED" | "BUTTON" | "COMPACT" | "DOCKED" | "FLOATING" | "MAXIMIZED";
+type OperatorGeometry = { x: number; y: number; width: number; height: number; previous?: { x: number; y: number; width: number; height: number } | null };
+type OperatorRunStatus = "ready" | "running" | "approval" | "error" | "complete" | "paused" | "cancelled";
+
+const OPERATOR_WINDOW_STORAGE = "epicgram.operator.window.v1";
+const OPERATOR_MIN_WIDTH = 340;
+const OPERATOR_MIN_HEIGHT = 420;
+const OPERATOR_MAX_WIDTH = 920;
+const OPERATOR_MAX_HEIGHT = 860;
+const OPERATOR_EDGE = 12;
+
+function defaultOperatorGeometry(): OperatorGeometry {
+  if (typeof window === "undefined") return { x: 96, y: 72, width: 420, height: 680, previous: null };
+  return {
+    x: Math.max(OPERATOR_EDGE, window.innerWidth - 460),
+    y: 76,
+    width: Math.min(420, Math.max(OPERATOR_MIN_WIDTH, window.innerWidth - OPERATOR_EDGE * 2)),
+    height: Math.min(680, Math.max(OPERATOR_MIN_HEIGHT, window.innerHeight - 110)),
+    previous: null,
+  };
+}
+
+function clampOperatorGeometry(geometry: OperatorGeometry): OperatorGeometry {
+  if (typeof window === "undefined") return geometry;
+  const maxWidth = Math.min(OPERATOR_MAX_WIDTH, Math.max(OPERATOR_MIN_WIDTH, window.innerWidth - OPERATOR_EDGE * 2));
+  const maxHeight = Math.min(OPERATOR_MAX_HEIGHT, Math.max(OPERATOR_MIN_HEIGHT, window.innerHeight - OPERATOR_EDGE * 2));
+  const width = Math.min(Math.max(geometry.width, OPERATOR_MIN_WIDTH), maxWidth);
+  const height = Math.min(Math.max(geometry.height, OPERATOR_MIN_HEIGHT), maxHeight);
+  return {
+    ...geometry,
+    width,
+    height,
+    x: Math.min(Math.max(geometry.x, OPERATOR_EDGE), Math.max(OPERATOR_EDGE, window.innerWidth - width - OPERATOR_EDGE)),
+    y: Math.min(Math.max(geometry.y, OPERATOR_EDGE), Math.max(OPERATOR_EDGE, window.innerHeight - height - OPERATOR_EDGE)),
+  };
+}
+
+function makeVisualStep(input: {
+  tool: string;
+  uiAction: AgentVisualStep["uiAction"];
+  visualTarget: VisualTarget;
+  message: string;
+  expectedResult: string;
+}): AgentVisualStep {
+  return {
+    stepId: `step_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+    tool: input.tool,
+    status: "RUNNING",
+    uiAction: input.uiAction,
+    visualTarget: input.visualTarget,
+    message: input.message,
+    expectedResult: input.expectedResult,
+    actualResult: null,
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+  };
+}
 
 function OperatorDock({
   activeAccountId,
@@ -1208,7 +1274,15 @@ function OperatorDock({
   selectedTelegramChatId: string;
   telegramMessages: any[];
 }) {
-  const [open, setOpen] = useState(true);
+  const [windowState, setWindowState] = useState<OperatorWindowState>("DOCKED");
+  const [geometry, setGeometry] = useState<OperatorGeometry>(() => defaultOperatorGeometry());
+  const [runStatus, setRunStatus] = useState<OperatorRunStatus>("ready");
+  const [activeStep, setActiveStep] = useState<AgentVisualStep | null>(null);
+  const [stepCount, setStepCount] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [visualSkipped, setVisualSkipped] = useState(false);
+  const [stepLogOpen, setStepLogOpen] = useState(false);
+  const [stepLog, setStepLog] = useState<AgentVisualStep[]>([]);
   const [msgs, setMsgs] = useState<OpMsg[]>([
     { role: "op", text: "На связи. Я EPIC💀CLAW AI. Пиши задачу, кидай фото/видео/аудио — разрулю." }
   ]);
@@ -1221,9 +1295,125 @@ function OperatorDock({
   const [confirming, setConfirming] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ x: number; y: number; gx: number; gy: number } | null>(null);
+  const resizeRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const visibleWindow = windowState !== "CLOSED" && windowState !== "BUTTON";
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 1e9, behavior: "smooth" });
-  }, [msgs, open]);
+  }, [msgs, visibleWindow]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(OPERATOR_WINDOW_STORAGE);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as { state?: OperatorWindowState; geometry?: OperatorGeometry; visualSkipped?: boolean };
+      if (saved.state) setWindowState(saved.state);
+      if (saved.geometry) setGeometry(clampOperatorGeometry(saved.geometry));
+      if (typeof saved.visualSkipped === "boolean") setVisualSkipped(saved.visualSkipped);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(OPERATOR_WINDOW_STORAGE, JSON.stringify({ state: windowState, geometry, visualSkipped }));
+    } catch {}
+  }, [windowState, geometry, visualSkipped]);
+
+  useEffect(() => {
+    function onMove(event: PointerEvent) {
+      if (dragRef.current && windowState === "FLOATING") {
+        const next = clampOperatorGeometry({
+          ...geometry,
+          x: dragRef.current.gx + event.clientX - dragRef.current.x,
+          y: dragRef.current.gy + event.clientY - dragRef.current.y,
+        });
+        setGeometry(next);
+      }
+      if (resizeRef.current && windowState === "FLOATING") {
+        const next = clampOperatorGeometry({
+          ...geometry,
+          width: resizeRef.current.width + event.clientX - resizeRef.current.x,
+          height: resizeRef.current.height + event.clientY - resizeRef.current.y,
+        });
+        setGeometry(next);
+      }
+    }
+    function onUp() {
+      dragRef.current = null;
+      resizeRef.current = null;
+      document.body.style.userSelect = "";
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [geometry, windowState]);
+
+  function setOperatorState(next: OperatorWindowState) {
+    setWindowState(next);
+    if (next === "BUTTON" || next === "CLOSED") setRunStatus((status) => (status === "running" ? "running" : status));
+  }
+
+  function beginStep(input: Parameters<typeof makeVisualStep>[0]) {
+    const definition = UI_ACTION_REGISTRY[input.uiAction];
+    const step = makeVisualStep({
+      ...input,
+      expectedResult: input.expectedResult || definition.successCondition,
+    });
+    setStepCount((count) => count + 1);
+    setActiveStep(step);
+    setStepLog((log) => [...log, step]);
+    setRunStatus("running");
+    return step;
+  }
+
+  function completeStep(stepId: string, actualResult: string, status: AgentStepStatus = "COMPLETED") {
+    const completedAt = new Date().toISOString();
+    setActiveStep((step) => (step?.stepId === stepId ? { ...step, status, actualResult, completedAt } : step));
+    setStepLog((log) => log.map((step) => (step.stepId === stepId ? { ...step, status, actualResult, completedAt } : step)));
+    window.setTimeout(() => {
+      setActiveStep((step) => (step?.stepId === stepId ? null : step));
+    }, 900);
+  }
+
+  function startDrag(event: React.PointerEvent) {
+    if (windowState !== "FLOATING") return;
+    const target = event.target as HTMLElement;
+    if (target.closest("button, input, textarea, a")) return;
+    dragRef.current = { x: event.clientX, y: event.clientY, gx: geometry.x, gy: geometry.y };
+    document.body.style.userSelect = "none";
+  }
+
+  function startResize(event: React.PointerEvent) {
+    if (windowState !== "FLOATING") return;
+    resizeRef.current = { x: event.clientX, y: event.clientY, width: geometry.width, height: geometry.height };
+    document.body.style.userSelect = "none";
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function toggleMaximize() {
+    if (windowState === "MAXIMIZED") {
+      setGeometry((current) => clampOperatorGeometry(current.previous ? { ...current.previous, previous: null } : defaultOperatorGeometry()));
+      setWindowState("FLOATING");
+      return;
+    }
+    setGeometry((current) => {
+      const safe = clampOperatorGeometry(current);
+      return {
+        x: OPERATOR_EDGE,
+        y: OPERATOR_EDGE,
+        width: Math.max(OPERATOR_MIN_WIDTH, window.innerWidth - OPERATOR_EDGE * 2),
+        height: Math.max(OPERATOR_MIN_HEIGHT, window.innerHeight - OPERATOR_EDGE * 2),
+        previous: { x: safe.x, y: safe.y, width: safe.width, height: safe.height },
+      };
+    });
+    setWindowState("MAXIMIZED");
+  }
 
   const GREET: OpMsg[] = [{ role: "op", text: "На связи. Я EPIC💀CLAW AI. Пиши задачу, кидай фото/видео/аудио — разрулю." }];
   useEffect(() => {
@@ -1269,6 +1459,13 @@ function OperatorDock({
     setText("");
     setFiles([]);
     setBusy(true);
+    const commandStep = beginStep({
+      tool: "operator.command",
+      uiAction: "ui.show_task_progress",
+      visualTarget: "operator-window",
+      message: "Запускаю AgentRun",
+      expectedResult: "Команда попадёт в EPIC💀CLAW AI Operator",
+    });
     try {
       const r = await fetch("/api/operator/command", {
         method: "POST",
@@ -1296,11 +1493,19 @@ function OperatorDock({
         })
       });
       const d = await r.json().catch(() => null);
+      completeStep(commandStep.stepId, r.ok ? "Команда обработана backend" : "Backend вернул ошибку", r.ok ? "COMPLETED" : "FAILED");
       // The approval card appears ONLY when the backend proposes a REAL external
       // action (pendingAction). Drafts, analysis, summaries, read-only results and
       // plain answers render as a normal reply with no controls.
       if (d && d.ok && d.pendingAction && String(d.pendingAction.text || "").trim()) {
         const pa = d.pendingAction;
+        const approvalStep = beginStep({
+          tool: "telegram.prepare_reply",
+          uiAction: "ui.show_approval",
+          visualTarget: "approval-card",
+          message: "Показываю карточку подтверждения",
+          expectedResult: "Оператор увидит preview и кнопки подтверждения",
+        });
         setMsgs((p) => [
           ...p,
           {
@@ -1317,14 +1522,28 @@ function OperatorDock({
             },
           },
         ]);
+        setRunStatus("approval");
+        window.setTimeout(() => completeStep(approvalStep.stepId, "Approval card показана", "COMPLETED"), 250);
       } else if (d && d.ok && (d.text || d.draft)) {
+        const draftStep = beginStep({
+          tool: "telegram.prepare_reply",
+          uiAction: "ui.insert_draft",
+          visualTarget: "composer",
+          message: "Готовлю черновик ответа",
+          expectedResult: "Черновик появится в рабочем контексте оператора",
+        });
         setMsgs((p) => [...p, { role: "op", text: String(d.text || d.draft || "").trim() || "Готово." }]);
+        completeStep(draftStep.stepId, "Черновик добавлен в историю оператора", "COMPLETED");
+        setRunStatus("complete");
       } else {
         const reply = (d && (d.text || d.error)) || "⚠ EPIC💀CLAW AI не ответил";
         setMsgs((p) => [...p, { role: "op", text: reply }]);
+        setRunStatus(d?.ok ? "complete" : "error");
       }
     } catch {
       setMsgs((p) => [...p, { role: "op", text: "⚠ Нет связи с EPIC💀CLAW AI" }]);
+      completeStep(commandStep.stepId, "Нет связи с backend", "FAILED");
+      setRunStatus("error");
     } finally {
       setBusy(false);
     }
@@ -1347,12 +1566,30 @@ function OperatorDock({
     return reason || "Действие не выполнено.";
   }
   async function gateExecute(idx: number, approvalId: string, token: string, action: OpAction, at: string) {
+    const step = beginStep({
+      tool: "telegram.send_message",
+      uiAction: "ui.show_approval",
+      visualTarget: "approval-card",
+      message: "Выполняю подтверждённую отправку",
+      expectedResult: "Backend вернёт Telegram message ID или честную ошибку",
+    });
     try {
       const r = await fetch("/api/telegram/binding/send", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ approvalId, token, chatId: action.chatId, actionType: at, text: action.text }) });
       const d = await r.json().catch(() => ({}));
-      if (d?.sent) finishCard(idx, `✅ Отправлено${d.telegramMessageId ? ` (id ${d.telegramMessageId})` : ""}`);
-      else finishCard(idx, `⚠ ${humanReason(d?.reason || d?.message)}`);
-    } catch { finishCard(idx, "⚠ Нет связи с сервером."); }
+      if (d?.sent) {
+        completeStep(step.stepId, d.telegramMessageId ? `Telegram message id ${d.telegramMessageId}` : "Telegram подтвердил отправку", "COMPLETED");
+        setRunStatus("complete");
+        finishCard(idx, `✅ Отправлено${d.telegramMessageId ? ` (id ${d.telegramMessageId})` : ""}`);
+      } else {
+        completeStep(step.stepId, humanReason(d?.reason || d?.message), "FAILED");
+        setRunStatus("error");
+        finishCard(idx, `⚠ ${humanReason(d?.reason || d?.message)}`);
+      }
+    } catch {
+      completeStep(step.stepId, "Нет связи с сервером", "FAILED");
+      setRunStatus("error");
+      finishCard(idx, "⚠ Нет связи с сервером.");
+    }
   }
   // Real approval: reuse the per-user binding/send gate (user+account+action+payload
   // hash, single-use). The AI never sends — only an explicit operator confirm does.
@@ -1389,6 +1626,7 @@ function OperatorDock({
   // NEVER sends a Telegram message; only clears the pending card + records reject.
   function rejectAction(idx: number, action: OpAction | null) {
     setMsgs((p) => p.map((m, i) => (i === idx ? { ...m, pending: null } : m)));
+    setRunStatus("cancelled");
     const auditId = action?.auditId;
     if (!auditId) return;
     try {
@@ -1405,30 +1643,110 @@ function OperatorDock({
     } catch {}
   }
 
+  function pauseRun() {
+    setPaused(true);
+    setRunStatus("paused");
+    setActiveStep((step) => step ? { ...step, status: "PAUSED" } : step);
+  }
+
+  function resumeRun() {
+    setPaused(false);
+    setRunStatus(activeStep ? "running" : "ready");
+    setActiveStep((step) => step ? { ...step, status: "RUNNING" } : step);
+  }
+
+  function cancelRun() {
+    setPaused(false);
+    setRunStatus("cancelled");
+    setActiveStep((step) => step ? { ...step, status: "CANCELLED", actualResult: "Оператор отменил дальнейшие шаги", completedAt: new Date().toISOString() } : step);
+    setMsgs((p) => [...p, { role: "op", text: "AgentRun отменён. Уже выполненные внешние действия не откатываются; новые шаги остановлены." }]);
+  }
+
+  const statusTone =
+    runStatus === "running" ? "bg-blue-400 shadow-[0_0_16px_rgba(96,165,250,.75)] animate-pulse"
+      : runStatus === "approval" ? "bg-amber-300 shadow-[0_0_16px_rgba(252,211,77,.75)]"
+      : runStatus === "error" ? "bg-red-500 shadow-[0_0_16px_rgba(239,68,68,.75)]"
+      : runStatus === "complete" ? "bg-emerald-400 shadow-[0_0_16px_rgba(52,211,153,.75)]"
+      : runStatus === "paused" ? "bg-yellow-300 shadow-[0_0_16px_rgba(250,204,21,.75)]"
+      : "bg-emerald-400 shadow-[0_0_16px_rgba(52,211,153,.65)]";
+  const buttonLabel = runStatus === "running" ? "выполняется" : runStatus === "approval" ? "ждёт подтверждения" : runStatus === "error" ? "ошибка" : runStatus === "complete" ? "готово" : runStatus === "paused" ? "пауза" : "готов";
+
+  const windowStyle: React.CSSProperties =
+    windowState === "MAXIMIZED"
+      ? { left: OPERATOR_EDGE, top: OPERATOR_EDGE, width: `calc(100vw - ${OPERATOR_EDGE * 2}px)`, height: `calc(100vh - ${OPERATOR_EDGE * 2}px)` }
+      : windowState === "DOCKED"
+        ? { right: 16, top: 72, width: 390, height: "calc(100vh - 92px)" }
+        : windowState === "COMPACT"
+          ? { left: geometry.x, top: geometry.y, width: Math.min(geometry.width, 420), height: 132 }
+          : { left: geometry.x, top: geometry.y, width: geometry.width, height: geometry.height };
+
   // Scheduling is now natural-language ("опубликуй завтра в 10:00"); the operator
   // asks for a time if it is missing. No per-message scheduler control.
 
-  if (!open) {
+  if (windowState === "BUTTON" || windowState === "CLOSED") {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-red-600 px-4 py-3 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_22px_rgba(220,38,38,.5)] hover:bg-red-500"
-      >
-        <Bot className="h-5 w-5" /> EPIC💀CLAW AI
-      </button>
+      <>
+        <VisualExecutionLayer step={activeStep} paused={paused} skipped={visualSkipped} />
+        <button
+          onClick={() => setOperatorState("FLOATING")}
+          className="fixed bottom-5 right-5 z-[160] flex items-center gap-3 rounded-full border border-red-300/40 bg-red-600 px-4 py-3 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_28px_rgba(220,38,38,.55)] hover:bg-red-500"
+          title={`EPIC💀CLAW AI · ${buttonLabel}`}
+        >
+          <span className={`h-3 w-3 rounded-full ${statusTone}`} />
+          <Bot className="h-5 w-5" />
+          EPIC💀CLAW AI
+          {stepCount > 0 && <span className="rounded-full bg-black/30 px-2 py-0.5 text-xs">{stepCount}</span>}
+        </button>
+      </>
     );
   }
 
   return (
-    <div className="fixed right-0 top-0 z-40 flex h-screen w-[340px] max-w-[88vw] flex-col border-l border-tg-line bg-tg-panel/98 shadow-telegram backdrop-blur">
-      <div className="flex items-center justify-between border-b border-tg-line px-4 py-3">
-        <div className="flex items-center gap-2 font-black uppercase tracking-wide text-white">
-          <Bot className="h-5 w-5 text-red-500" /> EPIC💀CLAW AI
+    <>
+    <VisualExecutionLayer step={activeStep} paused={paused} skipped={visualSkipped} />
+    <div
+      data-ui-target="operator-window"
+      className={`fixed z-[150] flex max-h-[calc(100vh-24px)] max-w-[calc(100vw-24px)] flex-col overflow-hidden border border-red-400/35 bg-tg-panel/98 shadow-[0_24px_90px_rgba(0,0,0,.6),0_0_42px_rgba(239,68,68,.18)] backdrop-blur ${windowState === "MAXIMIZED" ? "rounded-xl" : "rounded-2xl"}`}
+      style={windowStyle}
+    >
+      <div onPointerDown={startDrag} className="flex cursor-move items-center justify-between border-b border-tg-line px-3 py-2">
+        <div className="min-w-0 flex items-center gap-2 font-black uppercase tracking-wide text-white">
+          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${statusTone}`} />
+          <Bot className="h-5 w-5 shrink-0 text-red-500" />
+          <span className="truncate">EPIC💀CLAW AI</span>
+          <span className="hidden rounded-full bg-black/30 px-2 py-0.5 text-[10px] text-white/70 sm:inline">{buttonLabel}</span>
         </div>
-        <button onClick={() => setOpen(false)} className="text-tg-muted hover:text-white" title="Свернуть">
-          <X className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button onClick={paused ? resumeRun : pauseRun} className="grid h-8 w-8 place-items-center rounded-lg bg-tg-bg text-tg-muted hover:text-white" title={paused ? "Продолжить" : "Пауза"}>
+            {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+          </button>
+          <button onClick={() => setVisualSkipped((value) => !value)} className="grid h-8 w-8 place-items-center rounded-lg bg-tg-bg text-tg-muted hover:text-white" title="Пропустить визуализацию">
+            <SkipForward className="h-4 w-4" />
+          </button>
+          <button onClick={() => setOperatorState(windowState === "DOCKED" ? "FLOATING" : "DOCKED")} className="grid h-8 w-8 place-items-center rounded-lg bg-tg-bg text-tg-muted hover:text-white" title={windowState === "DOCKED" ? "Открепить" : "Закрепить справа"}>
+            {windowState === "DOCKED" ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
+          </button>
+          <button onClick={() => setOperatorState(windowState === "COMPACT" ? "FLOATING" : "COMPACT")} className="grid h-8 w-8 place-items-center rounded-lg bg-tg-bg text-tg-muted hover:text-white" title="Компактный режим">
+            <PanelRight className="h-4 w-4" />
+          </button>
+          <button onClick={toggleMaximize} className="grid h-8 w-8 place-items-center rounded-lg bg-tg-bg text-tg-muted hover:text-white" title="Полный экран / восстановить">
+            <Moon className="h-4 w-4" />
+          </button>
+          <button onClick={() => setOperatorState("BUTTON")} className="grid h-8 w-8 place-items-center rounded-lg bg-tg-bg text-tg-muted hover:text-white" title="Свернуть в кнопку">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
+      {windowState === "COMPACT" ? (
+        <div className="grid flex-1 grid-cols-[1fr_auto] items-center gap-3 px-4 py-3">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-bold text-white">AgentRun: {buttonLabel}</div>
+            <div className="truncate text-xs text-tg-muted">{activeStep?.message ?? "Оператор готов. Сворачивание не останавливает задачу."}</div>
+          </div>
+          <button onClick={() => setOperatorState("FLOATING")} className="rounded-xl bg-red-600 px-3 py-2 text-xs font-bold text-white">Развернуть</button>
+        </div>
+      ) : (
+      <>
       <div className="flex items-center gap-1 overflow-x-auto border-b border-tg-line px-2 py-2">
         {projects.map((pr) => (
           <button
@@ -1445,6 +1763,22 @@ function OperatorDock({
         </button>
       </div>
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+        <div className="rounded-xl border border-white/10 bg-black/25 p-2 text-[11px] text-tg-muted">
+          <div className="flex items-center justify-between gap-2">
+            <span>AgentRun · шагов {stepCount}</span>
+            <button onClick={() => setStepLogOpen((value) => !value)} className="text-cyan-200 hover:text-white">Журнал шагов</button>
+          </div>
+          {activeStep && <div className="mt-1 text-cyan-100">{activeStep.message} → {activeStep.visualTarget}</div>}
+          {stepLogOpen && (
+            <div className="mt-2 max-h-28 overflow-y-auto rounded-lg bg-black/30 p-2">
+              {stepLog.length === 0 ? "Шагов пока нет." : stepLog.slice(-8).map((step) => (
+                <div key={step.stepId} className="mb-1">
+                  <span className="font-bold text-white/80">{step.status}</span> · {step.uiAction} · {step.visualTarget}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         {msgs.map((m, i) => (
           <div
             key={i}
@@ -1453,7 +1787,7 @@ function OperatorDock({
             {m.files && m.files.length ? <div className="mb-1 text-xs text-tg-muted">📎 {m.files.join(", ")}</div> : null}
             <div className="whitespace-pre-wrap">{m.text}</div>
             {m.pending ? (
-              <div className="mt-2 rounded-xl border-2 border-red-500 bg-red-950/25 p-3" style={{ animation: "epicApprovalPulse 1.6s ease-in-out infinite" }}>
+              <div data-ui-target="approval-card" className="mt-2 rounded-xl border-2 border-red-500 bg-red-950/25 p-3" style={{ animation: "epicApprovalPulse 1.6s ease-in-out infinite" }}>
                 <style>{"@keyframes epicApprovalPulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.55)}50%{box-shadow:0 0 0 4px rgba(239,68,68,0)}}"}</style>
                 <div className="text-[11px] font-black uppercase tracking-wide text-red-300">⚠ Требуется подтверждение · EPIC💀CLAW AI</div>
                 <div className="mt-2 space-y-1 text-[12px]">
@@ -1541,7 +1875,17 @@ function OperatorDock({
           <Send className="h-5 w-5" />
         </button>
       </div>
+      </>
+      )}
+      {windowState === "FLOATING" && (
+        <div
+          onPointerDown={startResize}
+          className="absolute bottom-0 right-0 h-6 w-6 cursor-nwse-resize rounded-br-2xl bg-gradient-to-br from-transparent via-cyan-400/80 to-red-500/80"
+          title="Изменить размер"
+        />
+      )}
     </div>
+    </>
   );
 }
 
@@ -1567,7 +1911,7 @@ function TelegramChatRow({ chat, active, onClick }: { chat: TelegramChat; active
   const preview = chat.lastMessage?.content || "Нет превью сообщения";
 
   return (
-    <button onClick={onClick} className={`flex w-full gap-3 px-3 py-2.5 text-left ${active ? "bg-tg-active" : "hover:bg-tg-hover"}`}>
+    <button data-ui-target={`chat-row:${chat.id}`} onClick={onClick} className={`flex w-full gap-3 px-3 py-2.5 text-left ${active ? "bg-tg-active" : "hover:bg-tg-hover"}`}>
       <TelegramAvatar title={chat.title} type={chat.type} active={active} photoFileId={chat.photoSmallFileId} />
       <div className="min-w-0 flex-1 border-b border-tg-line/70 pb-2">
         <div className="flex items-center gap-2">
@@ -1666,7 +2010,7 @@ function TelegramChatWorkspace({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-2">
+      <div data-ui-target="message-list" className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-2">
         {messages.length === 0 && messagesLoading && (
           <section className="flex items-center gap-3 rounded-2xl border border-tg-line bg-tg-panel p-4 shadow-telegram">
             <Loader2 className="h-5 w-5 shrink-0 animate-spin text-tg-accent" />
@@ -1743,6 +2087,7 @@ function TelegramChatWorkspace({
           <Paperclip className="h-5 w-5" />
         </button>
         <textarea
+          data-ui-target="composer"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           rows={1}
@@ -1750,6 +2095,7 @@ function TelegramChatWorkspace({
           className="max-h-32 min-h-10 flex-1 resize-none rounded-xl bg-tg-bg px-4 py-2.5 text-sm leading-5 outline-none placeholder:text-tg-muted"
         />
         <button
+          data-ui-target="send-button"
           onClick={onSendApproved}
           disabled={sendBusy || !draft.trim()}
           className="flex h-10 shrink-0 items-center gap-2 rounded-xl bg-tg-blue px-3.5 text-sm font-semibold text-white shadow-neon hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
