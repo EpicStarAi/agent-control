@@ -24,6 +24,7 @@ import {
 import { evaluatePolicy } from "./policy.mjs";
 import { appendEvent as auditAppend, sha256 as auditSha, listEvents as auditList } from "./operator-audit.mjs";
 import { enqueueSchedule, tickSchedule, listSchedule } from "./schedule-queue.mjs";
+import { trustedSendApprovalFromHeaders } from "./internal-approval.mjs";
 
 await loadLocalEnv();
 
@@ -60,10 +61,7 @@ function sendBinary(response, status, body, contentType) {
 }
 
 function trustedSendApproval(request) {
-  const expected = String(process.env.EPICGRAM_INTERNAL_SEND_SECRET || "");
-  if (expected.length < 16) return false;
-  const got = String(request.headers["x-epicgram-internal-send-secret"] || "");
-  return got === expected;
+  return trustedSendApprovalFromHeaders(request.headers);
 }
 
 function redirect(response, location) {

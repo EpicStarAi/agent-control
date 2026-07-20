@@ -36,7 +36,16 @@ export async function POST(req: NextRequest) {
   if (!isMedia && (!text || !text.trim())) return NextResponse.json({ ok: false, reason: "text_required" }, { status: 400, headers: H });
 
   // Allowlist: bound to user + account + chat + action. Never global.
-  if (!(await ap.isAllowed({ userId: principal.userId, accountId, chatId, actionType }))) {
+  let allowed = false;
+  try {
+    allowed = await ap.isAllowed({ userId: principal.userId, accountId, chatId, actionType });
+  } catch (error) {
+    if (ap.isApprovalStorageUnavailable(error)) {
+      return NextResponse.json({ ok: false, reason: error instanceof Error ? error.message : "approval_storage_unavailable" }, { status: 503, headers: H });
+    }
+    throw error;
+  }
+  if (!allowed) {
     await ap.audit({ workspaceId: principal.workspaceId, userId: principal.userId, accountId, chatId, actionType, stage: "prepare", outcome: "denied", errorCode: "not_allowlisted" });
     return NextResponse.json({ ok: false, reason: "not_allowlisted" }, { status: 403, headers: H });
   }
@@ -60,10 +69,18 @@ export async function POST(req: NextRequest) {
   // Preview is redacted: marker + action + type only. No message body is stored.
   const preview = `action=${actionType} category=${category} title_present=${Boolean(chat.title)} media=${isMedia ? (mediaRef ? "ref" : "missing") : "no"}`;
 
-  const created = await ap.createApproval({
-    workspaceId: principal.workspaceId, userId: principal.userId, accountId, chatId, actionType,
-    payloadHash: ph, preview, requiresSecondConfirm,
-  });
+  let created;
+  try {
+    created = await ap.createApproval({
+      workspaceId: principal.workspaceId, userId: principal.userId, accountId, chatId, actionType,
+      payloadHash: ph, preview, requiresSecondConfirm,
+    });
+  } catch (error) {
+    if (ap.isApprovalStorageUnavailable(error)) {
+      return NextResponse.json({ ok: false, reason: error instanceof Error ? error.message : "approval_storage_unavailable" }, { status: 503, headers: H });
+    }
+    throw error;
+  }
   await ap.audit({ approvalId: created.id, workspaceId: principal.workspaceId, userId: principal.userId, accountId, chatId, actionType, payloadHash: ph, confirmStage: "pending", stage: "prepare", outcome: "ok" });
 
   return NextResponse.json({

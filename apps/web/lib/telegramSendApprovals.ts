@@ -4,13 +4,25 @@
 // (DATABASE_URL). No message body / secrets / raw token ever stored.
 
 import crypto from "node:crypto";
-import * as store from "./telegramSendApprovalsStore";
+import { approvalStorageUnavailableReason, isLocalApprovalFallbackAllowed } from "./localApprovalFallback.js";
+import * as store from "./telegramSendApprovalsStore.js";
 
 type Row = Record<string, unknown>;
 type PgPool = { query: (t: string, p?: unknown[]) => Promise<{ rows: Row[] }> };
 const g = globalThis as unknown as { __epicSendPool?: PgPool | null };
 
 export function enabled(): boolean { return Boolean(process.env.DATABASE_URL); }
+export function fallbackAllowed(): boolean { return !enabled() && isLocalApprovalFallbackAllowed(); }
+export class ApprovalStorageUnavailableError extends Error {
+  status = 503;
+  constructor() { super(approvalStorageUnavailableReason()); }
+}
+function assertStorageAvailable(): void {
+  if (!enabled() && !fallbackAllowed()) throw new ApprovalStorageUnavailableError();
+}
+export function isApprovalStorageUnavailable(error: unknown): boolean {
+  return error instanceof ApprovalStorageUnavailableError || (error instanceof Error && /approval_.*unavailable|approval_db_required/.test(error.message));
+}
 async function loadPg(): Promise<unknown | null> { try { const n = "pg"; return await import(/* webpackIgnore: true */ n); } catch { return null; } }
 async function pool(): Promise<PgPool | null> {
   if (!enabled()) return null;
@@ -51,6 +63,7 @@ export function canonicalPayload(p: SendPayload): string {
 export function payloadHash(p: SendPayload): string { return sha256(canonicalPayload(p)); }
 
 export async function isAllowed(a: { userId: string; accountId: string; chatId: string; actionType: string }): Promise<boolean> {
+  assertStorageAvailable();
   if (!enabled()) return store.isAllowed(a);
   const p = await db();
   const r = await p.query(
@@ -60,6 +73,7 @@ export async function isAllowed(a: { userId: string; accountId: string; chatId: 
   return r.rows.length > 0;
 }
 export async function addAllowlist(a: { workspaceId: string; userId: string; accountId: string; chatId: string; actionType: string; label?: string }): Promise<void> {
+  assertStorageAvailable();
   if (!enabled()) {
     await store.addAllowlist({ id: newId("al"), ...a, at: nowIso() });
     return;
@@ -91,6 +105,7 @@ export async function createApproval(input: {
   workspaceId: string; userId: string; accountId: string; chatId: string; actionType: string;
   payloadHash: string; preview: string; requiresSecondConfirm: boolean;
 }): Promise<{ id: string; token: string; expiresAt: string }> {
+  assertStorageAvailable();
   const id = newId("ap"); const token = newToken();
   const created = new Date(); const expires = new Date(created.getTime() + TTL_MS);
   if (!enabled()) {
@@ -121,6 +136,7 @@ export async function createApproval(input: {
   return { id, token, expiresAt: expires.toISOString() };
 }
 export async function getApproval(id: string): Promise<ApprovalRow | null> {
+  assertStorageAvailable();
   if (!enabled()) {
     const r = await store.getApproval(id);
     return r ? toApproval(r) : null;
@@ -130,11 +146,13 @@ export async function getApproval(id: string): Promise<ApprovalRow | null> {
   return r.rows[0] ? toApproval(r.rows[0]) : null;
 }
 export async function setStage(id: string, confirmStage: string, status: string): Promise<void> {
+  assertStorageAvailable();
   if (!enabled()) return store.setStage(id, confirmStage, status);
   const p = await db();
   await p.query("UPDATE telegram_send_approvals SET confirm_stage=$2, status=$3 WHERE id=$1", [id, confirmStage, status]);
 }
 export async function consumeApproval(id: string): Promise<boolean> {
+  assertStorageAvailable();
   if (!enabled()) return store.consumeApproval(id, nowIso());
   const p = await db();
   const r = await p.query(
@@ -144,6 +162,7 @@ export async function consumeApproval(id: string): Promise<boolean> {
   return r.rows.length > 0;
 }
 export async function markExpired(id: string): Promise<void> {
+  assertStorageAvailable();
   if (!enabled()) return store.markExpired(id);
   const p = await db();
   await p.query("UPDATE telegram_send_approvals SET status='expired' WHERE id=$1 AND status NOT IN ('consumed','expired')", [id]);
@@ -156,6 +175,7 @@ export async function audit(input: {
   confirmStage?: string | null; stage: string; outcome: string; errorCode?: string | null; telegramMessageId?: string | null;
 }): Promise<void> {
   try {
+    assertStorageAvailable();
     if (!enabled()) {
       await store.audit({
         id: newId("aud"),

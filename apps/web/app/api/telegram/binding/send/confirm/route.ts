@@ -26,7 +26,15 @@ export async function POST(req: NextRequest) {
   const token = String(body.token ?? "");
   if (!approvalId || !token) return NextResponse.json({ ok: false, reason: "approval_id_and_token_required" }, { status: 400, headers: H });
 
-  const a = await ap.getApproval(approvalId);
+  let a;
+  try {
+    a = await ap.getApproval(approvalId);
+  } catch (error) {
+    if (ap.isApprovalStorageUnavailable(error)) {
+      return NextResponse.json({ ok: false, reason: error instanceof Error ? error.message : "approval_storage_unavailable" }, { status: 503, headers: H });
+    }
+    throw error;
+  }
   const deny = async (code: string, http = 409) => {
     await ap.audit({ approvalId, workspaceId: principal.workspaceId, userId: principal.userId, accountId: bound.accountId, actionType: a?.actionType ?? null, stage: "confirm", outcome: "denied", errorCode: code });
     return NextResponse.json({ ok: false, reason: code }, { status: http, headers: H });

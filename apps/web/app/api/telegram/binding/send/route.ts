@@ -36,7 +36,15 @@ export async function POST(req: NextRequest) {
   const mediaRef = typeof body.mediaRef === "string" ? body.mediaRef : null;
   const caption = typeof body.caption === "string" ? body.caption : null;
 
-  const a = await ap.getApproval(approvalId);
+  let a;
+  try {
+    a = await ap.getApproval(approvalId);
+  } catch (error) {
+    if (ap.isApprovalStorageUnavailable(error)) {
+      return NextResponse.json({ sent: false, reason: error instanceof Error ? error.message : "approval_storage_unavailable" }, { status: 503, headers: H });
+    }
+    throw error;
+  }
   const deny = async (code: string, http = 409) => {
     await ap.audit({ approvalId, workspaceId: principal.workspaceId, userId: principal.userId, accountId, chatId, actionType, confirmStage: a?.confirmStage ?? null, stage: "execute", outcome: "denied", errorCode: code });
     return NextResponse.json({ sent: false, reason: code }, { status: http, headers: H });
@@ -52,7 +60,14 @@ export async function POST(req: NextRequest) {
   if (a.status !== "confirmed") return deny("not_confirmed");
 
   // Re-check the allowlist at execute time too.
-  if (!(await ap.isAllowed({ userId: principal.userId, accountId, chatId, actionType }))) return deny("not_allowlisted", 403);
+  try {
+    if (!(await ap.isAllowed({ userId: principal.userId, accountId, chatId, actionType }))) return deny("not_allowlisted", 403);
+  } catch (error) {
+    if (ap.isApprovalStorageUnavailable(error)) {
+      return NextResponse.json({ sent: false, reason: error instanceof Error ? error.message : "approval_storage_unavailable" }, { status: 503, headers: H });
+    }
+    throw error;
+  }
 
   // Re-check chat ownership at execute time too. A prepared approval must not
   // survive a binding switch, logout, authorization loss or inaccessible chat.

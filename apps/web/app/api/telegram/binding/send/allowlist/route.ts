@@ -39,14 +39,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, reason: ownedChat.ok ? "account_mismatch" : ownedChat.reason }, { status: 403, headers: H });
   }
 
-  await ap.addAllowlist({
-    workspaceId: principal.workspaceId,
-    userId: principal.userId,
-    accountId: bound.accountId,
-    chatId,
-    actionType,
-    label: label ?? String(ownedChat.chat.title ?? "Telegram chat"),
-  });
+  try {
+    await ap.addAllowlist({
+      workspaceId: principal.workspaceId,
+      userId: principal.userId,
+      accountId: bound.accountId,
+      chatId,
+      actionType,
+      label: label ?? String(ownedChat.chat.title ?? "Telegram chat"),
+    });
+  } catch (error) {
+    if (ap.isApprovalStorageUnavailable(error)) {
+      return NextResponse.json({ ok: false, reason: error instanceof Error ? error.message : "approval_storage_unavailable" }, { status: 503, headers: H });
+    }
+    throw error;
+  }
 
   return NextResponse.json({
     ok: true,
