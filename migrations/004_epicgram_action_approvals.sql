@@ -57,4 +57,28 @@ CREATE UNIQUE INDEX IF NOT EXISTS eg_action_approvals_used_once_idx
   ON epicgram_action_approvals(id)
   WHERE status = 'USED';
 
+CREATE TABLE IF NOT EXISTS epicgram_action_audit (
+  id text PRIMARY KEY,
+  at timestamptz NOT NULL DEFAULT now(),
+  approval_id uuid,
+  workspace_id text,
+  principal_id text,
+  telegram_account_id text,
+  telegram_user_id text,
+  chat_id text,
+  action_type text,
+  payload_hash text,
+  confirm_stage text,
+  stage text NOT NULL,
+  outcome text NOT NULL,
+  error_code text,
+  telegram_message_id text
+);
+
+CREATE INDEX IF NOT EXISTS eg_action_audit_approval_idx
+  ON epicgram_action_audit(approval_id);
+
+CREATE INDEX IF NOT EXISTS eg_action_audit_owner_idx
+  ON epicgram_action_audit(workspace_id, principal_id);
+
 COMMIT;

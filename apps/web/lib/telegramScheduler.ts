@@ -191,6 +191,9 @@ export async function createScheduledJob(principal: Principal, input: {
   if (ap.MEDIA_ACTIONS.has(actionType)) return { ok: false, status: 501, reason: "scheduler_media_unsupported" };
   const text = typeof input.text === "string" ? input.text : "";
   if (!text.trim()) return { ok: false, status: 400, reason: "text_required" };
+  if (!(await ap.isAllowed({ userId: principal.userId, accountId, chatId: input.chatId, actionType }))) {
+    return { ok: false, status: 403, reason: "not_allowlisted" };
+  }
 
   const approval = await ap.getApproval(input.approvalId);
   if (!approval) return { ok: false, status: 404, reason: "approval_not_found" };
@@ -300,6 +303,9 @@ export async function executeJob(job: ScheduledJob): Promise<ScheduledJob> {
     const ownedChat = await assertChatBelongsToBoundAccount(principal, job.chatId);
     if (!ownedChat.ok) throw new Error(ownedChat.reason);
     if (ownedChat.accountId !== job.telegramAccountId) throw new Error("account_mismatch");
+    if (!(await ap.isAllowed({ userId: job.principalId, accountId: job.telegramAccountId, chatId: job.chatId, actionType: job.actionType }))) {
+      throw new Error("not_allowlisted");
+    }
 
     const approval = await ap.getApproval(job.approvalId);
     if (!approval) throw new Error("approval_not_found");
@@ -318,7 +324,11 @@ export async function executeJob(job: ScheduledJob): Promise<ScheduledJob> {
     if (!consumed) throw new Error("approval_replay_or_consumed");
 
     const sent = await sendTextThroughSlot(job.telegramAccountId, job.chatId, text, job.actionType);
-    if (!sent.ok) throw new Error(sent.message || sent.code || "send_failed");
+    if (!sent.ok) {
+      const failedAfterConsume = await markJob(job.id, "FAILED", { lastError: sent.message || sent.code || "send_failed" });
+      await ap.audit({ approvalId: job.approvalId, workspaceId: job.workspaceId, userId: job.principalId, accountId: job.telegramAccountId, chatId: job.chatId, actionType: job.actionType, payloadHash: job.payloadHash, stage: "schedule_execute", outcome: "failed", errorCode: sent.message || sent.code || "send_failed" });
+      return failedAfterConsume ?? job;
+    }
 
     await ap.audit({ approvalId: job.approvalId, workspaceId: job.workspaceId, userId: job.principalId, accountId: job.telegramAccountId, chatId: job.chatId, actionType: job.actionType, payloadHash: job.payloadHash, stage: "schedule_execute", outcome: "ok", telegramMessageId: sent.telegramMessageId });
     return (await markJob(job.id, "SENT", { telegramMessageId: sent.telegramMessageId })) ?? job;

@@ -81,6 +81,27 @@ async function ensureInit(p: PgPool): Promise<void> {
   `);
   await p.query(`CREATE INDEX IF NOT EXISTS eg_action_approvals_owner_idx ON epicgram_action_approvals(workspace_id, principal_id, telegram_account_id)`);
   await p.query(`CREATE INDEX IF NOT EXISTS eg_action_approvals_status_idx ON epicgram_action_approvals(status, expires_at)`);
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS epicgram_action_audit (
+      id text PRIMARY KEY,
+      at timestamptz NOT NULL DEFAULT now(),
+      approval_id uuid,
+      workspace_id text,
+      principal_id text,
+      telegram_account_id text,
+      telegram_user_id text,
+      chat_id text,
+      action_type text,
+      payload_hash text,
+      confirm_stage text,
+      stage text NOT NULL,
+      outcome text NOT NULL,
+      error_code text,
+      telegram_message_id text
+    )
+  `);
+  await p.query(`CREATE INDEX IF NOT EXISTS eg_action_audit_approval_idx ON epicgram_action_audit(approval_id)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS eg_action_audit_owner_idx ON epicgram_action_audit(workspace_id, principal_id)`);
 }
 async function pdb(): Promise<PgPool> { const p = await db(); await ensureInit(p); return p; }
 
@@ -280,12 +301,13 @@ export async function audit(input: {
   approvalId?: string | null; workspaceId?: string | null; userId?: string | null; accountId?: string | null;
   telegramUserId?: string | null; chatId?: string | null; actionType?: string | null; payloadHash?: string | null;
   confirmStage?: string | null; stage: string; outcome: string; errorCode?: string | null; telegramMessageId?: string | null;
-}): Promise<void> {
+}): Promise<string | null> {
   try {
     assertStorageAvailable();
+    const auditId = newId("aud");
     if (!enabled()) {
       await store.audit({
-        id: newId("aud"),
+        id: auditId,
         at: nowIso(),
         approval_id: input.approvalId ?? null,
         workspace_id: input.workspaceId ?? null,
@@ -301,12 +323,25 @@ export async function audit(input: {
         error_code: input.errorCode ?? null,
         telegram_message_id: input.telegramMessageId ?? null,
       });
-      return;
+      return auditId;
     }
-    const p = await db();
+    const p = await pdb();
     await p.query(
-      "INSERT INTO telegram_send_audit(id,at,approval_id,workspace_id,user_id,tdlib_account_id,telegram_user_id,chat_id,action_type,payload_hash,confirm_stage,stage,outcome,error_code,telegram_message_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
-      [newId("aud"), nowIso(), input.approvalId ?? null, input.workspaceId ?? null, input.userId ?? null, input.accountId ?? null, input.telegramUserId ?? null, input.chatId ?? null, input.actionType ?? null, input.payloadHash ?? null, input.confirmStage ?? null, input.stage, input.outcome, input.errorCode ?? null, input.telegramMessageId ?? null],
+      `INSERT INTO epicgram_action_audit
+        (id,at,approval_id,workspace_id,principal_id,telegram_account_id,telegram_user_id,chat_id,action_type,payload_hash,confirm_stage,stage,outcome,error_code,telegram_message_id)
+       VALUES($1,$2,$3::uuid,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+      [auditId, nowIso(), input.approvalId ?? null, input.workspaceId ?? null, input.userId ?? null, input.accountId ?? null, input.telegramUserId ?? null, input.chatId ?? null, input.actionType ?? null, input.payloadHash ?? null, input.confirmStage ?? null, input.stage, input.outcome, input.errorCode ?? null, input.telegramMessageId ?? null],
     );
-  } catch { /* audit is best-effort; never blocks a security decision */ }
+    if (input.approvalId) {
+      await p.query(
+        `UPDATE epicgram_action_approvals
+           SET audit_id=$2, telegram_message_id=COALESCE($3, telegram_message_id)
+         WHERE id=$1`,
+        [input.approvalId, auditId, input.telegramMessageId ?? null],
+      );
+    }
+    return auditId;
+  } catch {
+    return null;
+  }
 }
