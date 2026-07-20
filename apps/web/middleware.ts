@@ -48,7 +48,7 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSession = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
 
-  if (pathname === "/client" || pathname.startsWith("/client/")) {
+  if (pathname === "/client" || pathname.startsWith("/client/") || pathname === "/telegram-code") {
     if (!hasSession) {
       const url = clonePublicRedirectUrl(request);
       url.pathname = "/login";
@@ -68,6 +68,7 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     "/client/:path*",
+    "/telegram-code",
     "/api/telegram/:path*",
     "/api/v1/telegram/:path*",
     "/api/operator-events",

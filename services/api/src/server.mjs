@@ -5,6 +5,7 @@ import { generateDraftReply } from "./ai-chat.mjs";
 import { getRecentMemory } from "./memory-store.mjs";
 import {
   getConfig,
+  getLocalRuntimeState,
   getChats,
   getStatus,
   createAccountSlot,
@@ -328,6 +329,10 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === "GET" && url.pathname === "/telegram/config") {
       return send(response, 200, await getConfig());
+    }
+    if (request.method === "GET" && url.pathname === "/telegram/state") {
+      const result = await getLocalRuntimeState();
+      return send(response, result.status, result.body);
     }
     if (request.method === "POST" && url.pathname === "/telegram/accounts/new") {
       const result = await createAccountSlot();

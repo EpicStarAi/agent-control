@@ -242,6 +242,12 @@ function primaryTelegramAccount(status: TelegramStatus | null) {
   return status?.account ?? status?.accounts?.find((account) => account.active) ?? status?.accounts?.[0] ?? null;
 }
 
+function activeAuthorizationState(status: TelegramStatus | null) {
+  const activeId = status?.activeAccountId;
+  const active = activeId ? status?.accounts?.find((account) => account.slotId === activeId) : null;
+  return active?.authorizationState ?? status?.authorizationState ?? null;
+}
+
 function chatMatchesFolder(chat: TelegramChat, folder: FolderId) {
   if (folder === "all") return chat.list !== "archive";
   if (folder === "archive") return chat.list === "archive";
@@ -487,7 +493,37 @@ export function EpicGramShell({ section }: Props) {
       if (cancelled) return;
 
       setTelegramStatus(status);
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), 6000);
+      const activeAuth = await fetch("/api/telegram/active-auth/status", { cache: "no-store", signal: controller.signal })
+        .then((r) => r.json())
+        .catch(() => null)
+        .finally(() => window.clearTimeout(timer)) as { activeAccountId?: string | null; waitingForCode?: boolean; waitingForPassword?: boolean; waitingForQr?: boolean } | null;
+      if (
+        !cancelled &&
+        activeAuth?.activeAccountId &&
+        (activeAuth?.waitingForCode || activeAuth?.waitingForPassword || activeAuth?.waitingForQr) &&
+        window.location.pathname !== "/telegram-code"
+      ) {
+        window.location.assign("/telegram-code");
+        return;
+      }
       if (authOpen && status.qrLink) setQrLink(status.qrLink);
+
+      const authState = activeAuthorizationState(status);
+      if (authState === "authorizationStateWaitCode") {
+        setAuthMode("phone");
+        setAuthOpen(true);
+        setAuthFlowActive(true);
+        setQrLink("");
+        setQrDataUrl("");
+        const active = primaryTelegramAccount(status);
+        setAuthMessage(active?.phoneMasked ? `Введите код Telegram для ${active.phoneMasked}.` : "Введите код Telegram.");
+      } else if (authState === "authorizationStateWaitPassword") {
+        setAuthOpen(true);
+        setAuthFlowActive(true);
+        setAuthMessage("Введите облачный пароль Telegram (2FA).");
+      }
 
       if (authOpen && authFlowActive && isTelegramReady(status)) {
         const accountName = primaryTelegramAccount(status)?.displayName;
@@ -764,10 +800,10 @@ export function EpicGramShell({ section }: Props) {
       return;
     }
     setAuthFlowActive(true);
-    const response = await fetch("/api/telegram/auth/qr", {
+    const response = await fetch("/api/telegram/active-auth/qr", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountId: activeAccountId })
+      body: JSON.stringify({})
     });
     const data = (await response.json()) as { message?: string; qrLink?: string };
     setQrLink(data.qrLink ?? "");
@@ -782,7 +818,7 @@ export function EpicGramShell({ section }: Props) {
     setAuthFlowActive(true);
     setQrLink("");
     setQrDataUrl("");
-    const response = await fetch("/api/telegram/auth/phone", {
+    const response = await fetch("/api/telegram/active-auth/phone", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ accountId: activeAccountId, phoneNumber: phone })
@@ -1114,6 +1150,42 @@ export function EpicGramShell({ section }: Props) {
             setAuthFlowActive(false);
           }}
         />
+      )}
+      {activeAuthorizationState(telegramStatus) === "authorizationStateWaitCode" && !authOpen && (
+        <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-lg rounded-2xl border border-fuchsia-400/40 bg-tg-panel/95 p-4 shadow-telegram backdrop-blur">
+          <div className="flex items-start gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-fuchsia-500/20 text-lg">#</div>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-bold text-white">Введите код Telegram</div>
+              <div className="mt-0.5 text-xs text-tg-muted">
+                Код уже отправлен{primaryTelegramAccount(telegramStatus)?.phoneMasked ? ` на ${primaryTelegramAccount(telegramStatus)?.phoneMasked}` : ""}.
+              </div>
+              <div className="mt-3 flex gap-2">
+                <input
+                  value={code}
+                  onChange={(event) => setCode(event.target.value)}
+                  placeholder="12345"
+                  inputMode="numeric"
+                  autoFocus
+                  className="h-11 min-w-0 flex-1 rounded-xl bg-tg-bg px-4 text-base outline-none ring-1 ring-tg-line focus:ring-tg-blue"
+                />
+                <button onClick={requestCodeAuth} className="rounded-xl bg-tg-active px-4 text-sm font-semibold text-white">
+                  Проверить
+                </button>
+              </div>
+              <button
+                onClick={() => {
+                  setAuthMode("phone");
+                  setAuthOpen(true);
+                  setAuthFlowActive(true);
+                }}
+                className="mt-2 text-xs font-semibold text-tg-accent hover:text-white"
+              >
+                Открыть полное окно авторизации
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       <OperatorDock
           activeAccountId={activeAccountId}
