@@ -550,7 +550,7 @@ export default function OperatorOffice() {
   const [dataMode, setDataMode] = useState<"real" | "offline">("offline");
   const [lastSync, setLastSync] = useState<string | null>(null); // ISO timestamp of last successful fetch
 
-  // Loading simulation
+  // Short deterministic loader while the operator shell mounts.
   useEffect(() => {
     let p = 0;
     const id = setInterval(() => {

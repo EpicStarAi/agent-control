@@ -35,7 +35,7 @@ import {
   VolumeX,
   X
 } from "lucide-react";
-import type { Section } from "@/data/mock";
+type Section = "dashboard" | "chats" | "agents" | "accounts" | "logs" | "settings";
 
 type Props = { section: Section };
 type AuthMode = "qr" | "phone";
