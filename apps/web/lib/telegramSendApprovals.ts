@@ -103,7 +103,15 @@ async function ensureInit(p: PgPool): Promise<void> {
   await p.query(`CREATE INDEX IF NOT EXISTS eg_action_audit_approval_idx ON epicgram_action_audit(approval_id)`);
   await p.query(`CREATE INDEX IF NOT EXISTS eg_action_audit_owner_idx ON epicgram_action_audit(workspace_id, principal_id)`);
 }
-async function pdb(): Promise<PgPool> { const p = await db(); await ensureInit(p); return p; }
+async function pdb(): Promise<PgPool> {
+  try {
+    const p = await db();
+    await ensureInit(p);
+    return p;
+  } catch {
+    throw new ApprovalStorageUnavailableError();
+  }
+}
 
 export function sha256(s: string): string { return crypto.createHash("sha256").update(String(s)).digest("hex"); }
 export function newId(p: string): string { return `${p}_${Date.now().toString(36)}_${crypto.randomBytes(3).toString("hex")}`; }

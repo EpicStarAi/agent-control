@@ -191,11 +191,26 @@ export async function createScheduledJob(principal: Principal, input: {
   if (ap.MEDIA_ACTIONS.has(actionType)) return { ok: false, status: 501, reason: "scheduler_media_unsupported" };
   const text = typeof input.text === "string" ? input.text : "";
   if (!text.trim()) return { ok: false, status: 400, reason: "text_required" };
-  if (!(await ap.isAllowed({ userId: principal.userId, accountId, chatId: input.chatId, actionType }))) {
-    return { ok: false, status: 403, reason: "not_allowlisted" };
+  try {
+    if (!(await ap.isAllowed({ userId: principal.userId, accountId, chatId: input.chatId, actionType }))) {
+      return { ok: false, status: 403, reason: "not_allowlisted" };
+    }
+  } catch (error) {
+    if (ap.isApprovalStorageUnavailable(error)) {
+      return { ok: false, status: 503, reason: error instanceof Error ? error.message : "approval_storage_unavailable" };
+    }
+    throw error;
   }
 
-  const approval = await ap.getApproval(input.approvalId);
+  let approval;
+  try {
+    approval = await ap.getApproval(input.approvalId);
+  } catch (error) {
+    if (ap.isApprovalStorageUnavailable(error)) {
+      return { ok: false, status: 503, reason: error instanceof Error ? error.message : "approval_storage_unavailable" };
+    }
+    throw error;
+  }
   if (!approval) return { ok: false, status: 404, reason: "approval_not_found" };
   if (approval.userId !== principal.userId || approval.workspaceId !== principal.workspaceId) return { ok: false, status: 403, reason: "not_your_approval" };
   if (approval.accountId !== accountId) return { ok: false, status: 403, reason: "approval_account_mismatch" };
