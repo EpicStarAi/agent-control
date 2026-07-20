@@ -1,4 +1,5 @@
 import { subscribe, type BusEvent } from "@/lib/operatorBus";
+import { getPrincipal } from "@/lib/telegramGuard";
 
 // P25: SSE live stream of operator events. Read-only push transport — no
 // commands flow in. Streams system.connected, system.heartbeat, and every
@@ -8,6 +9,20 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
+  const principal = await getPrincipal();
+  if (!principal) {
+    return new Response(
+      JSON.stringify({ ok: false, authenticated: false, message: "Требуется аутентифицированная сессия EPICGRAM." }) + "\n",
+      {
+        status: 401,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store"
+        }
+      }
+    );
+  }
+
   const enc = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({

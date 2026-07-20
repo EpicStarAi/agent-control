@@ -686,6 +686,34 @@ export async function getChats(
 }
 
 /**
+ * Server-side ownership check for a browser-selected chatId.
+ * The browser may choose a chatId, but the server must prove that chat belongs
+ * to the caller's bound TDLib account before reading context or sending.
+ */
+export async function assertChatBelongsToBoundAccount(
+  principal: Principal,
+  chatId: string,
+  limit = 100
+): Promise<
+  | { ok: true; accountId: string; chat: Record<string, unknown> }
+  | { ok: false; reason: string }
+> {
+  if (!chatId) return { ok: false, reason: "chat_id_required" };
+
+  const binding = await db.getByWorkspace(principal.workspaceId);
+  if (!binding) return { ok: false, reason: "no_binding" };
+  if (binding.authState !== "ready") return { ok: false, reason: "authorization_not_ready" };
+
+  const result = await getChatsTdlib(binding.tdlibAccountId, limit);
+  const body = (result?.body ?? result) as Record<string, unknown>;
+  const chats = ((body?.chats ?? []) as Array<Record<string, unknown>>) ?? [];
+  const chat = chats.find((c) => String(c.id) === String(chatId));
+  if (!chat) return { ok: false, reason: "chat_not_found_or_not_bound" };
+
+  return { ok: true, accountId: binding.tdlibAccountId, chat };
+}
+
+/**
  * Get messages for a specific chat.
  */
 export async function getMessages(
@@ -698,15 +726,10 @@ export async function getMessages(
   }
 
   try {
-    const binding = await db.getByWorkspace(principal.workspaceId);
-    if (!binding) {
-      return { ok: true, messages: [], chatId };
-    }
-    if (binding.authState !== "ready") {
-      return { ok: true, messages: [], chatId };
-    }
+    const owned = await assertChatBelongsToBoundAccount(principal, chatId);
+    if (!owned.ok) return { ok: false, reason: owned.reason };
 
-    const result = await getMessagesTdlib(binding.tdlibAccountId, chatId, limit);
+    const result = await getMessagesTdlib(owned.accountId, chatId, limit);
     const body = (result?.body ?? result) as Record<string, unknown>;
     const messages = ((body as Record<string, unknown>)?.messages ?? []) as unknown[];
     return { ok: true, messages, chatId };

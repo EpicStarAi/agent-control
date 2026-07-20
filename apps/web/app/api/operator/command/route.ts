@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPrincipal, resolveBoundAccount } from "@/lib/telegramGuard";
+import { assertChatBelongsToBoundAccount, getMessages } from "@/lib/telegramBindingService";
 
 export const dynamic = "force-dynamic";
 
@@ -120,23 +121,6 @@ export async function POST(req: Request) {
   // accountId is the server-resolved bound slot (above) — the request body's
   // tgContext.accountId / accountId are deliberately NOT read here.
 
-  const chatTitle =
-    typeof tg?.chatTitle === "string" && tg.chatTitle
-      ? tg.chatTitle
-      : typeof body?.chatTitle === "string" && body.chatTitle
-        ? body.chatTitle
-        : typeof body?.conversationTitle === "string" && body.conversationTitle
-          ? body.conversationTitle
-          : "Telegram chat";
-
-  const tgMessages: TgMsg[] = Array.isArray(tg?.messages)
-    ? tg.messages
-    : Array.isArray(body?.messages)
-      ? body.messages
-      : Array.isArray(body?.history)
-        ? body.history
-        : [];
-
   if (!chatId) {
     return NextResponse.json(
       {
@@ -155,7 +139,46 @@ export async function POST(req: Request) {
     );
   }
 
-  const messages = tgMessages
+  const ownedChat = await assertChatBelongsToBoundAccount(principal, chatId);
+  if (!ownedChat.ok) {
+    return NextResponse.json(
+      {
+        ok: false,
+        text: `⚠ ${ownedChat.reason}`,
+        error: ownedChat.reason,
+        approval_required: false,
+        mode: "MANUAL_APPROVAL_ONLY",
+        runtime_mode: "READ_ONLY",
+        actions: [],
+        can_send: false,
+        auto_send: false,
+        bulk_actions: false,
+      },
+      { status: 403, headers: { "cache-control": "no-store" } },
+    );
+  }
+
+  const chatTitle = normalizeText(ownedChat.chat.title) || "Telegram chat";
+  const serverContext = await getMessages(principal, chatId, 40);
+  if (!serverContext.ok) {
+    return NextResponse.json(
+      {
+        ok: false,
+        text: `⚠ ${serverContext.reason}`,
+        error: serverContext.reason,
+        approval_required: false,
+        mode: "MANUAL_APPROVAL_ONLY",
+        runtime_mode: "READ_ONLY",
+        actions: [],
+        can_send: false,
+        auto_send: false,
+        bulk_actions: false,
+      },
+      { status: 409, headers: { "cache-control": "no-store" } },
+    );
+  }
+
+  const messages = (serverContext.messages as TgMsg[])
     .slice(-20)
     .map(normalizeMessage)
     .filter((m) => m.content.length > 0);

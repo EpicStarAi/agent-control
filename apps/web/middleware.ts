@@ -70,6 +70,8 @@ export const config = {
     "/client/:path*",
     "/api/telegram/:path*",
     "/api/v1/telegram/:path*",
+    "/api/operator-events",
+    "/api/operator-events/:path*",
     // The entire operator bridge — the verbatim catch-all proxy plus every
     // dedicated route (command/confirm/schedule/qclaw) — must sit behind the
     // gate. Enforcement is still duplicated inside each handler (defence in

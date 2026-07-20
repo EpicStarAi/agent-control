@@ -5,7 +5,7 @@
 // runtime — never the legacy singleton. Global kill-switch: TELEGRAM_MUTATION.
 import { NextRequest, NextResponse } from "next/server";
 import { requirePrincipal, resolveBoundAccount, telegramMutationsEnabled, denyMutation } from "@/lib/telegramGuard";
-import { sendTextThroughSlot } from "@/lib/telegramBindingService";
+import { assertChatBelongsToBoundAccount, sendTextThroughSlot } from "@/lib/telegramBindingService";
 import * as ap from "@/lib/telegramSendApprovals";
 
 export const dynamic = "force-dynamic";
@@ -53,6 +53,12 @@ export async function POST(req: NextRequest) {
 
   // Re-check the allowlist at execute time too.
   if (!(await ap.isAllowed({ userId: principal.userId, accountId, chatId, actionType }))) return deny("not_allowlisted", 403);
+
+  // Re-check chat ownership at execute time too. A prepared approval must not
+  // survive a binding switch, logout, authorization loss or inaccessible chat.
+  const ownedChat = await assertChatBelongsToBoundAccount(principal, chatId);
+  if (!ownedChat.ok) return deny(ownedChat.reason, 403);
+  if (ownedChat.accountId !== accountId) return deny("account_mismatch", 403);
 
   // Recompute the hash from the ACTUAL payload — text/media/caption cannot be swapped post-approval.
   const recomputed = ap.payloadHash({ accountId, chatId, actionType, text, mediaRef, caption });

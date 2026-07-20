@@ -5,6 +5,7 @@ import {
   telegramMutationsEnabled,
   denyMutation,
 } from "@/lib/telegramGuard";
+import { assertChatBelongsToBoundAccount } from "@/lib/telegramBindingService";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +62,6 @@ export async function POST(req: Request) {
   const auditId = typeof body?.auditId === "string" ? body.auditId : undefined;
   // Use the operator-selected chat only — AI-provided arbitrary target is ignored.
   const chatId = typeof body?.chatId === "string" ? body.chatId : "";
-  const chatTitle = typeof body?.chatTitle === "string" ? body.chatTitle : "";
 
   // Safe log only — no full private message bodies.
   console.log(
@@ -71,6 +71,15 @@ export async function POST(req: Request) {
   if (!chatId) return NextResponse.json({ ok: false, error: "no_selected_chat" }, { status: 200, headers: H });
   if (!dueAt) return NextResponse.json({ ok: false, error: "no_dueAt" }, { status: 200, headers: H });
   if (!text.trim()) return NextResponse.json({ ok: false, error: "no_text" }, { status: 200, headers: H });
+
+  const ownedChat = await assertChatBelongsToBoundAccount(principal, chatId);
+  if (!ownedChat.ok) {
+    return NextResponse.json({ ok: false, error: ownedChat.reason }, { status: 403, headers: H });
+  }
+  if (ownedChat.accountId !== accountId) {
+    return NextResponse.json({ ok: false, error: "account_mismatch" }, { status: 403, headers: H });
+  }
+  const chatTitle = typeof ownedChat.chat.title === "string" ? ownedChat.chat.title : "";
 
   try {
     const upstream = await fetch(`${API_BASE_URL}/ai/schedule/approve`, {

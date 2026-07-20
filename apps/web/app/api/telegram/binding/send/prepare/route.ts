@@ -4,7 +4,7 @@
 // It NEVER sends. accountId is never taken from the client.
 import { NextRequest, NextResponse } from "next/server";
 import { requirePrincipal, resolveBoundAccount } from "@/lib/telegramGuard";
-import { getChats } from "@/lib/telegramBindingService";
+import { assertChatBelongsToBoundAccount } from "@/lib/telegramBindingService";
 import * as ap from "@/lib/telegramSendApprovals";
 
 export const dynamic = "force-dynamic";
@@ -41,14 +41,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, reason: "not_allowlisted" }, { status: 403, headers: H });
   }
 
-  // Ownership + existence: the chat MUST be in this account's own dialog list.
-  const chatsRes = await getChats(principal, 100);
-  const chats = (chatsRes.ok ? (chatsRes.chats as Array<Record<string, unknown>>) : []) ?? [];
-  const chat = chats.find((c) => String(c.id) === chatId) ?? null;
-  if (!chat) {
-    await ap.audit({ workspaceId: principal.workspaceId, userId: principal.userId, accountId, chatId, actionType, stage: "prepare", outcome: "denied", errorCode: "chat_not_owned" });
-    return NextResponse.json({ ok: false, reason: "chat_not_owned_or_unavailable" }, { status: 403, headers: H });
+  const ownedChat = await assertChatBelongsToBoundAccount(principal, chatId);
+  if (!ownedChat.ok) {
+    await ap.audit({ workspaceId: principal.workspaceId, userId: principal.userId, accountId, chatId, actionType, stage: "prepare", outcome: "denied", errorCode: ownedChat.reason });
+    return NextResponse.json({ ok: false, reason: ownedChat.reason }, { status: 403, headers: H });
   }
+  const chat = ownedChat.chat;
   const category = String(chat.category ?? chat.type ?? "chat");
   const isChannel = Boolean(chat.isChannel) || category === "channel";
 

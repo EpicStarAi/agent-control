@@ -1,8 +1,7 @@
 "use client";
 
-// EPICGRAM OPERATOR OFFICE — pixel-art AI operator command room.
-// All data is local mock. No live Telegram. No secrets. UI-only feature.
-// Fully additive — does not touch existing components or live sessions.
+// EPICGRAM OPERATOR OFFICE — real-data operator command room.
+// Production path must not render demo Telegram accounts/chats/messages.
 
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
@@ -31,45 +30,9 @@ const C = {
   purple: "#a78bfa",
 };
 
-// ─── Demo scaffolding ───────────────────────────────────────────────────────
-// Channel/draft/asset placeholders below are clearly-labelled demo content for
-// the office layout. There is deliberately NO hardcoded "connected account"
-// here: account identity and TDLib/authorization state are rendered ONLY from
-// live /api/operator/qclaw/status data, and fall back to an honest
-// "not connected" state — never to a fictional NOVIKOVA session.
-const CHANNELS = [
-  { id: "-1003687931514", name: "NoViKoVA💋NEWS🌐", topic: "Новини Новикової", audience: "~210", posts: 18, growth: "+2.1%", status: "active" },
-  { id: "-1001199360700", name: "Труха⚡Україна", topic: "Новини України", audience: "~12K", posts: 847, growth: "+0.8%", status: "active" },
-  { id: "-1001080134301", name: "Жесть дня", topic: "Цікавинки", audience: "~3.1K", posts: 234, growth: "-0.3%", status: "active" },
-];
-
-const RUNTIME = [
-  { label: "WEB (Next.js)", port: "3015", status: "running", badge: "DEV", ok: true },
-  { label: "API (EPICGRAM)", port: "8788", status: "running", badge: "DEV", ok: true },
-  { label: "TDLib Adapter", port: "—", status: "loaded", badge: "READY", ok: true },
-  { label: "Telegram Session", port: "—", status: "не подключена", badge: "НЕ В СЕТИ", ok: false },
-  { label: "Publish Policy", port: "—", status: "disabled", badge: "SAFE", ok: true },
-  { label: "Live Send", port: "—", status: "LOCKED", badge: "🔒 MANUAL", ok: false },
-];
-
-const DRAFTS = [
-  { id: "d1", title: "Пост: Новини ранку", channel: "NoViKoVA💋NEWS🌐", status: "DRAFT" },
-  { id: "d2", title: "Анонс: Епізод 14", channel: "Труха⚡Україна", status: "REVIEW" },
-  { id: "d3", title: "Reel: Запуск каналу", channel: "Жесть дня", status: "DRAFT" },
-];
-
-const ASSETS = [
-  { type: "📷", name: "novikova_avatar_v3.png", size: "124 KB", ok: true },
-  { type: "🎵", name: "bgm_epic_theme.mp3", size: "2.1 MB", ok: true },
-  { type: "🎬", name: "reel_launch_01.mp4", size: "18 MB", ok: false },
-  { type: "🖼", name: "channel_banner.png", size: "340 KB", ok: true },
-];
-
-const AUTOMATION = [
-  { id: "q1", action: "Проверка статистики каналов", schedule: "каждые 30 мин", running: false },
-  { id: "q2", action: "Сканирование новых сообщений", schedule: "каждые 5 мин", running: true },
-  { id: "q3", action: "Резервная копия памяти", schedule: "раз в сутки", running: false },
-];
+const DRAFTS: Array<{ id: string; title: string; channel: string; status: string }> = [];
+const ASSETS: Array<{ type: string; name: string; size: string; ok: boolean }> = [];
+const AUTOMATION: Array<{ id: string; action: string; schedule: string; running: boolean }> = [];
 
 // ─── Pixel border utility ──────────────────────────────────────────────────────
 function pxb(color = C.accent, thick = 1) {
@@ -193,7 +156,7 @@ function Panel({
 // ─── Panel: Telegram Desk ─────────────────────────────────────────────────────
 function TelegramDeskPanel({ runtimeData, dataMode, lastSync }: {
   runtimeData: Record<string, unknown> | null;
-  dataMode: "real" | "mock";
+  dataMode: "real" | "offline";
   lastSync: string | null;
 }) {
   const tg = (runtimeData?.telegram as Record<string, unknown>) ?? null;
@@ -211,7 +174,7 @@ function TelegramDeskPanel({ runtimeData, dataMode, lastSync }: {
         <Row label="Авторизация" value={connected ? "Авторизован" : authState} ok={connected} />
         <Row
           label="Режим данных"
-          value={dataMode === "real" ? "Онлайн" : "Демо"}
+          value={dataMode === "real" ? "Онлайн" : "Недоступно"}
           ok={dataMode === "real"}
         />
         {lastSync && (
@@ -249,12 +212,16 @@ function ChannelOSPanel({ channelData }: { channelData: { ok: boolean; channels:
           username: (ch.username as string | null) ?? null,
         };
       })
-    : CHANNELS;
+    : [];
   return (
     <div style={{ fontFamily: "monospace", fontSize: 11, color: C.text }}>
-      {channelData.ok && (
+      {channelData.ok ? (
         <div style={{ padding: "6px 10px", background: `${C.green}14`, border: `1px solid ${C.green}33`, fontSize: 9, color: C.green, fontFamily: "monospace", marginBottom: 12 }}>
           ✓ Данные из TDLib · загружено чатов: {channelData.channels.length}
+        </div>
+      ) : (
+        <div style={{ padding: "10px 12px", background: `${C.yellow}14`, border: `1px solid ${C.yellow}33`, fontSize: 10, color: C.yellow, fontFamily: "monospace", marginBottom: 12 }}>
+          Нет реальных данных TDLib. Подключите Telegram-аккаунт или проверьте backend.
         </div>
       )}
       {realChannels.map((ch) => (
@@ -313,16 +280,15 @@ function OperatorPanel() {
 // ─── Panel: Runtime Status ────────────────────────────────────────────────────
 function ServerPanel({ runtimeData, dataMode, lastSync }: {
   runtimeData: Record<string, unknown> | null;
-  dataMode: "real" | "mock";
+  dataMode: "real" | "offline";
   lastSync: string | null;
 }) {
-  // Merge real runtime data with mock static indicators
   const rt = (runtimeData?.runtime as Record<string, unknown>) ?? {};
   const tg = (runtimeData?.telegram as Record<string, unknown>) ?? {};
   const realTdlib = rt?.tdlib as string ?? "unknown";
   const nativeLoaded = Boolean(rt?.nativeBindingLoaded ?? false);
   const tgConnected = Boolean(tg?.connected ?? false);
-  const realRuntime: typeof RUNTIME[0][] = [
+  const realRuntime = [
     { label: "WEB (Next.js)", port: "3015", status: "работает", badge: "ТЕСТ", ok: true },
     { label: "API (EPICGRAM)", port: "8788", status: "работает", badge: "ТЕСТ", ok: true },
     { label: "Адаптер TDLib", port: "—", status: nativeLoaded ? "загружен" : "не загружен", badge: nativeLoaded ? "ГОТОВ" : "ОЖИДАНИЕ", ok: nativeLoaded },
@@ -354,7 +320,7 @@ function ServerPanel({ runtimeData, dataMode, lastSync }: {
           ["TDLIB_NATIVE", "загружено (dev)"],
           ["LIVE_SEND", "ЗАБЛОКИРОВАНА 🔒"],
           ["AUTO_PUBLISH", "отключена"],
-          ["Режим данных", dataMode === "real" ? "Онлайн ✓" : "Демо ⚠"],
+          ["Режим данных", dataMode === "real" ? "Онлайн ✓" : "Недоступно"],
           ["Синхронизация", lastSync ? new Date(lastSync).toLocaleTimeString() : "никогда"],
           ["SECRETS", "не раскрыты"],
         ].map(([k, v]) => (
@@ -578,10 +544,10 @@ export default function OperatorOffice() {
   const openPanel = (p: PanelId) => setPanel(p);
   const [messages, setMessages] = useState<MessageEntry[]>([]);
 
-  // Real data fetched from Operator Office API bridge (falls back to mock gracefully)
+  // Real data fetched from Operator Office API bridge. No demo fallback.
   const [runtimeData, setRuntimeData] = useState<Record<string, unknown> | null>(null);
   const [channelData, setChannelData] = useState<{ ok: boolean; channels: Record<string, unknown>[] }>({ ok: false, channels: [] });
-  const [dataMode, setDataMode] = useState<"real" | "mock">("mock"); // UI label only
+  const [dataMode, setDataMode] = useState<"real" | "offline">("offline");
   const [lastSync, setLastSync] = useState<string | null>(null); // ISO timestamp of last successful fetch
 
   // Loading simulation
@@ -642,8 +608,9 @@ export default function OperatorOffice() {
           setChannelData({ ok: true, channels: channelsData.channels });
         }
       } catch {
-        // Backend unreachable — silently stay on mock data (already initialized)
-        setDataMode("mock");
+        setRuntimeData(null);
+        setChannelData({ ok: false, channels: [] });
+        setDataMode("offline");
         setLastSync(null);
       }
     };
@@ -775,8 +742,22 @@ export default function OperatorOffice() {
   const operatorAccountLabel =
     operatorConnected && _accMain?.displayName ? String(_accMain.displayName) : "Аккаунт не подключён";
   const operatorStatusLine = operatorConnected
-    ? `${String(_tgMain?.authorizationState ?? "authorizationStateReady")} · ${operatorAccountLabel}`
+    ? `${String(_tgMain?.authorizationState ?? "unknown")} · ${operatorAccountLabel}`
     : "Нет привязанного Telegram-аккаунта";
+  const channelStrip = channelData.ok
+    ? channelData.channels.map((ch) => ({
+        id: String(ch.id ?? ""),
+        name: String(ch.title ?? "Без названия"),
+        unread: ch.unreadCount != null ? String(ch.unreadCount) : "0",
+        category: String(ch.category ?? ch.type ?? "chat"),
+      }))
+    : [];
+  const runtimeMini = [
+    { label: "WEB", ok: true },
+    { label: "API", ok: dataMode === "real" },
+    { label: "TDLib", ok: Boolean((runtimeData?.runtime as Record<string, unknown> | undefined)?.nativeBindingLoaded) },
+    { label: "TG", ok: operatorConnected },
+  ];
 
   return (
     <div style={{
@@ -801,7 +782,7 @@ export default function OperatorOffice() {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {[
-            dataMode === "real" ? "Данные: онлайн ✅" : "Данные: демо ⚠",
+            dataMode === "real" ? "Данные: онлайн ✅" : "Данные: недоступны",
             "Тестовый безопасный режим",
             "Отправка заблокирована 🔒",
             "Только ручное подтверждение",
@@ -821,14 +802,19 @@ export default function OperatorOffice() {
         padding: "10px 20px", background: C.surface,
         borderBottom: `1px solid ${C.line}`, gap: 12, overflowX: "auto", flexShrink: 0,
       }}>
-        {CHANNELS.map((ch) => (
+        {channelStrip.length === 0 && (
+          <div style={{ ...pxb(C.line, 1), padding: "8px 16px", background: C.panel, minWidth: 220, flexShrink: 0 }}>
+            <div style={{ fontSize: 10, color: C.yellow, fontWeight: 700, marginBottom: 3, letterSpacing: "0.06em" }}>Нет реальных TDLib-чатов</div>
+            <div style={{ fontSize: 9, color: C.muted }}>Подключите аккаунт или проверьте backend</div>
+          </div>
+        )}
+        {channelStrip.map((ch) => (
           <div key={ch.id} style={{
             ...pxb(C.accent, 1), padding: "8px 16px",
             background: C.panel, minWidth: 160, flexShrink: 0,
           }}>
             <div style={{ fontSize: 10, color: C.accent, fontWeight: 700, marginBottom: 3, letterSpacing: "0.06em" }}>{ch.name}</div>
-            <div style={{ fontSize: 9, color: C.muted }}>👥 {ch.audience} · 📝 {ch.posts}</div>
-            <div style={{ fontSize: 9, color: ch.growth.startsWith("+") ? C.green : "#f87171", marginTop: 2 }}>{ch.growth}</div>
+            <div style={{ fontSize: 9, color: C.muted }}>тип {ch.category} · непрочитано {ch.unread}</div>
           </div>
         ))}
         <button
@@ -867,9 +853,9 @@ export default function OperatorOffice() {
           {/* Runtime mini */}
           <div style={{ marginTop: "auto", padding: 10, background: C.panel, ...pxb(C.line, 1) }}>
             <div style={{ fontSize: 9, color: C.accent, fontWeight: 700, marginBottom: 6, letterSpacing: "0.08em", fontFamily: "monospace" }}>▸ Компоненты системы</div>
-            {RUNTIME.slice(0, 4).map((r) => (
+            {runtimeMini.map((r) => (
               <div key={r.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                <span style={{ color: C.muted, fontSize: 9 }}>{r.label.split(" ")[0]}</span>
+                <span style={{ color: C.muted, fontSize: 9 }}>{r.label}</span>
                 <Dot color={r.ok ? C.green : C.yellow} on={r.ok} />
               </div>
             ))}

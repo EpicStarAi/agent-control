@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getOperatorEvents, appendOperatorEvent } from "@/lib/missionData";
 import { broadcast } from "@/lib/operatorBus";
 import type { OperatorEvent } from "@/lib/missions";
+import { getPrincipal } from "@/lib/telegramGuard";
 
 // P24.1 / P25 / P25.1: operator events via the data facade (DB or fs). GET is
 // read-only. POST appends a SIMULATED event and broadcasts it over the Event Bus.
@@ -9,12 +10,28 @@ import type { OperatorEvent } from "@/lib/missions";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
+  const principal = await getPrincipal();
+  if (!principal) {
+    return NextResponse.json(
+      { ok: false, authenticated: false, message: "Требуется аутентифицированная сессия EPICGRAM." },
+      { status: 401, headers: { "cache-control": "no-store" } }
+    );
+  }
+
   const missionId = new URL(req.url).searchParams.get("missionId");
   const { events, source } = await getOperatorEvents(missionId);
   return NextResponse.json({ events, source });
 }
 
 export async function POST(req: Request) {
+  const principal = await getPrincipal();
+  if (!principal) {
+    return NextResponse.json(
+      { ok: false, authenticated: false, message: "Требуется аутентифицированная сессия EPICGRAM." },
+      { status: 401, headers: { "cache-control": "no-store" } }
+    );
+  }
+
   const body = (await req.json().catch(() => ({}))) as Partial<OperatorEvent>;
   const result = await appendOperatorEvent(body ?? {});
   if (result.ok && result.event) broadcast("operator.event.created", result.event);
