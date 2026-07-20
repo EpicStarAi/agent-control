@@ -59,6 +59,13 @@ function sendBinary(response, status, body, contentType) {
   response.end(body);
 }
 
+function trustedSendApproval(request) {
+  const expected = String(process.env.EPICGRAM_INTERNAL_SEND_SECRET || "");
+  if (expected.length < 16) return false;
+  const got = String(request.headers["x-epicgram-internal-send-secret"] || "");
+  return got === expected;
+}
+
 function redirect(response, location) {
   response.writeHead(302, {
     location,
@@ -295,7 +302,7 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === "POST" && url.pathname === "/telegram/send") {
       const sendBody = await readJson(request);
-      const result = await sendMessage(sendBody);
+      const result = await sendMessage(sendBody, { operatorApproved: trustedSendApproval(request) });
       try {
         const executed = result?.status >= 200 && result?.status < 300;
         const text = String(sendBody?.text || "").trim();

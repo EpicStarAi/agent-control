@@ -4,6 +4,7 @@
 // (DATABASE_URL). No message body / secrets / raw token ever stored.
 
 import crypto from "node:crypto";
+import * as store from "./telegramSendApprovalsStore";
 
 type Row = Record<string, unknown>;
 type PgPool = { query: (t: string, p?: unknown[]) => Promise<{ rows: Row[] }> };
@@ -50,7 +51,7 @@ export function canonicalPayload(p: SendPayload): string {
 export function payloadHash(p: SendPayload): string { return sha256(canonicalPayload(p)); }
 
 export async function isAllowed(a: { userId: string; accountId: string; chatId: string; actionType: string }): Promise<boolean> {
-  if (!enabled()) return false;
+  if (!enabled()) return store.isAllowed(a);
   const p = await db();
   const r = await p.query(
     "SELECT 1 FROM telegram_send_allowlist WHERE user_id=$1 AND tdlib_account_id=$2 AND chat_id=$3 AND action_type=$4 AND enabled=true LIMIT 1",
@@ -59,6 +60,10 @@ export async function isAllowed(a: { userId: string; accountId: string; chatId: 
   return r.rows.length > 0;
 }
 export async function addAllowlist(a: { workspaceId: string; userId: string; accountId: string; chatId: string; actionType: string; label?: string }): Promise<void> {
+  if (!enabled()) {
+    await store.addAllowlist({ id: newId("al"), ...a, at: nowIso() });
+    return;
+  }
   const p = await db();
   await p.query(
     "INSERT INTO telegram_send_allowlist(id,workspace_id,user_id,tdlib_account_id,chat_id,action_type,label,enabled) VALUES($1,$2,$3,$4,$5,$6,$7,true) ON CONFLICT (user_id,tdlib_account_id,chat_id,action_type) DO UPDATE SET enabled=true, label=EXCLUDED.label",
@@ -86,9 +91,29 @@ export async function createApproval(input: {
   workspaceId: string; userId: string; accountId: string; chatId: string; actionType: string;
   payloadHash: string; preview: string; requiresSecondConfirm: boolean;
 }): Promise<{ id: string; token: string; expiresAt: string }> {
-  const p = await db();
   const id = newId("ap"); const token = newToken();
   const created = new Date(); const expires = new Date(created.getTime() + TTL_MS);
+  if (!enabled()) {
+    await store.createApproval({
+      id,
+      token_hash: sha256(token),
+      workspace_id: input.workspaceId,
+      user_id: input.userId,
+      tdlib_account_id: input.accountId,
+      chat_id: String(input.chatId),
+      action_type: input.actionType,
+      payload_hash: input.payloadHash,
+      preview: input.preview,
+      requires_second_confirm: input.requiresSecondConfirm,
+      confirm_stage: "pending",
+      status: "pending",
+      created_at: created.toISOString(),
+      expires_at: expires.toISOString(),
+      consumed_at: null,
+    });
+    return { id, token, expiresAt: expires.toISOString() };
+  }
+  const p = await db();
   await p.query(
     "INSERT INTO telegram_send_approvals(id,token_hash,workspace_id,user_id,tdlib_account_id,chat_id,action_type,payload_hash,preview,requires_second_confirm,confirm_stage,status,created_at,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending','pending',$11,$12)",
     [id, sha256(token), input.workspaceId, input.userId, input.accountId, String(input.chatId), input.actionType, input.payloadHash, input.preview, input.requiresSecondConfirm, created.toISOString(), expires.toISOString()],
@@ -96,15 +121,21 @@ export async function createApproval(input: {
   return { id, token, expiresAt: expires.toISOString() };
 }
 export async function getApproval(id: string): Promise<ApprovalRow | null> {
+  if (!enabled()) {
+    const r = await store.getApproval(id);
+    return r ? toApproval(r) : null;
+  }
   const p = await db();
   const r = await p.query("SELECT * FROM telegram_send_approvals WHERE id=$1", [id]);
   return r.rows[0] ? toApproval(r.rows[0]) : null;
 }
 export async function setStage(id: string, confirmStage: string, status: string): Promise<void> {
+  if (!enabled()) return store.setStage(id, confirmStage, status);
   const p = await db();
   await p.query("UPDATE telegram_send_approvals SET confirm_stage=$2, status=$3 WHERE id=$1", [id, confirmStage, status]);
 }
 export async function consumeApproval(id: string): Promise<boolean> {
+  if (!enabled()) return store.consumeApproval(id, nowIso());
   const p = await db();
   const r = await p.query(
     "UPDATE telegram_send_approvals SET status='consumed', consumed_at=$2 WHERE id=$1 AND status='confirmed' RETURNING id",
@@ -113,6 +144,7 @@ export async function consumeApproval(id: string): Promise<boolean> {
   return r.rows.length > 0;
 }
 export async function markExpired(id: string): Promise<void> {
+  if (!enabled()) return store.markExpired(id);
   const p = await db();
   await p.query("UPDATE telegram_send_approvals SET status='expired' WHERE id=$1 AND status NOT IN ('consumed','expired')", [id]);
 }
@@ -124,6 +156,26 @@ export async function audit(input: {
   confirmStage?: string | null; stage: string; outcome: string; errorCode?: string | null; telegramMessageId?: string | null;
 }): Promise<void> {
   try {
+    if (!enabled()) {
+      await store.audit({
+        id: newId("aud"),
+        at: nowIso(),
+        approval_id: input.approvalId ?? null,
+        workspace_id: input.workspaceId ?? null,
+        user_id: input.userId ?? null,
+        tdlib_account_id: input.accountId ?? null,
+        telegram_user_id: input.telegramUserId ?? null,
+        chat_id: input.chatId ?? null,
+        action_type: input.actionType ?? null,
+        payload_hash: input.payloadHash ?? null,
+        confirm_stage: input.confirmStage ?? null,
+        stage: input.stage,
+        outcome: input.outcome,
+        error_code: input.errorCode ?? null,
+        telegram_message_id: input.telegramMessageId ?? null,
+      });
+      return;
+    }
     const p = await db();
     await p.query(
       "INSERT INTO telegram_send_audit(id,at,approval_id,workspace_id,user_id,tdlib_account_id,telegram_user_id,chat_id,action_type,payload_hash,confirm_stage,stage,outcome,error_code,telegram_message_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",

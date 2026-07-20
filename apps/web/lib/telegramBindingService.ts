@@ -42,13 +42,17 @@ const SRC = "per-user-binding";
 // may EVER reach them, regardless of accountId.
 const LEGACY_BLOCKED_ROUTES = /^\/telegram\/(logout|auth\/reset)(\/|\?|$)/;
 
-async function backendFetch(path: string, body?: unknown): Promise<Record<string, unknown>> {
+async function backendFetch(
+  path: string,
+  body?: unknown,
+  extraHeaders?: Record<string, string>,
+): Promise<Record<string, unknown>> {
   if (LEGACY_BLOCKED_ROUTES.test(path)) {
     throw new Error(`legacy_route_hard_blocked:${path}`);
   }
   const res = await fetch(`${API}${path}`, {
     method: body ? "POST" : "GET",
-    headers: { "Content-Type": "application/json", "cache-control": "no-store" },
+    headers: { "Content-Type": "application/json", "cache-control": "no-store", ...(extraHeaders ?? {}) },
     body: body ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(15000),
   });
@@ -753,13 +757,14 @@ export async function sendTextThroughSlot(
   actionType: string,
 ): Promise<{ ok: boolean; telegramMessageId: string | null; code?: string; message?: string }> {
   await assertRegisteredSlot(accountId);
+  const internalSendSecret = process.env.EPICGRAM_INTERNAL_SEND_SECRET;
   const res = await backendFetch(`/telegram/send`, {
     accountId,
     chatId,
     text,
     operatorApproved: true,
     actionType: actionType === "publish_channel" ? "publish_post" : "telegram_send",
-  });
+  }, internalSendSecret ? { "x-epicgram-internal-send-secret": internalSendSecret } : undefined);
   const body = (res?.body ?? res) as Record<string, unknown>;
   const ok = (res as { status?: number }).status === 200 && body?.sent === true;
   return {

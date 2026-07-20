@@ -692,24 +692,6 @@ export async function requestQrAuth(payload = {}) {
     };
   }
 
-  const adapterStatus = getTdlibAdapterStatus(accountId);
-  if (
-    state.qrLink &&
-    adapterStatus.nativeBindingLoaded &&
-    adapterStatus.authorizationState === "authorizationStateWaitOtherDeviceConfirmation"
-  ) {
-    return {
-      status: 202,
-      body: {
-        ...state,
-        method: "qr",
-        runtime: "waiting_auth",
-        adapter: adapterStatus,
-        message: "QR авторизация уже ожидает подтверждение в Telegram. Отсканируйте текущий код."
-      }
-    };
-  }
-
   try {
     const result = await requestTdlibQrAuth(accountId);
     const nextState = await saveState(upsertAccountSlot({
@@ -1014,7 +996,7 @@ async function appendOutbox(entry) {
 // clicking "Отправить" in the UI). The AI layer never calls this. The configured
 // EPICGRAM_AI_SEND_MODE is honored and never weakened: any value other than an
 // explicit auto mode requires the operator approval flag to be present.
-export async function sendMessage(payload) {
+export async function sendMessage(payload, context = {}) {
   // INCIDENT hotfix/client-auth-guard — server-side mutation kill switch.
   //
   // This function previously derived its authorisation from
@@ -1045,9 +1027,9 @@ export async function sendMessage(payload) {
   const chatId = payload?.chatId;
   const text = String(payload?.text ?? "").trim();
   // NOTE: intentionally NOT read from payload. Approval must be established by
-  // the server (authenticated principal + owner-matched account + payload hash
-  // + final confirmation), never asserted by the client.
-  const operatorApproved = false;
+  // a trusted server-side caller (authenticated principal + owner-matched
+  // account + payload hash + final confirmation), never asserted by the client.
+  const operatorApproved = context?.operatorApproved === true;
   const sendMode = process.env.EPICGRAM_AI_SEND_MODE || "operator_approval_required";
 
   if (!chatId) return { status: 400, body: { message: "chatId is required" } };
