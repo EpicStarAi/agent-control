@@ -28,6 +28,10 @@ build-*.log
 .auth-data.json
 
 .profile-data.json
+.telegram-bindings.json
+.runtime/
+tsconfig.tsbuildinfo
+apps/web/tsconfig.tsbuildinfo
 
 # P27.6 Grok browser profile + local renders (never commit)
 .local/
