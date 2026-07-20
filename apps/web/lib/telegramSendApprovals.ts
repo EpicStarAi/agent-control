@@ -34,11 +34,82 @@ async function pool(): Promise<PgPool | null> {
   return g.__epicSendPool;
 }
 async function db(): Promise<PgPool> { const p = await pool(); if (!p) throw new Error("pg unavailable"); return p; }
+async function ensureInit(p: PgPool): Promise<void> {
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS epicgram_chat_allowlist (
+      id uuid PRIMARY KEY,
+      principal_id text NOT NULL,
+      workspace_id text NOT NULL,
+      telegram_account_id text NOT NULL,
+      account_slot text NOT NULL,
+      chat_id text NOT NULL,
+      action_type text NOT NULL DEFAULT 'send_text',
+      chat_title text,
+      added_at timestamptz NOT NULL DEFAULT now(),
+      added_by text NOT NULL,
+      revoked_at timestamptz
+    )
+  `);
+  await p.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS eg_chat_allowlist_active_idx
+      ON epicgram_chat_allowlist(principal_id, workspace_id, telegram_account_id, account_slot, chat_id, action_type)
+      WHERE revoked_at IS NULL
+  `);
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS epicgram_action_approvals (
+      id uuid PRIMARY KEY,
+      token_hash text NOT NULL,
+      principal_id text NOT NULL,
+      workspace_id text NOT NULL,
+      telegram_account_id text NOT NULL,
+      account_slot text NOT NULL,
+      chat_id text NOT NULL,
+      action_type text NOT NULL,
+      payload_hash text NOT NULL,
+      payload_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+      preview text,
+      requires_second_confirm boolean NOT NULL DEFAULT false,
+      confirm_stage text NOT NULL DEFAULT 'pending',
+      status text NOT NULL DEFAULT 'PENDING',
+      created_at timestamptz NOT NULL DEFAULT now(),
+      expires_at timestamptz NOT NULL,
+      confirmed_at timestamptz,
+      used_at timestamptz,
+      telegram_message_id text,
+      audit_id text
+    )
+  `);
+  await p.query(`CREATE INDEX IF NOT EXISTS eg_action_approvals_owner_idx ON epicgram_action_approvals(workspace_id, principal_id, telegram_account_id)`);
+  await p.query(`CREATE INDEX IF NOT EXISTS eg_action_approvals_status_idx ON epicgram_action_approvals(status, expires_at)`);
+}
+async function pdb(): Promise<PgPool> { const p = await db(); await ensureInit(p); return p; }
 
 export function sha256(s: string): string { return crypto.createHash("sha256").update(String(s)).digest("hex"); }
 export function newId(p: string): string { return `${p}_${Date.now().toString(36)}_${crypto.randomBytes(3).toString("hex")}`; }
+function uuid(): string { return crypto.randomUUID(); }
 export function newToken(): string { return crypto.randomBytes(24).toString("hex"); }
 function nowIso(): string { return new Date().toISOString(); }
+function dbStatus(status: string): string {
+  if (status === "pending") return "PENDING";
+  if (status === "confirmed") return "CONFIRMED";
+  if (status === "consumed") return "USED";
+  if (status === "expired") return "EXPIRED";
+  if (status === "rejected") return "DENIED";
+  if (status === "failed") return "FAILED";
+  if (status === "executing") return "EXECUTING";
+  return status.toUpperCase();
+}
+function apiStatus(status: unknown): string {
+  const s = String(status || "").toUpperCase();
+  if (s === "PENDING") return "pending";
+  if (s === "CONFIRMED") return "confirmed";
+  if (s === "USED") return "consumed";
+  if (s === "DENIED") return "rejected";
+  if (s === "EXPIRED") return "expired";
+  if (s === "FAILED") return "failed";
+  if (s === "EXECUTING") return "executing";
+  return String(status || "");
+}
 
 export const TTL_MS = 5 * 60 * 1000;
 export const MEDIA_ACTIONS = new Set(["send_photo", "send_video", "send_document"]);
@@ -65,9 +136,11 @@ export function payloadHash(p: SendPayload): string { return sha256(canonicalPay
 export async function isAllowed(a: { userId: string; accountId: string; chatId: string; actionType: string }): Promise<boolean> {
   assertStorageAvailable();
   if (!enabled()) return store.isAllowed(a);
-  const p = await db();
+  const p = await pdb();
   const r = await p.query(
-    "SELECT 1 FROM telegram_send_allowlist WHERE user_id=$1 AND tdlib_account_id=$2 AND chat_id=$3 AND action_type=$4 AND enabled=true LIMIT 1",
+    `SELECT 1 FROM epicgram_chat_allowlist
+     WHERE principal_id=$1 AND telegram_account_id=$2 AND account_slot=$2 AND chat_id=$3 AND action_type=$4 AND revoked_at IS NULL
+     LIMIT 1`,
     [a.userId, a.accountId, String(a.chatId), a.actionType],
   );
   return r.rows.length > 0;
@@ -78,10 +151,16 @@ export async function addAllowlist(a: { workspaceId: string; userId: string; acc
     await store.addAllowlist({ id: newId("al"), ...a, at: nowIso() });
     return;
   }
-  const p = await db();
+  const p = await pdb();
+  const id = uuid();
   await p.query(
-    "INSERT INTO telegram_send_allowlist(id,workspace_id,user_id,tdlib_account_id,chat_id,action_type,label,enabled) VALUES($1,$2,$3,$4,$5,$6,$7,true) ON CONFLICT (user_id,tdlib_account_id,chat_id,action_type) DO UPDATE SET enabled=true, label=EXCLUDED.label",
-    [newId("al"), a.workspaceId, a.userId, a.accountId, String(a.chatId), a.actionType, a.label ?? null],
+    `INSERT INTO epicgram_chat_allowlist
+       (id, principal_id, workspace_id, telegram_account_id, account_slot, chat_id, action_type, chat_title, added_by, revoked_at)
+     VALUES ($1,$2,$3,$4,$4,$5,$6,$7,$2,NULL)
+     ON CONFLICT (principal_id, workspace_id, telegram_account_id, account_slot, chat_id, action_type)
+     WHERE revoked_at IS NULL
+     DO UPDATE SET chat_title=EXCLUDED.chat_title, added_at=now(), added_by=EXCLUDED.added_by, revoked_at=NULL`,
+    [id, a.userId, a.workspaceId, a.accountId, String(a.chatId), a.actionType, a.label ?? null],
   );
 }
 
@@ -93,11 +172,11 @@ export type ApprovalRow = {
 };
 function toApproval(r: Row): ApprovalRow {
   return {
-    id: r.id as string, workspaceId: r.workspace_id as string, userId: r.user_id as string,
-    accountId: r.tdlib_account_id as string, chatId: r.chat_id as string, actionType: r.action_type as string,
+    id: r.id as string, workspaceId: r.workspace_id as string, userId: (r.user_id ?? r.principal_id) as string,
+    accountId: (r.tdlib_account_id ?? r.telegram_account_id) as string, chatId: r.chat_id as string, actionType: r.action_type as string,
     payloadHash: r.payload_hash as string, preview: (r.preview as string) ?? null,
     requiresSecondConfirm: Boolean(r.requires_second_confirm), confirmStage: r.confirm_stage as string,
-    status: r.status as string, createdAt: new Date(r.created_at as string).toISOString(),
+    status: apiStatus(r.status), createdAt: new Date(r.created_at as string).toISOString(),
     expiresAt: new Date(r.expires_at as string).toISOString(), tokenHash: r.token_hash as string,
   };
 }
@@ -106,7 +185,7 @@ export async function createApproval(input: {
   payloadHash: string; preview: string; requiresSecondConfirm: boolean;
 }): Promise<{ id: string; token: string; expiresAt: string }> {
   assertStorageAvailable();
-  const id = newId("ap"); const token = newToken();
+  const id = enabled() ? uuid() : newId("ap"); const token = newToken();
   const created = new Date(); const expires = new Date(created.getTime() + TTL_MS);
   if (!enabled()) {
     await store.createApproval({
@@ -128,10 +207,17 @@ export async function createApproval(input: {
     });
     return { id, token, expiresAt: expires.toISOString() };
   }
-  const p = await db();
+  const p = await pdb();
   await p.query(
-    "INSERT INTO telegram_send_approvals(id,token_hash,workspace_id,user_id,tdlib_account_id,chat_id,action_type,payload_hash,preview,requires_second_confirm,confirm_stage,status,created_at,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending','pending',$11,$12)",
-    [id, sha256(token), input.workspaceId, input.userId, input.accountId, String(input.chatId), input.actionType, input.payloadHash, input.preview, input.requiresSecondConfirm, created.toISOString(), expires.toISOString()],
+    `INSERT INTO epicgram_action_approvals
+       (id, token_hash, principal_id, workspace_id, telegram_account_id, account_slot, chat_id, action_type,
+        payload_hash, payload_json, preview, requires_second_confirm, confirm_stage, status, created_at, expires_at)
+     VALUES ($1,$2,$3,$4,$5,$5,$6,$7,$8,$9::jsonb,$10,$11,'pending','PENDING',$12,$13)`,
+    [
+      id, sha256(token), input.userId, input.workspaceId, input.accountId, String(input.chatId),
+      input.actionType, input.payloadHash, JSON.stringify({ payloadHash: input.payloadHash }),
+      input.preview, input.requiresSecondConfirm, created.toISOString(), expires.toISOString(),
+    ],
   );
   return { id, token, expiresAt: expires.toISOString() };
 }
@@ -141,31 +227,52 @@ export async function getApproval(id: string): Promise<ApprovalRow | null> {
     const r = await store.getApproval(id);
     return r ? toApproval(r) : null;
   }
-  const p = await db();
-  const r = await p.query("SELECT * FROM telegram_send_approvals WHERE id=$1", [id]);
+  const p = await pdb();
+  const r = await p.query("SELECT * FROM epicgram_action_approvals WHERE id=$1", [id]);
   return r.rows[0] ? toApproval(r.rows[0]) : null;
 }
 export async function setStage(id: string, confirmStage: string, status: string): Promise<void> {
   assertStorageAvailable();
   if (!enabled()) return store.setStage(id, confirmStage, status);
-  const p = await db();
-  await p.query("UPDATE telegram_send_approvals SET confirm_stage=$2, status=$3 WHERE id=$1", [id, confirmStage, status]);
+  const p = await pdb();
+  await p.query(
+    `UPDATE epicgram_action_approvals
+       SET confirm_stage=$2, status=$3, confirmed_at=CASE WHEN $3='CONFIRMED' THEN now() ELSE confirmed_at END
+     WHERE id=$1`,
+    [id, confirmStage, dbStatus(status)],
+  );
 }
 export async function consumeApproval(id: string): Promise<boolean> {
   assertStorageAvailable();
   if (!enabled()) return store.consumeApproval(id, nowIso());
-  const p = await db();
-  const r = await p.query(
-    "UPDATE telegram_send_approvals SET status='consumed', consumed_at=$2 WHERE id=$1 AND status='confirmed' RETURNING id",
-    [id, nowIso()],
-  );
-  return r.rows.length > 0;
+  const p = await pdb();
+  await p.query("BEGIN");
+  try {
+    const locked = await p.query(
+      "SELECT id,status,expires_at FROM epicgram_action_approvals WHERE id=$1 FOR UPDATE",
+      [id],
+    );
+    const row = locked.rows[0];
+    if (!row || apiStatus(row.status) !== "confirmed" || new Date(row.expires_at as string).getTime() < Date.now()) {
+      await p.query("ROLLBACK");
+      return false;
+    }
+    const r = await p.query(
+      "UPDATE epicgram_action_approvals SET status='USED', used_at=now() WHERE id=$1 AND status='CONFIRMED' RETURNING id",
+      [id],
+    );
+    await p.query("COMMIT");
+    return r.rows.length > 0;
+  } catch (error) {
+    await p.query("ROLLBACK").catch(() => {});
+    throw error;
+  }
 }
 export async function markExpired(id: string): Promise<void> {
   assertStorageAvailable();
   if (!enabled()) return store.markExpired(id);
-  const p = await db();
-  await p.query("UPDATE telegram_send_approvals SET status='expired' WHERE id=$1 AND status NOT IN ('consumed','expired')", [id]);
+  const p = await pdb();
+  await p.query("UPDATE epicgram_action_approvals SET status='EXPIRED' WHERE id=$1 AND status NOT IN ('USED','EXPIRED')", [id]);
 }
 export function isExpired(a: ApprovalRow): boolean { return new Date(a.expiresAt).getTime() < Date.now(); }
 
