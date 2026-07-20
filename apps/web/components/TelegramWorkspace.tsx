@@ -64,7 +64,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, onClose, on
   const [discLog, setDiscLog] = useState<{ t: string; text: string }[]>([]);
   const [index, setIndex] = useState<any>(null);
 
-  useEffect(() => { try { const d = JSON.parse(localStorage.getItem(LS) || "{}"); if (d.section) setSection(d.section); if (!slotId && d.acc) setAcc(d.acc); } catch {} }, []);
+  useEffect(() => { try { const d = JSON.parse(localStorage.getItem(LS) || "{}"); if (d.section) setSection(d.section); if (!slotId && d.acc) setAcc(d.acc); } catch {} }, [slotId]);
   useEffect(() => { try { localStorage.setItem(LS, JSON.stringify({ section, acc })); } catch {} }, [section, acc]);
   useEffect(() => { if (focusKind === "channel") setSection("channels"); else if (focusKind === "group") setSection("groups"); else if (focusKind === "bot") setSection("bots"); }, [focusKind]);
   useEffect(() => { function onKey(e: KeyboardEvent) { if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); setPalette((v) => !v); setPq(""); } if (e.key === "Escape") setPalette(false); } window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey); }, []);
@@ -190,6 +190,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, onClose, on
 
   const selChat = chats.find((c) => c.id === chat);
   const ownerAgent = account?.owner;
+  const accountOwnerId = account?.owner?.id;
   const ownerMissions = ctx.missions?.filter((m) => m.agentId === ownerAgent?.id) || [];
   const connClr = conn === "connected" ? "#4ade80" : conn === "syncing" ? "#fbbf24" : "#f87171";
   const connLbl = conn === "connected" ? "Connected" : conn === "syncing" ? "Syncing" : "Offline";
@@ -229,9 +230,9 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, onClose, on
     });
     const cur = "ses_" + acc;
     chats.slice(0, 24).forEach((c) => { const k = cat(c); nodes.push({ id: "c_" + c.id, type: k, label: (c.title || k).slice(0, 16), ref: String(c.id) }); edges.push([cur, "c_" + c.id]); });
-    (ctx.missions || []).filter((m) => m.agentId === account?.owner?.id).forEach((m) => { nodes.push({ id: "mis_" + m.id, type: "mission", label: m.title.slice(0, 16), ref: m.id }); if (account?.owner) edges.push(["ag_" + account.owner.id, "mis_" + m.id]); });
+    (ctx.missions || []).filter((m) => m.agentId === accountOwnerId).forEach((m) => { nodes.push({ id: "mis_" + m.id, type: "mission", label: m.title.slice(0, 16), ref: m.id }); if (accountOwnerId) edges.push(["ag_" + accountOwnerId, "mis_" + m.id]); });
     return { nodes, edges };
-  }, [accounts, chats, acc, ctx]);
+  }, [accounts, chats, acc, ctx.missions, accountOwnerId]);
   const gDefault = useMemo(() => {
     const cols: Record<string, number> = { agent: 60, mission: 60, session: 320, dialog: 600, channel: 600, group: 820, bot: 1020 };
     const idx: Record<string, number> = {}; const p: Record<string, { x: number; y: number }> = {};
@@ -259,7 +260,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, onClose, on
     groups.slice(0, 2).forEach((g) => ev.push({ t: now, kind: "group", text: "Group: " + (g.title || "") }));
     chats.slice(0, 3).forEach((c) => ev.push({ t: now, kind: "dialog", text: "Dialog: " + (c.title || "") }));
     setFeed(ev.slice(0, 10));
-  }, [conn, chats, account]);
+  }, [conn, chats, channels, groups, account?.name]);
 
   const health = { connected: conn === "connected" ? accounts.length : 0, offline: conn === "offline" ? Math.max(1, accounts.length) : 0, syncing: conn === "syncing" ? 1 : 0, error: 0, sessions: accounts.length, channels: channels.length, groups: groups.length, bots: bots.length };
 

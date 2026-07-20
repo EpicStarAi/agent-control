@@ -28,6 +28,11 @@ jobs:
       - name: Lint
         run: npm run lint --if-present
 
+      - name: Test
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run test
+
       - name: Build
         env:
           # Build must not require real secrets. Provide safe placeholders only.

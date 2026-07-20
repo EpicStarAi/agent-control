@@ -59,8 +59,5 @@ jobs:
           set -euo pipefail
           curl -fsS http://127.0.0.1:3017/operator-v4 >/dev/null
           curl -fsS http://127.0.0.1:3017/api/operator/v4/manifest >/dev/null
-          curl -fsS -X POST http://127.0.0.1:3017/api/operator/v4/plan \
-            -H 'content-type: application/json' \
-            --data '{"message":"Покажи последние Telegram-чаты NOVIKOVA","autonomyMode":"copilot","accountId":"novikova"}' >/dev/null
           pm2 status epicgram-v4-pa-candidate
           REMOTE

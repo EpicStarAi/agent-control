@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 
 // Per-user Telegram binding wizard (Scenario B/C). Self-contained overlay that
 // drives ONLY the owner-matched binding endpoints (/api/telegram/binding/*).
@@ -208,7 +209,7 @@ export function TelegramBindingWizard() {
           <div className="space-y-3">
             <div className="flex items-center justify-center rounded-xl bg-white p-3">
               {flow?.qrImageData
-                ? <img src={flow.qrImageData} alt="QR" className="h-44 w-44" />
+                ? <Image src={flow.qrImageData} alt="QR" width={176} height={176} unoptimized className="h-44 w-44" />
                 : <div className="flex h-44 w-44 items-center justify-center text-center text-xs text-black/60">QR генерируется…</div>}
             </div>
             <ol className="space-y-1 text-[12px] text-white/70">
