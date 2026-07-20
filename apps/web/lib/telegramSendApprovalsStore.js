@@ -55,6 +55,27 @@ export async function addAllowlist(input) {
   save(s);
 }
 
+export async function revokeAllowlist(input) {
+  const s = load();
+  let changed = false;
+  s.allowlist = s.allowlist.map((r) => {
+    if (
+      r.workspace_id === input.workspaceId &&
+      r.user_id === input.userId &&
+      r.tdlib_account_id === input.accountId &&
+      r.chat_id === String(input.chatId) &&
+      r.action_type === input.actionType &&
+      r.enabled === true
+    ) {
+      changed = true;
+      return { ...r, enabled: false, revoked_at: new Date().toISOString() };
+    }
+    return r;
+  });
+  if (changed) save(s);
+  return changed;
+}
+
 export async function createApproval(row) {
   const s = load();
   s.approvals.push(row);

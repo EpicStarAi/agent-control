@@ -184,6 +184,20 @@ export async function addAllowlist(a: { workspaceId: string; userId: string; acc
     [id, a.userId, a.workspaceId, a.accountId, String(a.chatId), a.actionType, a.label ?? null],
   );
 }
+export async function revokeAllowlist(a: { workspaceId: string; userId: string; accountId: string; chatId: string; actionType: string }): Promise<boolean> {
+  assertStorageAvailable();
+  if (!enabled()) return store.revokeAllowlist(a);
+  const p = await pdb();
+  const r = await p.query(
+    `UPDATE epicgram_chat_allowlist
+       SET revoked_at=now()
+     WHERE workspace_id=$1 AND principal_id=$2 AND telegram_account_id=$3 AND account_slot=$3
+       AND chat_id=$4 AND action_type=$5 AND revoked_at IS NULL
+     RETURNING id`,
+    [a.workspaceId, a.userId, a.accountId, String(a.chatId), a.actionType],
+  );
+  return r.rows.length > 0;
+}
 
 export type ApprovalRow = {
   id: string; workspaceId: string; userId: string; accountId: string; chatId: string;

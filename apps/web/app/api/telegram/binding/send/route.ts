@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePrincipal, resolveBoundAccount, telegramMutationsEnabled, denyMutation } from "@/lib/telegramGuard";
 import { assertChatBelongsToBoundAccount, sendTextThroughSlot } from "@/lib/telegramBindingService";
+import { getRuntimeFlags } from "@/lib/runtimeFlags";
 import * as ap from "@/lib/telegramSendApprovals";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ export async function POST(req: NextRequest) {
 
   // Global mutation kill-switch. Default OFF.
   if (!telegramMutationsEnabled()) return denyMutation("/api/telegram/binding/send", "POST", principal, "send_disabled");
+  if (!getRuntimeFlags().telegramSendEnabled) return denyMutation("/api/telegram/binding/send", "POST", principal, "send_flag_disabled");
 
   const bound = await resolveBoundAccount(principal);
   if (bound.kind === "mismatch") return NextResponse.json({ sent: false, reason: "owner_mismatch" }, { status: 403, headers: H });
