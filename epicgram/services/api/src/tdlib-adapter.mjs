@@ -11,7 +11,7 @@ export const TD_METHODS = {
   logout: "logOut"
 };
 
-const AUTH_WAIT_TIMEOUT_MS = 10000;
+const AUTH_WAIT_TIMEOUT_MS = 60000;
 const READY_STATES = new Set(["authorizationStateReady"]);
 const TRANSIENT_AUTH_STATES = new Set([
   "authorizationStateWaitTdlibParameters",

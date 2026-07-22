@@ -227,13 +227,18 @@ export function AddAccountWizard({ onSuccess, onCancel }: Props) {
     try {
       const id = await createSlot();
       setSlotId(id);
-      await post("/telegram/auth/phone", { accountId: id, phoneNumber: fullPhone });
-      // If the POST succeeded without throwing, the code was sent — always move to code step.
-      // The backend manages TDLib state; we don't need to inspect the returned state name.
+      // Transition to the code step immediately so the user can enter the code
+      // as soon as it arrives in Telegram — without waiting for the full TDLib
+      // round-trip (which can take 20-40s on first run after client init).
       setStep("code");
+      setLoading(false);
+      // Fire phone auth in the background; show an error on the code step if it fails.
+      post("/telegram/auth/phone", { accountId: id, phoneNumber: fullPhone }).catch((e: any) => {
+        setError(e.message || "Ошибка при отправке номера. Проверь номер и попробуй снова.");
+        setStep("phone");
+      });
     } catch (e: any) {
-      setError(e.message || "Ошибка при отправке номера.");
-    } finally {
+      setError(e.message || "Ошибка при создании слота аккаунта.");
       setLoading(false);
     }
   };
