@@ -1,7 +1,7 @@
 {
   "$schema": "https://agentskills.io/registry-schema/v1",
   "catalog": "epicgram-skills",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "updated_at": "2026-07-22",
   "skills": [
 
@@ -343,6 +343,81 @@
       "used_by": ["epicgram-multiposting-scheduler"]
     },
 
+    // ─── FACEBOOK PRODUCT PIPELINE ────────────────────────────────────────────
+
+    {
+      "name": "epicgram-facebook-brief",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-facebook-brief/SKILL.md",
+      "description": "Facebook brief: text_post/link_post/event/announcement/video_post, engagement bait pre-check.",
+      "depends_on": [],
+      "used_by": ["epicgram-facebook-post-writer","epicgram-facebook-link-optimizer","epicgram-facebook-group-broadcaster"]
+    },
+    {
+      "name": "epicgram-facebook-post-writer",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-facebook-post-writer/SKILL.md",
+      "description": "Facebook post copy: short/storytelling/news/poll styles with engagement bait detection.",
+      "depends_on": ["epicgram-facebook-brief"],
+      "used_by": ["epicgram-facebook-safe-mode","epicgram-facebook-page-publisher"]
+    },
+    {
+      "name": "epicgram-facebook-link-optimizer",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-facebook-link-optimizer/SKILL.md",
+      "description": "Link preview title/description overrides, UTM construction, OG tag warnings.",
+      "depends_on": ["epicgram-facebook-brief"],
+      "used_by": ["epicgram-facebook-page-publisher"]
+    },
+    {
+      "name": "epicgram-facebook-page-publisher",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-facebook-page-publisher/SKILL.md",
+      "description": "Graph API Pages — text/link/video/event publish or schedule, cross-post to Instagram.",
+      "depends_on": ["epicgram-facebook-safe-mode","epicgram-review-and-approval"],
+      "used_by": ["epicgram-multiposting-scheduler"]
+    },
+    {
+      "name": "epicgram-facebook-comments-engager",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-facebook-comments-engager/SKILL.md",
+      "description": "Reply suggestions, moderation triage, legal-risk escalation for Facebook Page comments.",
+      "depends_on": ["epicgram-review-and-approval","epicgram-facebook-safe-mode"],
+      "used_by": ["epicgram-facebook-analytics"]
+    },
+    {
+      "name": "epicgram-facebook-group-broadcaster",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-facebook-group-broadcaster/SKILL.md",
+      "description": "Group post/poll drafts with group-rules compliance and cross-group spam prevention.",
+      "depends_on": ["epicgram-facebook-brief","epicgram-review-and-approval"],
+      "used_by": []
+    },
+    {
+      "name": "epicgram-facebook-analytics",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-facebook-analytics/SKILL.md",
+      "description": "Facebook Page Insights — reach, engagement rate, link CTR, top posts, audience breakdown.",
+      "depends_on": [],
+      "used_by": ["epicgram-facebook-growth-strategist"]
+    },
+    {
+      "name": "epicgram-facebook-growth-strategist",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-facebook-growth-strategist/SKILL.md",
+      "description": "Facebook 2025 growth: Reels lever, Groups amplification, link-in-comments strategy.",
+      "depends_on": ["epicgram-facebook-analytics"],
+      "used_by": []
+    },
+    {
+      "name": "epicgram-facebook-safe-mode",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-facebook-safe-mode/SKILL.md",
+      "description": "Facebook safety gate — engagement bait, political content, bulk limits (25/day), Group spam.",
+      "depends_on": ["epicgram-safe-mode"],
+      "used_by": ["epicgram-facebook-page-publisher","epicgram-facebook-group-broadcaster","epicgram-facebook-comments-engager"]
+    },
+
     // ─── MCP / CONNECTOR LAYER ────────────────────────────────────────────────
 
     {
@@ -575,6 +650,22 @@
       "epicgram-youtube-video-publisher",
       "epicgram-youtube-analytics",
       "epicgram-youtube-growth-strategist"
+    ],
+    "facebook_page_post": [
+      "epicgram-facebook-brief",
+      "epicgram-facebook-post-writer",
+      "epicgram-facebook-link-optimizer",
+      "epicgram-facebook-safe-mode",
+      "epicgram-review-and-approval",
+      "epicgram-facebook-page-publisher",
+      "epicgram-facebook-analytics",
+      "epicgram-facebook-growth-strategist"
+    ],
+    "facebook_group": [
+      "epicgram-facebook-brief",
+      "epicgram-facebook-group-broadcaster",
+      "epicgram-facebook-safe-mode",
+      "epicgram-review-and-approval"
     ],
     "telegram_post": [
       "epicgram-content-brief",
