@@ -78,6 +78,13 @@ type TelegramMessage = {
   date?: string | null;
   isOutgoing?: boolean;
   content: string;
+  media?: {
+    kind: "image" | "video" | "animation" | "audio" | "voice" | "document" | "sticker";
+    fileId: string | null;
+    thumbnailFileId?: string | null;
+    mimeType?: string | null;
+    fileName?: string | null;
+  } | null;
   authorSignature?: string | null;
 };
 type TelegramStatus = {
@@ -702,18 +709,24 @@ export function EpicGramShell({ section }: Props) {
     }
   }
 
-  // Real outbound send. Only fires on an explicit operator click and the backend
-  // re-checks the approval gate (operatorApproved). The AI never calls this.
+  // Real outbound send. Only fires on an explicit human click. The AI never
+  // receives the staging send capability token and cannot call this path.
   async function sendApprovedMessage() {
     const cleanDraft = messageDraft.trim();
     if (!cleanDraft || !selectedTelegramChatId) return;
+    const selectedChat = telegramChats.find((chat) => String(chat.id) === String(selectedTelegramChatId));
+    const category = String(selectedChat?.category ?? selectedChat?.type ?? "chat").toLowerCase();
+    const isChannel = selectedChat?.isChannel === true || category === "channel";
+    if (isChannel && typeof window !== "undefined" && !window.confirm("Опубликовать этот текст в выбранном Telegram-канале?")) return;
+    const actionType = isChannel ? "publish_channel" : "send_text";
+    const confirmation = isChannel ? "human_publish_confirm_v1" : "human_send_button_v1";
     setSendBusy(true);
     setApprovalNotice("Отправка по подтверждению оператора...");
     try {
       const response = await fetch("/api/telegram/send", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accountId: activeAccountId, chatId: selectedTelegramChatId, text: cleanDraft, operatorApproved: true })
+        headers: { "Content-Type": "application/json", "x-epicgram-human-action": "send-button-v1" },
+        body: JSON.stringify({ chatId: selectedTelegramChatId, text: cleanDraft, actionType, confirmation })
       });
       const data = (await response.json()) as { sent?: boolean; message?: string };
       if (response.ok && data.sent) {
@@ -2645,6 +2658,31 @@ function TelegramChatWorkspace({
           <div key={message.id} className={`flex ${message.isOutgoing ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-[78%] rounded-2xl px-4 py-2 shadow-telegram ${message.isOutgoing ? "bg-tg-active text-white" : "bg-tg-bubble text-tg-text"}`}>
               {message.authorSignature && <div className="mb-1 text-xs font-semibold text-tg-accent">{message.authorSignature}</div>}
+              {message.media?.fileId && ["image", "sticker"].includes(message.media.kind) && (
+                <img
+                  src={`/api/telegram/media?fileId=${encodeURIComponent(message.media.fileId)}`}
+                  alt={message.content || "Telegram media"}
+                  className="mb-2 max-h-80 w-auto max-w-full rounded-lg object-contain"
+                />
+              )}
+              {message.media?.fileId && ["video", "animation"].includes(message.media.kind) && (
+                <video controls preload="metadata" className="mb-2 max-h-80 max-w-full rounded-lg">
+                  <source src={`/api/telegram/media?fileId=${encodeURIComponent(message.media.fileId)}`} type={message.media.mimeType ?? undefined} />
+                </video>
+              )}
+              {message.media?.fileId && ["audio", "voice"].includes(message.media.kind) && (
+                <audio controls preload="metadata" className="mb-2 max-w-full">
+                  <source src={`/api/telegram/media?fileId=${encodeURIComponent(message.media.fileId)}`} type={message.media.mimeType ?? undefined} />
+                </audio>
+              )}
+              {message.media?.fileId && message.media.kind === "document" && (
+                <a
+                  href={`/api/telegram/media?fileId=${encodeURIComponent(message.media.fileId)}&download=1`}
+                  className="mb-2 block rounded-lg bg-black/20 px-3 py-2 text-sm font-semibold text-tg-accent hover:underline"
+                >
+                  {message.media.fileName || "Скачать документ"}
+                </a>
+              )}
               <div className="whitespace-pre-wrap break-words text-sm leading-6">{message.content || "Сообщение без текстового превью"}</div>
               <div className={`mt-1 text-right text-[11px] ${message.isOutgoing ? "text-white/70" : "text-tg-muted"}`}>{formatMessageTime(message.date)}</div>
             </div>

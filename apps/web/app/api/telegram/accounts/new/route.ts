@@ -1,12 +1,15 @@
-import { NextRequest } from "next/server";
-import { getPrincipal, denyMutation } from "@/lib/telegramGuard";
+import { requirePrincipal, denyMutation, guardedJson, telegramMutationsEnabled } from "@/lib/telegramGuard";
+import { mutateStagingRuntime } from "@/lib/telegramBindingService";
 
-// INCIDENT hotfix/client-auth-guard: this mutation route had no session check.
-// Denied server-side by default; the request body is never forwarded and no
-// client-supplied approval flag is honoured.
 export const dynamic = "force-dynamic";
 
-export async function POST(_request: NextRequest) {
-  const principal = await getPrincipal();
-  return denyMutation("/api/telegram/accounts/new", "POST", principal, "account_create");
+export async function POST() {
+  const auth = await requirePrincipal("/api/telegram/accounts/new", "POST");
+  if (!auth.ok) return auth.response;
+  if (!telegramMutationsEnabled() || auth.principal.role !== "owner") {
+    return denyMutation("/api/telegram/accounts/new", "POST", auth.principal, "account_create");
+  }
+  const result = await mutateStagingRuntime(auth.principal, "/telegram/accounts/new", { label: "EPICGRAM user slot" });
+  if (!result) return denyMutation("/api/telegram/accounts/new", "POST", auth.principal, "staging_only");
+  return guardedJson(result.body, result.status);
 }

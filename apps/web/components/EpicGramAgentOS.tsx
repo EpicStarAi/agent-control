@@ -1362,7 +1362,9 @@ export function EpicGramAgentOS({ onClose, initialSection }: { onClose: () => vo
       if (!confirm((live ? "LIVE CONFIRM SEND — РЕАЛЬНАЯ отправка" : "SIMULATION — mock (реального сообщения НЕ будет)") + " в «" + (d.chatTitle || d.chatId) + "». Продолжить?")) { setBusy(false); return; }
       setStatusD(d.id, "sending");
       if (!live) { setBusy(false); setStatusD(d.id, "sent", { sentAt: now(), mock: true }); logAudit("MOCK_MESSAGE_SENT", { draftId: d.id }); setNote("🧪 SIMULATION: mock-отправка, реального сообщения нет. Для реальной — Production Gate → Enable Manual Live."); return; }
-      const r = await fetch("/api/telegram/send", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ accountId: d.accountId, chatId: d.chatId, text: d.text, operatorApproved: true }) }).then((x) => x.json()).catch(() => null);
+      const target = chats.find((chat) => String(chat.id) === String(d.chatId));
+      const isChannel = target?.isChannel === true || target?.category === "channel";
+      const r = await fetch("/api/telegram/send", { method: "POST", headers: { "content-type": "application/json", "x-epicgram-human-action": "send-button-v1" }, body: JSON.stringify({ chatId: d.chatId, text: d.text, actionType: isChannel ? "publish_channel" : "send_text", confirmation: isChannel ? "human_publish_confirm_v1" : "human_send_button_v1" }) }).then((x) => x.json()).catch(() => null);
       setBusy(false); const ok = r && r.sent === true;
       setStatusD(d.id, ok ? "sent" : "failed", { sentAt: ok ? now() : null });
       logAudit(ok ? "MESSAGE_SENT_AFTER_CONFIRM" : "TELEGRAM_SEND_FAILED", { draftId: d.id });
@@ -1515,7 +1517,7 @@ export function EpicGramAgentOS({ onClose, initialSection }: { onClose: () => vo
         <div className="max-h-40 space-y-0.5 overflow-auto">{audit.slice(0, 30).map((e) => <div key={e.id} className="text-[10px] text-tg-muted">{fmtDT(e.at)} · {e.event}{e.draftId ? " · " + e.draftId : ""}</div>)}{audit.length === 0 && <div className="text-[10px] text-tg-muted">—</div>}</div>
       </div>
 
-      <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-2 text-[10px] text-amber-200">Safety: manual_approval_required=true · two_step_send_confirmation=true · auto_send_allowed=false · background_messaging=false · mass_messaging=false · credential_export=false · session_export=false · approval_bypass_allowed=false. Send идёт только через проверенный путь /telegram/send с operatorApproved=true после Confirm.</div>
+      <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-2 text-[10px] text-amber-200">Safety: manual_approval_required=true · two_step_send_confirmation=true · auto_send_allowed=false · background_messaging=false · mass_messaging=false · credential_export=false · session_export=false · approval_bypass_allowed=false. Send идёт только через проверенный путь /telegram/send после явного Confirm.</div>
     </div></main>;
   }
 

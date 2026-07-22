@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { requirePrincipal } from "@/lib/telegramGuard";
+import { denyMutation, requirePrincipal, telegramMutationsEnabled } from "@/lib/telegramGuard";
 import { isForbiddenAccountId } from "@/lib/telegramBindings";
+import { backendRequestHeaders } from "@/lib/backendRequest";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -22,13 +23,16 @@ function rawAuthState(value: unknown): string {
 export async function GET() {
   const auth = await requirePrincipal("/api/telegram/active-auth/status", "GET");
   if (!auth.ok) return auth.response;
+  if (!telegramMutationsEnabled() || auth.principal.role !== "owner") {
+    return denyMutation("/api/telegram/active-auth/status", "GET", auth.principal, "active_auth_status");
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);
   let data: Record<string, unknown> = {};
   try {
     const response = await fetch(`${API}/telegram/state`, {
-      headers: { "cache-control": "no-store" },
+      headers: backendRequestHeaders(),
       cache: "no-store",
       signal: controller.signal,
     });
