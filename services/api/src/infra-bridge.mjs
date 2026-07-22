@@ -34,7 +34,20 @@ async function jget(url, timeout = TIMEOUT) {
 
 const PG_CONTAINER = process.env.PG_CONTAINER || "deepinside-postgres";
 const REDIS_CONTAINER = process.env.REDIS_CONTAINER || "deepinside-redis";
-const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
+function resolveOllamaUrl() {
+  const explicit = String(process.env.OLLAMA_URL || "").trim();
+  if (explicit) return explicit.replace(/\/+$/, "");
+
+  const provider = String(process.env.EPICGRAM_AI_PROVIDER || "").toLowerCase();
+  const aiBaseUrl = String(process.env.EPICGRAM_AI_BASE_URL || "").trim();
+  if (provider === "ollama" && aiBaseUrl) {
+    try { return new URL(aiBaseUrl).origin; } catch {}
+  }
+
+  return "http://127.0.0.1:11434";
+}
+
+const OLLAMA_URL = resolveOllamaUrl();
 const QDRANT_URL = process.env.QDRANT_URL || "http://127.0.0.1:6333";
 const MINIO_URL = process.env.MINIO_URL || "http://127.0.0.1:9000";
 const N8N_URL = process.env.N8N_URL || "http://127.0.0.1:5678";

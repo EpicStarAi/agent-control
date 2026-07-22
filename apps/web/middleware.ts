@@ -47,8 +47,15 @@ function clonePublicRedirectUrl(request: NextRequest) {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSession = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
+  const protectedPage =
+    pathname === "/client" ||
+    pathname.startsWith("/client/") ||
+    pathname === "/telegram-code" ||
+    pathname === "/settings" ||
+    pathname === "/epic-crm" ||
+    pathname === "/operator-office";
 
-  if (pathname === "/client" || pathname.startsWith("/client/")) {
+  if (protectedPage) {
     if (!hasSession) {
       const url = clonePublicRedirectUrl(request);
       url.pathname = "/login";
@@ -68,6 +75,10 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     "/client/:path*",
+    "/telegram-code",
+    "/settings",
+    "/epic-crm",
+    "/operator-office",
     "/api/telegram/:path*",
     "/api/v1/telegram/:path*",
     "/api/operator-events",

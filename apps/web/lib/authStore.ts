@@ -1,16 +1,27 @@
 import fs from "node:fs";
 import path from "node:path";
 import { sha256, newId, newToken, devReferralHash, SESSION_TTL_MS,
-  type ReferralCode, type User, type Session, type Workspace } from "@/lib/auth";
+  type ReferralCode, type ReferralRedemption, type User, type Session, type Workspace } from "@/lib/auth";
 
 // P30 fs fallback. Same rules: only hashes stored; logout expires (no delete).
 const FILE = path.join(process.cwd(), ".auth-data.json");
-type DB = { codes: ReferralCode[]; users: User[]; sessions: Session[]; workspaces: Workspace[] };
+type DB = { codes: ReferralCode[]; users: User[]; sessions: Session[]; workspaces: Workspace[]; redemptions: ReferralRedemption[] };
 
 function load(): DB {
-  try { if (fs.existsSync(FILE)) return JSON.parse(fs.readFileSync(FILE, "utf8")); } catch {}
+  try {
+    if (fs.existsSync(FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(FILE, "utf8")) as Partial<DB>;
+      return {
+        codes: parsed.codes ?? [],
+        users: parsed.users ?? [],
+        sessions: parsed.sessions ?? [],
+        workspaces: parsed.workspaces ?? [],
+        redemptions: parsed.redemptions ?? [],
+      };
+    }
+  } catch {}
   const dev = devReferralHash();
-  const db: DB = { codes: [], users: [], sessions: [], workspaces: [] };
+  const db: DB = { codes: [], users: [], sessions: [], workspaces: [], redemptions: [] };
   if (dev) db.codes.push({ id:newId("rc"), codeHash:dev, label:"dev", status:"active", maxUses:50, usedCount:0, createdBy:"system", createdAt:new Date().toISOString(), expiresAt:null });
   save(db); return db;
 }
@@ -19,6 +30,7 @@ function save(db: DB){ try { fs.writeFileSync(FILE, JSON.stringify(db, null, 2))
 export function referralLogin(code: string): { ok: boolean; reason?: string; token?: string; user?: User; workspace?: Workspace } {
   const db = load(); const c = db.codes.find(x=>x.codeHash===sha256(code||""));
   if (!c) return { ok:false, reason:"invalid" };
+  if (c.status === "used") return { ok:false, reason:"exhausted" };
   if (c.status !== "active") return { ok:false, reason:"revoked" };
   if (c.expiresAt && new Date(c.expiresAt) < new Date()) return { ok:false, reason:"expired" };
   if (c.usedCount >= c.maxUses) return { ok:false, reason:"exhausted" };
@@ -28,6 +40,7 @@ export function referralLogin(code: string): { ok: boolean; reason?: string; tok
   const token = newToken();
   db.users.push(user); db.workspaces.push(workspace);
   db.sessions.push({ id:newId("s"), userId:user.id, tokenHash:sha256(token), expiresAt:new Date(Date.now()+SESSION_TTL_MS).toISOString(), createdAt:now });
+  db.redemptions.push({ id:newId("rr"), referralCodeId:c.id, userId:user.id, workspaceId:workspace.id, redeemedAt:now });
   c.usedCount++; if (c.usedCount >= c.maxUses) c.status = "used";
   save(db); return { ok:true, token, user, workspace };
 }

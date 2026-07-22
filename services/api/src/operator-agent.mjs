@@ -56,7 +56,7 @@ function aiCfg() {
   return {
     url: process.env.EPICGRAM_AI_BASE_URL,
     key: process.env.EPICGRAM_AI_API_KEY || process.env.OPENAI_API_KEY || null,
-    model: process.env.EPICGRAM_OPENAI_MODEL || "openai/gpt-4o-mini"
+    model: process.env.EPICGRAM_AI_MODEL || process.env.EPICGRAM_OPENAI_MODEL || process.env.OPERATOR_PRIMARY_MODEL || "qwen2.5-coder:7b"
   };
 }
 
@@ -131,31 +131,33 @@ export async function runOperator({ text, history = [], accountId } = {}) {
   const j = parseJson(raw) || { action: "reply", text: raw || "…" };
 
   if (j.action === "list_chats") {
-    return { kind: "reply", text: chats.length ? ("Доступные чаты:\n" + chats.map((c) => "• " + c.title).join("\n")) : "Нет доступных чатов — проверь авторизацию Telegram." };
+    return { kind: "reply", tool: "list_chats", text: chats.length ? ("Доступные чаты:\n" + chats.map((c) => "• " + c.title).join("\n")) : "Нет доступных чатов — проверь авторизацию Telegram." };
   }
   if (j.action === "read_messages" && j.chatId) {
     try {
       const mm = await getMessages({ accountId, chatId: j.chatId });
       const arr = (mm?.body?.messages || []).slice(-8).map((m) => "• " + (m.text || m.content || "[медиа]")).join("\n");
-      return { kind: "reply", text: `Последние сообщения «${j.chatTitle || j.chatId}»:\n` + (arr || "(пусто)") };
-    } catch { return { kind: "reply", text: "Не смог прочитать этот чат." }; }
+      return { kind: "reply", tool: "read_messages", text: `Последние сообщения «${j.chatTitle || j.chatId}»:\n` + (arr || "(пусто)") };
+    } catch { return { kind: "reply", tool: "read_messages", text: "Не смог прочитать этот чат." }; }
   }
   if (j.action === "send_message") {
     if (!explicitSendIntent || hardDeny) {
       return {
         kind: "reply",
+        tool: "send_message_blocked",
         text: "Запрос обработан в режиме без отправки. ACTION_CREATED=false\nTELEGRAM_MUTATION=false"
       };
     }
     if (j.chatId && j.text) {
       return {
         kind: "pending",
+        tool: "send_message",
         reply: `Готов отправить в «${j.chatTitle || j.chatId}»:\n«${j.text}»`,
         action: { tool: "send_message", chatId: String(j.chatId), chatTitle: j.chatTitle || "", text: String(j.text), accountId: accountId || "" }
       };
     }
   }
-  return { kind: "reply", text: j.text || raw || "…" };
+  return { kind: "reply", tool: "reply", text: j.text || raw || "…" };
 }
 
 export async function confirmAction({ action, accountId } = {}) {

@@ -5,6 +5,7 @@ import { generateDraftReply } from "./ai-chat.mjs";
 import { getRecentMemory } from "./memory-store.mjs";
 import {
   getConfig,
+  getLocalRuntimeState,
   getChats,
   getStatus,
   createAccountSlot,
@@ -213,13 +214,19 @@ const server = http.createServer(async (request, response) => {
         Array.isArray(payload?.messages) ? payload.messages :
         Array.isArray(tg?.messages) ? tg.messages :
         [];
+      const attachments =
+        Array.isArray(payload?.attachments) ? payload.attachments :
+        Array.isArray(tg?.attachments) ? tg.attachments :
+        [];
       const chatId = payload?.chatId || payload?.conversationId || tg?.chatId || null;
       const chatTitle = payload?.chatTitle || tg?.chatTitle || tg?.title || null;
       const result = await generateDraftReply({
         conversationId: chatId,
         chatTitle,
         history,
-        instruction
+        instruction,
+        attachments,
+        mode: payload?.mode === "operator_chat" ? "operator_chat" : "telegram_draft"
       });
       let auditId = null;
       const draftText = String(result?.draft || "").trim();
@@ -328,6 +335,10 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === "GET" && url.pathname === "/telegram/config") {
       return send(response, 200, await getConfig());
+    }
+    if (request.method === "GET" && url.pathname === "/telegram/state") {
+      const result = await getLocalRuntimeState();
+      return send(response, result.status, result.body);
     }
     if (request.method === "POST" && url.pathname === "/telegram/accounts/new") {
       const result = await createAccountSlot();

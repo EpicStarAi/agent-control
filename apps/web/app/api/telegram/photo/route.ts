@@ -25,14 +25,15 @@ export async function GET(request: NextRequest) {
   }
 
   const fileId = (request.nextUrl.searchParams.get("fileId") || "").trim();
-  const thumb = request.nextUrl.searchParams.get("thumb") === "1";
   if (!/^\d+$/.test(fileId)) {
     return new Response(null, { status: 400, headers: PRIVATE_NO_STORE });
   }
 
-  const path = `/telegram/file/${encodeURIComponent(accountId)}/${encodeURIComponent(fileId)}${thumb ? "/thumb" : ""}`;
+  const upstreamUrl = new URL("/telegram/photo", API_BASE_URL);
+  upstreamUrl.searchParams.set("accountId", accountId);
+  upstreamUrl.searchParams.set("fileId", fileId);
   try {
-    const upstream = await fetch(`${API_BASE_URL}${path}`, { cache: "no-store", signal: AbortSignal.timeout(10000) });
+    const upstream = await fetch(upstreamUrl, { cache: "no-store", signal: AbortSignal.timeout(10000) });
     if (!upstream.ok) {
       return new Response(null, { status: upstream.status === 404 || upstream.status === 409 ? 404 : 502, headers: PRIVATE_NO_STORE });
     }
