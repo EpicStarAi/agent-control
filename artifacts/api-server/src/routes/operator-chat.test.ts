@@ -12,6 +12,8 @@ import express, { type Express } from "express";
 import request from "supertest";
 
 // ── pdf-parse mock ─────────────────────────────────────────────────────────────
+// operator-chat.ts now lazy-imports pdf-parse via parsePdf().
+// The dynamic `import("pdf-parse")` is intercepted by the same vi.mock.
 vi.mock("pdf-parse", () => ({
   default: async (_buf: Buffer) => ({
     text: "Extracted PDF content: Contract dated 2025-01-01",

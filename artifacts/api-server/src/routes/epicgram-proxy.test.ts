@@ -60,6 +60,8 @@ describe("epicgram-proxy allowlist", () => {
     ["/api/telegram/pin", "POST"],
     ["/api/telegram/edit", "POST"],
     ["/api/telegram/delete", "POST"],
+    ["/api/telegram/create-chat", "POST"],
+    ["/api/telegram/register-bot", "POST"],
     ["/api/telegram/auth/code", "POST"],
     ["/api/telegram/auth/qr", "POST"],
     ["/api/telegram/auth/phone", "POST"],

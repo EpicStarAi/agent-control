@@ -5,7 +5,15 @@
 
 import { Router } from "express";
 import { openai, generateImageBuffer } from "@workspace/integrations-openai-ai-server";
-import pdfParse from "pdf-parse";
+
+// pdf-parse v1 runs a self-test on require() that reads a local fixture file.
+// Import it lazily (inside the handler) to avoid crashing the server at startup.
+type PdfParseResult = { text: string; numpages: number };
+async function parsePdf(buf: Buffer): Promise<PdfParseResult> {
+  const mod = await import("pdf-parse");
+  const parse = (mod as any).default ?? mod;
+  return parse(buf) as Promise<PdfParseResult>;
+}
 
 const router = Router();
 
@@ -49,6 +57,14 @@ Always start complex tasks by reading real data first. Never guess or invent dat
 • propose_pin_message      — pin a message
 • propose_edit_message     — edit your own message
 • propose_delete_message   — delete one or more messages
+• propose_create_chat      — create a group, supergroup, or channel
+
+═══ BOT CREATION WIZARD ═════════════════════════════════════════
+When user asks to create/setup a bot ("создай бота", "настрой бота", "setup bot"):
+  1. Call start_bot_setup with the bot's purpose
+  2. Guide user through BotFather steps (open @BotFather → /newbot → name → username → copy token)
+  3. When user pastes the token, call register_bot_token
+  4. Confirm registration and suggest next setup steps (commands, description)
 
 ═══ FILE & IMAGE PATTERNS ══════════════════════════════════════
 When user uploads an IMAGE:
@@ -313,6 +329,52 @@ const TOOLS: any[] = [
         properties: {
           prompt: { type: "string", description: "Detailed English image generation prompt" },
           size: { type: "string", enum: ["1024x1024", "512x512", "256x256"], description: "Image size (default 1024x1024)" },
+        },
+      },
+    },
+  },
+  // CREATION tools — surface approval cards for creating chats/bots
+  {
+    type: "function",
+    function: {
+      name: "propose_create_chat",
+      description: "Propose creating a Telegram group, supergroup, or channel. ALWAYS requires user approval before creation.",
+      parameters: {
+        type: "object",
+        required: ["type", "title"],
+        properties: {
+          type:        { type: "string", enum: ["group", "supergroup", "channel"], description: "Chat type: group (basic, up to 200 members), supergroup (large, public/private), channel (broadcast)" },
+          title:       { type: "string", description: "Display name of the new chat/channel" },
+          username:    { type: "string", description: "Public @username (without @). Only for public supergroups and channels." },
+          description: { type: "string", description: "Short description shown in the chat info" },
+          accountId:   { type: "string", description: "Account slot ID to create from" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "start_bot_setup",
+      description: "Start the guided bot creation wizard. Returns step-by-step instructions for creating a new Telegram bot via BotFather and pasting the token here. Use when user asks to 'создай бота', 'настрой бота', 'setup bot', 'new bot'.",
+      parameters: {
+        type: "object",
+        properties: {
+          purpose: { type: "string", description: "What the bot is for (e.g. 'заявки', 'уведомления', 'поддержка'). Used to suggest a name and commands." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "register_bot_token",
+      description: "Validate a Bot API token the user just pasted, save it to the EPICGRAM bot registry, and configure basic commands/description. Use this after start_bot_setup when the user provides their token.",
+      parameters: {
+        type: "object",
+        required: ["token"],
+        properties: {
+          token: { type: "string", description: "The Bot API token from BotFather (e.g. 123456:ABC-DEF…)" },
         },
       },
     },
@@ -676,6 +738,53 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Too
       return { result: "Approval card создана для удаления сообщений.", approvalCard: card };
     }
 
+    case "propose_create_chat": {
+      const typeLabel = args.type === "channel" ? "Канал" : args.type === "supergroup" ? "Супергруппа" : "Группа";
+      const card = {
+        type: "APPROVAL_REQUIRED",
+        tool: "create_chat",
+        payload: { type: args.type, title: args.title, username: args.username ?? null, description: args.description ?? null, accountId: args.accountId ?? null },
+        warning: `${typeLabel} "${args.title}" будет создан в Telegram. Требуется подтверждение.`,
+      };
+      return { result: `Approval card создана для создания ${typeLabel.toLowerCase()} "${args.title}".`, approvalCard: card };
+    }
+
+    case "start_bot_setup": {
+      const purpose = args.purpose ? ` для ${args.purpose}` : "";
+      return {
+        result: JSON.stringify({
+          wizard: "bot_setup",
+          purpose: args.purpose ?? null,
+          instructions: `Для создания бота${purpose} через BotFather выполни следующие шаги:\n\n1. Открой Telegram и найди @BotFather\n2. Напиши /newbot\n3. Введи имя бота (отображаемое имя, например «EPIC Support Bot»)\n4. Введи username бота (должен заканчиваться на «bot», например «epic_support_bot»)\n5. BotFather выдаст токен вида: 123456789:AABBcc...\n6. Скопируй токен и вставь его в этот чат\n\nКогда вставишь токен — я автоматически его проверю, зарегистрирую и настрою бота.`,
+          nextAction: "Жду токен от BotFather. Вставь его сюда.",
+        }),
+      };
+    }
+
+    case "register_bot_token": {
+      const token = String(args.token ?? "").trim();
+      if (!token) return { result: "Ошибка: токен не указан." };
+      try {
+        const r = await fetch(`${API_BASE}/telegram/register-bot`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        });
+        const data = await r.json() as any;
+        if (!data.ok) return { result: `Ошибка регистрации бота: ${data.message ?? "неизвестная ошибка"}` };
+        const bot = data.bot;
+        return {
+          result: JSON.stringify({
+            registered: true,
+            bot: { id: bot.id, username: `@${bot.username}`, firstName: bot.firstName, canJoinGroups: bot.canJoinGroups },
+            message: `Бот @${bot.username} успешно зарегистрирован в EPICGRAM. Токен сохранён. Теперь можно настроить команды через Bot API.`,
+          }),
+        };
+      } catch (err: any) {
+        return { result: `Ошибка при регистрации бота: ${err?.message ?? "network error"}` };
+      }
+    }
+
     default:
       return { result: `Tool "${name}" not implemented.` };
   }
@@ -771,7 +880,7 @@ router.post("/operator/chat", async (req, res) => {
       try {
         const b64 = pdf.dataUrl.split(",")[1] ?? pdf.dataUrl;
         const buf = Buffer.from(b64, "base64");
-        const parsed = await pdfParse(buf);
+        const parsed = await parsePdf(buf);
         const text = (parsed.text ?? "").trim().slice(0, 8000);
         if (text) {
           pdfDocBlocks += `\n<document name="${pdf.name}">\n${text}\n</document>\n`;

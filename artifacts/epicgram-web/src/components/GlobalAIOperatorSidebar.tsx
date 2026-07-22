@@ -86,6 +86,9 @@ const TOOL_LABELS: Record<string, string> = {
   propose_pin_message:        "📌 Формирую запрос на закрепление…",
   propose_edit_message:       "✏️ Формирую запрос на редактирование…",
   propose_delete_message:     "🗑️ Формирую запрос на удаление…",
+  propose_create_chat:        "🆕 Готовлю создание чата…",
+  start_bot_setup:            "🤖 Запускаю мастер создания бота…",
+  register_bot_token:         "🔑 Регистрирую бота…",
 };
 
 // ── quick suggestion chips shown before first message ─────────────────────────
@@ -421,6 +424,7 @@ export function GlobalAIOperatorSidebar() {
         pin_message:     "/telegram/pin",
         edit_message:    "/telegram/edit",
         delete_message:  "/telegram/delete",
+        create_chat:     "/telegram/create-chat",
       };
       const route = routeMap[card.tool];
       if (!route) throw new Error(`Unknown action type: ${card.tool}`);
@@ -676,6 +680,7 @@ export function GlobalAIOperatorSidebar() {
                         pin_message:     "📌",
                         edit_message:    "✏️",
                         delete_message:  "🗑️",
+                        create_chat:     "🆕",
                       };
                       const ACTION_LABELS: Record<string, string> = {
                         send_message:    "Отправка сообщения",
@@ -684,7 +689,70 @@ export function GlobalAIOperatorSidebar() {
                         pin_message:     "Закрепление сообщения",
                         edit_message:    "Редактирование сообщения",
                         delete_message:  "Удаление сообщений",
+                        create_chat:     "Создание чата",
                       };
+
+                      // ── create_chat card — special layout ──────────────────
+                      if (card.tool === "create_chat") {
+                        const typeLabel = card.payload.type === "channel" ? "Канал" : card.payload.type === "supergroup" ? "Супергруппа" : "Группа";
+                        const typeBadgeColor = card.payload.type === "channel"
+                          ? "bg-purple-500/15 border-purple-500/30 text-purple-300"
+                          : card.payload.type === "supergroup"
+                          ? "bg-sky-500/15 border-sky-500/30 text-sky-300"
+                          : "bg-emerald-500/15 border-emerald-500/30 text-emerald-300";
+                        return (
+                          <div key={i} className="rounded-xl border border-amber-500/30 bg-amber-500/8 p-3 text-[11px]">
+                            <div className="mb-2 flex items-center gap-2">
+                              <span className="text-[13px]">🆕</span>
+                              <span className="font-semibold text-amber-400">Создание чата</span>
+                              <span className={`ml-auto rounded-full border px-2 py-0.5 text-[9px] font-semibold ${typeBadgeColor}`}>
+                                {typeLabel}
+                              </span>
+                            </div>
+                            <div className="space-y-1 text-white/60">
+                              <div><span className="text-white/40">Название:</span> <span className="font-medium text-white/80">{card.payload.title}</span></div>
+                              {card.payload.username && (
+                                <div><span className="text-white/40">Username:</span> @{card.payload.username}</div>
+                              )}
+                              {card.payload.description && (
+                                <div><span className="text-white/40">Описание:</span> <span className="text-white/50">{String(card.payload.description).slice(0, 100)}</span></div>
+                              )}
+                            </div>
+                            <p className="mt-2 text-[10px] text-amber-400/70">{card.warning}</p>
+                            {cState === "idle" && (
+                              <div className="mt-2.5 flex gap-2">
+                                <button
+                                  onClick={() => executeApprovalCard(cardKey, card)}
+                                  className="flex-1 rounded-lg py-1.5 text-[11px] font-semibold text-white transition-all hover:brightness-110"
+                                  style={{ background: "linear-gradient(135deg,rgba(168,85,247,.7),rgba(14,165,233,.5))" }}
+                                >
+                                  ✓ Создать
+                                </button>
+                              </div>
+                            )}
+                            {cState === "executing" && (
+                              <div className="mt-2.5 flex items-center gap-2 text-[10px] text-white/50">
+                                <span className="h-3 w-3 animate-spin rounded-full border border-sky-500/40 border-t-sky-400" />
+                                Создаётся…
+                              </div>
+                            )}
+                            {cState === "done" && (
+                              <div className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-emerald-400">
+                                <span>✓</span> {typeLabel} создан
+                              </div>
+                            )}
+                            {cState === "error" && (
+                              <div className="mt-2 space-y-1.5">
+                                <div className="text-[10px] text-red-400">⚠️ Ошибка: {cError}</div>
+                                <button
+                                  onClick={() => executeApprovalCard(cardKey, card)}
+                                  className="rounded-lg border border-white/10 px-2 py-1 text-[10px] text-white/50 hover:text-white/80 hover:bg-white/10 transition-all"
+                                >↺ Повторить</button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
 
                       return (
                         <div key={i} className="rounded-xl border border-amber-500/30 bg-amber-500/8 p-3 text-[11px]">

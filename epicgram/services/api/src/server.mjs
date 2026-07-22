@@ -438,6 +438,69 @@ const server = http.createServer(async (request, response) => {
         return send(response, 500, { ok: false, message: e instanceof Error ? e.message : String(e) });
       }
     }
+    if (request.method === "POST" && url.pathname === "/telegram/create-chat") {
+      const body = await readJson(request);
+      const { type, title, description, username, accountId } = body ?? {};
+      if (!type || !title) return send(response, 400, { ok: false, message: "type and title are required" });
+      if (!["group", "supergroup", "channel"].includes(type)) return send(response, 400, { ok: false, message: "type must be group, supergroup, or channel" });
+      try {
+        const { createTdlibChat } = await import("./tdlib-adapter.mjs");
+        const result = await createTdlibChat({ accountId, type, title, description, username });
+        auditAppend({
+          status: result.ok ? "executed" : "rejected",
+          actor: "operator",
+          source: "telegram_create_chat",
+          tool: "propose_create_chat",
+          actionType: "telegram_create_chat",
+          chatId: result.chatId ? String(result.chatId) : null,
+          chatTitle: String(title),
+          preview: `create ${type} "${title}"${username ? ` @${username}` : ""}`,
+          safety: { executedExternalAction: result.ok, approvalRequiredForSend: true }
+        });
+        return send(response, result.ok ? 200 : 409, result);
+      } catch (e) {
+        return send(response, 500, { ok: false, message: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    if (request.method === "POST" && url.pathname === "/telegram/register-bot") {
+      const body = await readJson(request);
+      const { token } = body ?? {};
+      if (!token || typeof token !== "string") return send(response, 400, { ok: false, message: "token is required" });
+      const cleanToken = token.trim();
+      if (!/^\d+:[A-Za-z0-9_-]{35,}$/.test(cleanToken)) return send(response, 400, { ok: false, message: "token format is invalid" });
+      try {
+        // Validate token against Bot API
+        const verifyRes = await fetch(`https://api.telegram.org/bot${cleanToken}/getMe`);
+        const verifyData = await verifyRes.json();
+        if (!verifyData.ok) return send(response, 400, { ok: false, message: verifyData.description ?? "Invalid bot token" });
+        const bot = verifyData.result;
+
+        // Persist to bots.json store
+        const { readFile: readF, writeFile: writeF } = await import("node:fs/promises");
+        const botsPath = new URL("../../../../bots.json", import.meta.url).pathname;
+        let bots = [];
+        try { bots = JSON.parse(await readF(botsPath, "utf8")); } catch { bots = []; }
+        const existing = bots.findIndex(b => b.botId === bot.id);
+        const record = { botId: bot.id, username: bot.username, firstName: bot.first_name, token: cleanToken, addedAt: new Date().toISOString() };
+        if (existing >= 0) { bots[existing] = record; } else { bots.push(record); }
+        await writeF(botsPath, JSON.stringify(bots, null, 2));
+
+        auditAppend({
+          status: "executed",
+          actor: "operator",
+          source: "telegram_register_bot",
+          tool: "register_bot_token",
+          actionType: "telegram_register_bot",
+          chatId: null,
+          chatTitle: `@${bot.username}`,
+          preview: `registered bot @${bot.username} (id: ${bot.id})`,
+          safety: { executedExternalAction: true, approvalRequiredForSend: false }
+        });
+        return send(response, 200, { ok: true, bot: { id: bot.id, username: bot.username, firstName: bot.first_name, canJoinGroups: bot.can_join_groups, supportsInlineQueries: bot.supports_inline_queries }, message: `Bot @${bot.username} registered successfully.` });
+      } catch (e) {
+        return send(response, 500, { ok: false, message: e instanceof Error ? e.message : String(e) });
+      }
+    }
     if (request.method === "GET" && url.pathname === "/telegram/status") {
       return send(response, 200, await getStatus());
     }

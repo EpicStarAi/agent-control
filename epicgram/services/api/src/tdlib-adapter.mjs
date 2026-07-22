@@ -413,6 +413,82 @@ export async function getTdlibMessages({ accountId = "main", chatId, limit = 40 
   };
 }
 
+// ── chat creation ─────────────────────────────────────────────────────────────
+// type: "group" | "supergroup" | "channel"
+export async function createTdlibChat({ accountId = "main", type = "supergroup", title, description = "", username = "" } = {}) {
+  const id = safeAccountId(accountId);
+  const cleanTitle = String(title ?? "").trim();
+  const cleanDesc  = String(description ?? "").trim();
+  const cleanUser  = String(username  ?? "").replace(/^@/, "").trim();
+
+  if (!cleanTitle) throw new Error("title is required");
+  if (!["group", "supergroup", "channel"].includes(type)) throw new Error("type must be group, supergroup, or channel");
+
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
+  if (!READY_STATES.has(authorizationState?._)) {
+    return { ok: false, authorizationState, message: "Telegram account is not authorized yet." };
+  }
+
+  let chat;
+  if (type === "group") {
+    // Basic group (no username, no description support)
+    chat = await tdClient.invoke({
+      _: "createNewBasicGroupChat",
+      title: cleanTitle,
+      user_ids: [],
+      message_ttl: 0
+    });
+  } else {
+    // Supergroup or channel
+    const isChannel = type === "channel";
+    chat = await tdClient.invoke({
+      _: "createNewSupergroupChat",
+      title: cleanTitle,
+      is_forum: false,
+      is_channel: isChannel,
+      description: cleanDesc,
+      message_auto_delete_time: 0
+    });
+
+    // Set description separately as a safety fallback
+    if (cleanDesc) {
+      try {
+        await tdClient.invoke({ _: "setChatDescription", chat_id: chat.id, description: cleanDesc });
+      } catch { /* not fatal */ }
+    }
+
+    // Set public username if provided
+    if (cleanUser && chat.type?.supergroup_id) {
+      try {
+        await tdClient.invoke({
+          _: "setSupergroupUsername",
+          supergroup_id: chat.type.supergroup_id,
+          username: cleanUser
+        });
+      } catch (e) {
+        // Username may already be taken — not fatal, we still return the chat
+        return {
+          ok: true,
+          authorizationState,
+          message: `${type === "channel" ? "Channel" : "Supergroup"} created but username @${cleanUser} could not be set (already taken or invalid).`,
+          chatId: chat.id,
+          chat: { id: chat.id, title: chat.title, type, username: null }
+        };
+      }
+    }
+  }
+
+  const typeLabel = type === "group" ? "Group" : type === "channel" ? "Channel" : "Supergroup";
+  return {
+    ok: true,
+    authorizationState,
+    message: `${typeLabel} "${cleanTitle}" created via TDLib.`,
+    chatId: chat.id,
+    chat: { id: chat.id, title: chat.title, type, username: cleanUser || null }
+  };
+}
+
 export async function sendTdlibMessage({ accountId = "main", chatId, text } = {}) {
   const id = safeAccountId(accountId);
   const cleanText = String(text ?? "").trim();

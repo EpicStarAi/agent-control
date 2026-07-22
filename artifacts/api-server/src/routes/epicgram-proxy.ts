@@ -62,6 +62,8 @@ const ALLOWED_MUTATING_PATHS = new Set([
   "/telegram/pin",
   "/telegram/edit",
   "/telegram/delete",
+  "/telegram/create-chat",
+  "/telegram/register-bot",
   "/ai/audit/reject",
   "/operator/reject",
   "/ai/schedule/approve",
