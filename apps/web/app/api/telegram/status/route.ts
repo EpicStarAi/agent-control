@@ -1,5 +1,5 @@
 import { requirePrincipal, resolveBoundAccount, safeEmptyState, guardedJson, denyOwnerMismatch } from "@/lib/telegramGuard";
-import { getStatus } from "@/lib/telegramBindingService";
+import { getStatus, getStagingRuntimeStatus } from "@/lib/telegramBindingService";
 
 // INCIDENT hotfix/client-auth-guard + P-EPICGRAM-CLIENT-PLATFORM-2.
 // Requires an authenticated EPICGRAM session; the account is resolved
@@ -11,6 +11,16 @@ export const runtime = "nodejs";
 export async function GET() {
   const auth = await requirePrincipal("/api/telegram/status", "GET");
   if (!auth.ok) return auth.response;
+
+  const staging = await getStagingRuntimeStatus(auth.principal);
+  if (staging) {
+    return guardedJson({
+      ...staging.body,
+      authenticated: true,
+      connected: staging.status >= 200 && staging.status < 300 && staging.body.connected !== false,
+      ownerMatched: true,
+    }, staging.status);
+  }
 
   const r = await resolveBoundAccount(auth.principal);
   if (r.kind === "mismatch") return denyOwnerMismatch("/api/telegram/status", "GET", auth.principal);

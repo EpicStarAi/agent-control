@@ -44,12 +44,16 @@ const SRC = "per-user-binding";
 // may EVER reach them, regardless of accountId.
 const LEGACY_BLOCKED_ROUTES = /^\/telegram\/(logout|auth\/reset)(\/|\?|$)/;
 
+function isExplicitStagingGateway(): boolean {
+  return String(process.env.EPICGRAM_BACKEND_IS_STAGING_GATEWAY || "").trim().toLowerCase() === "true";
+}
+
 async function backendFetch(
   path: string,
   body?: unknown,
   extraHeaders?: Record<string, string>,
 ): Promise<Record<string, unknown>> {
-  if (LEGACY_BLOCKED_ROUTES.test(path)) {
+  if (LEGACY_BLOCKED_ROUTES.test(path) && !isExplicitStagingGateway()) {
     throw new Error(`legacy_route_hard_blocked:${path}`);
   }
   const res = await fetch(`${API}${path}`, {
@@ -230,12 +234,12 @@ function extractAuthState(statusBody: Record<string, unknown>): TelegramBindingA
 
 // P-BACKFILL: pull the account identity TDLib exposes once authorized. Per-account
 // auth responses carry it at top-level `account`; status/list carry accounts[0].account.
-function accountIdentityFrom(body: Record<string, unknown>): { displayName: string | null; username: string | null } {
+function accountIdentityFrom(body: Record<string, unknown>): { displayName: string | null; username: string | null; phoneMasked: string | null } {
   const accounts = body?.accounts as Array<Record<string, unknown>> | undefined;
   const acc = (body?.account as Record<string, unknown> | undefined)
     ?? (accounts?.[0]?.account as Record<string, unknown> | undefined);
   const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null);
-  return { displayName: str(acc?.displayName), username: str(acc?.username) };
+  return { displayName: str(acc?.displayName), username: str(acc?.username), phoneMasked: str(acc?.phoneMasked) };
 }
 
 // Build a BindingStatus response (safe — no secrets)
@@ -310,6 +314,57 @@ function syntheticStagingBinding(principal: Principal): TelegramBinding | null {
 
 async function bindingForRead(principal: Principal): Promise<TelegramBinding | null> {
   return (await db.getByWorkspace(principal.workspaceId)) ?? syntheticStagingBinding(principal);
+}
+
+function stagingEnabledFor(principal: Principal): boolean {
+  return Boolean(stagingOwnerAccountId(principal.role));
+}
+
+function accountFromStatus(body: Record<string, unknown>, accountId: string): Record<string, unknown> | null {
+  const accounts = Array.isArray(body.accounts) ? body.accounts as Array<Record<string, unknown>> : [];
+  return accounts.find((account) => slotKeyOf(account) === accountId) ?? null;
+}
+
+async function syncStagingBinding(principal: Principal, body: Record<string, unknown>): Promise<void> {
+  const activeAccountId = typeof body.activeAccountId === "string" ? body.activeAccountId : "";
+  if (!activeAccountId) {
+    await db.remove(principal.workspaceId);
+    return;
+  }
+  const account = accountFromStatus(body, activeAccountId);
+  const identity = accountIdentityFrom({ accounts: account ? [account] : [] });
+  await db.bindWorkspaceToAccount({
+    workspaceId: principal.workspaceId,
+    userId: principal.userId,
+    tdlibAccountId: activeAccountId,
+    displayName: identity.displayName ?? String(account?.displayName ?? account?.label ?? "Telegram"),
+    phoneMasked: identity.phoneMasked,
+    username: identity.username,
+    authState: extractAuthState({ accounts: account ? [account] : [], authorizationState: body.authorizationState }),
+    authError: null,
+  });
+}
+
+export async function getStagingRuntimeStatus(principal: Principal): Promise<{ status: number; body: Record<string, unknown> } | null> {
+  if (!stagingEnabledFor(principal)) return null;
+  const result = await backendFetch("/telegram/status");
+  const status = Number(result.status ?? 502);
+  const body = (result.body ?? {}) as Record<string, unknown>;
+  if (status >= 200 && status < 300) await syncStagingBinding(principal, body);
+  return { status, body };
+}
+
+export async function mutateStagingRuntime(
+  principal: Principal,
+  route: string,
+  body: Record<string, unknown> = {},
+): Promise<{ status: number; body: Record<string, unknown> } | null> {
+  if (!stagingEnabledFor(principal)) return null;
+  const result = await backendFetch(route, body);
+  const status = Number(result.status ?? 502);
+  const responseBody = (result.body ?? {}) as Record<string, unknown>;
+  if (status >= 200 && status < 300) await syncStagingBinding(principal, responseBody);
+  return { status, body: responseBody };
 }
 
 /**
@@ -784,13 +839,17 @@ export async function sendTextThroughSlot(
 ): Promise<{ ok: boolean; telegramMessageId: string | null; code?: string; message?: string }> {
   await assertRegisteredSlot(accountId);
   const internalSendSecret = process.env.EPICGRAM_INTERNAL_SEND_SECRET;
+  const stagingSendToken = process.env.EPICGRAM_BACKEND_SEND_TOKEN;
   const res = await backendFetch(`/telegram/send`, {
     accountId,
     chatId,
     text,
     operatorApproved: true,
     actionType: actionType === "publish_channel" ? "publish_post" : "telegram_send",
-  }, internalSendSecret ? { "x-epicgram-internal-send-secret": internalSendSecret } : undefined);
+  }, {
+    ...(internalSendSecret ? { "x-epicgram-internal-send-secret": internalSendSecret } : {}),
+    ...(stagingSendToken ? { "x-epicgram-staging-send-token": stagingSendToken } : {}),
+  });
   const body = (res?.body ?? res) as Record<string, unknown>;
   const ok = (res as { status?: number }).status === 200 && body?.sent === true;
   return {

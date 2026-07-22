@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePrincipal } from "@/lib/telegramGuard";
+import { denyMutation, requirePrincipal, telegramMutationsEnabled } from "@/lib/telegramGuard";
 import { isForbiddenAccountId } from "@/lib/telegramBindings";
+import { backendRequestHeaders } from "@/lib/backendRequest";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,7 +20,7 @@ async function backend(path: string, body?: unknown) {
   try {
     const response = await fetch(`${API}${path}`, {
       method: body ? "POST" : "GET",
-      headers: { "content-type": "application/json", "cache-control": "no-store" },
+      headers: backendRequestHeaders(),
       body: body ? JSON.stringify(body) : undefined,
       cache: "no-store",
       signal: controller.signal,
@@ -49,6 +50,9 @@ async function resolveOrCreateActiveAccount() {
 export async function POST(req: NextRequest) {
   const auth = await requirePrincipal("/api/telegram/active-auth/phone", "POST");
   if (!auth.ok) return auth.response;
+  if (!telegramMutationsEnabled() || auth.principal.role !== "owner") {
+    return denyMutation("/api/telegram/active-auth/phone", "POST", auth.principal, "active_auth_phone");
+  }
 
   let phoneNumber = "";
   try {
@@ -58,8 +62,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, reason: "Тело запроса невалидно." }, { status: 400, headers: H });
   }
 
-  if (!phoneNumber) {
-    return NextResponse.json({ ok: false, reason: "Введите номер телефона." }, { status: 400, headers: H });
+  if (!/^\+[1-9]\d{6,14}$/.test(phoneNumber)) {
+    return NextResponse.json({ ok: false, reason: "Введите номер в международном формате, например +380..." }, { status: 400, headers: H });
   }
 
   const activeAccountId = await resolveOrCreateActiveAccount();

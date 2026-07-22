@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePrincipal } from "@/lib/telegramGuard";
+import { denyMutation, requirePrincipal, telegramMutationsEnabled } from "@/lib/telegramGuard";
 import * as bindingsDb from "@/lib/telegramBindingsDb";
 import type { TelegramBindingAuthState } from "@/lib/telegramBindings";
 import { isForbiddenAccountId } from "@/lib/telegramBindings";
+import { backendRequestHeaders } from "@/lib/backendRequest";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -31,7 +32,7 @@ function str(value: unknown): string | null {
 async function backend(path: string, body?: unknown) {
   const response = await fetch(`${API}${path}`, {
     method: body ? "POST" : "GET",
-    headers: { "content-type": "application/json", "cache-control": "no-store" },
+    headers: backendRequestHeaders(),
     body: body ? JSON.stringify(body) : undefined,
     cache: "no-store",
   });
@@ -42,6 +43,9 @@ async function backend(path: string, body?: unknown) {
 export async function POST(req: NextRequest) {
   const auth = await requirePrincipal("/api/telegram/active-auth/code", "POST");
   if (!auth.ok) return auth.response;
+  if (!telegramMutationsEnabled() || auth.principal.role !== "owner") {
+    return denyMutation("/api/telegram/active-auth/code", "POST", auth.principal, "active_auth_code");
+  }
 
   let code = "";
   try {
