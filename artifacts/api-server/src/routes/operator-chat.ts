@@ -33,6 +33,33 @@ Navigation: when the user wants to open a section/chat, end your message with a 
 Language: respond in Russian by default. Match user's language otherwise.
 Be concise, direct, and practical.`;
 
+// ── memory helpers ─────────────────────────────────────────────────────────────
+async function fetchMemory(conversationId: string, limit = 10): Promise<string> {
+  try {
+    const r = await fetch(`${API_BASE}/ai/memory?conversationId=${encodeURIComponent(conversationId)}&limit=${limit}`);
+    if (!r.ok) return "";
+    const data = await r.json() as any;
+    const entries: any[] = data.entries ?? [];
+    if (entries.length === 0) return "";
+    return "\n\n--- Память из прошлых сессий ---\n" + entries.map((e: any) => `${e.role}: ${String(e.content).slice(0, 300)}`).join("\n");
+  } catch { return ""; }
+}
+
+async function saveMemoryTurn(conversationId: string, userText: string, assistantText: string): Promise<void> {
+  try {
+    await fetch(`${API_BASE}/ai/memory`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId, role: "user", content: userText.slice(0, 500) }),
+    });
+    await fetch(`${API_BASE}/ai/memory`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId, role: "assistant", content: assistantText.slice(0, 500) }),
+    });
+  } catch {}
+}
+
 // ── tool definitions ───────────────────────────────────────────────────────────
 const TOOLS: any[] = [
   {
@@ -92,6 +119,30 @@ const TOOLS: any[] = [
           limit: { type: "number", description: "Number of entries to return (default 10)" },
         },
       },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_chats",
+      description: "Search chats by name, username or topic. Returns matching chats.",
+      parameters: {
+        type: "object",
+        required: ["query"],
+        properties: {
+          query:     { type: "string", description: "Search string (name, username, keyword)" },
+          accountId: { type: "string", description: "Account slot ID. Use active if omitted." },
+          limit:     { type: "number", description: "Max results (default 15)" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_workspace_stats",
+      description: "Get a quick summary: total chats, unread count, accounts by status",
+      parameters: { type: "object", properties: {} },
     },
   },
   // WRITE tool — surfaces an approval card, never auto-executes
@@ -156,8 +207,39 @@ async function executeTool(name: string, args: Record<string, any>): Promise<{ r
     }
 
     case "get_audit_log": {
-      const data = await get(`/ai/audit?limit=${args.limit ?? 10}`);
+      const data = await get(`/ai/audit?n=${args.limit ?? 10}`);
       return { result: JSON.stringify(data).slice(0, 2000) };
+    }
+
+    case "search_chats": {
+      const accountId = args.accountId || "";
+      const data = await get(`/telegram/chats?accountId=${encodeURIComponent(accountId)}&limit=100`);
+      const all = (data.chats ?? data.dialogs ?? []) as any[];
+      const q = String(args.query || "").toLowerCase().trim();
+      const found = all.filter((c: any) =>
+        (c.title || "").toLowerCase().includes(q) ||
+        (c.username || "").toLowerCase().includes(q)
+      ).slice(0, args.limit ?? 15).map((c: any) => ({
+        id: c.id, title: c.title, category: c.category, unreadCount: c.unreadCount ?? 0,
+        memberCount: c.memberCount, username: c.username,
+      }));
+      return { result: JSON.stringify({ query: args.query, found: found.length, chats: found }) };
+    }
+
+    case "get_workspace_stats": {
+      const statusData = await get("/telegram/status");
+      const chatsData = await get("/telegram/chats?limit=200");
+      const all = (chatsData.chats ?? chatsData.dialogs ?? []) as any[];
+      const unread = all.reduce((s: number, c: any) => s + (c.unreadCount ?? 0), 0);
+      const byCategory = all.reduce((acc: any, c: any) => {
+        const cat = c.category || "private";
+        acc[cat] = (acc[cat] || 0) + 1;
+        return acc;
+      }, {});
+      const accounts = (statusData.accounts ?? []).map((a: any) => ({
+        slotId: a.slotId, name: a.displayName || a.label, status: a.status, active: a.active,
+      }));
+      return { result: JSON.stringify({ totalChats: all.length, unread, byCategory, accounts }) };
     }
 
     case "propose_send_message": {
@@ -178,7 +260,7 @@ async function executeTool(name: string, args: Record<string, any>): Promise<{ r
 
 // ── main route ────────────────────────────────────────────────────────────────
 router.post("/operator/chat", async (req, res) => {
-  const { messages, context, settings, attachments } = req.body as {
+  const { messages, context, settings, attachments, conversationId } = req.body as {
     messages: { role: "user" | "assistant"; content: string }[];
     context?: {
       tgReady?: boolean; accountCount?: number; activeAccount?: string;
@@ -186,6 +268,7 @@ router.post("/operator/chat", async (req, res) => {
     };
     settings?: { model?: string; temperature?: number; customSystemPrompt?: string };
     attachments?: { name: string; type: string; dataUrl: string }[];
+    conversationId?: string;
   };
 
   if (!Array.isArray(messages) || messages.length === 0) {
@@ -208,6 +291,10 @@ router.post("/operator/chat", async (req, res) => {
       ? Math.min(Math.max(settings.temperature, 0), 2)
       : 0.7;
 
+    // Fetch cross-session memory (if conversationId provided)
+    const convId = (conversationId || "").trim();
+    const memoryBlock = convId ? await fetchMemory(convId, 12) : "";
+
     // Build context addendum
     const ctxLines: string[] = [];
     if (context) {
@@ -219,10 +306,10 @@ router.post("/operator/chat", async (req, res) => {
       if (context.selectedChatId)  ctxLines.push(`Открытый чат: ${context.selectedChatTitle || context.selectedChatId}`);
     }
 
-    // Compose system prompt (custom prefix + base)
+    // Compose system prompt (custom prefix + base + memory)
     const systemContent = settings?.customSystemPrompt
-      ? `${settings.customSystemPrompt.trim()}\n\n${SYSTEM_PROMPT}${ctxLines.join("\n")}`
-      : SYSTEM_PROMPT + ctxLines.join("\n");
+      ? `${settings.customSystemPrompt.trim()}\n\n${SYSTEM_PROMPT}${ctxLines.join("\n")}${memoryBlock}`
+      : SYSTEM_PROMPT + ctxLines.join("\n") + memoryBlock;
 
     // Build message list — last user message may carry image attachments (vision)
     const filteredHistory = messages.slice(-20).filter(m => m.role === "user" || m.role === "assistant");
@@ -307,6 +394,13 @@ router.post("/operator/chat", async (req, res) => {
 
         sse({ done: true, model: useModel });
         res.end();
+
+        // Persist this turn to cross-session memory (fire-and-forget)
+        if (convId && text.trim()) {
+          const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
+          if (lastUserMsg) saveMemoryTurn(convId, lastUserMsg.content, text).catch(() => {});
+        }
+
         return;
       }
 

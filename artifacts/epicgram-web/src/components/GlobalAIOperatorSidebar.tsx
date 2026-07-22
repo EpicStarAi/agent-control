@@ -71,6 +71,8 @@ const TOOL_LABELS: Record<string, string> = {
   list_chats:           "💬 Загружаю чаты…",
   get_chat_history:     "📜 Читаю историю чата…",
   get_audit_log:        "📋 Читаю audit log…",
+  search_chats:         "🔍 Ищу чаты…",
+  get_workspace_stats:  "📊 Собираю статистику…",
   propose_send_message: "📨 Формирую запрос на отправку…",
 };
 
@@ -250,6 +252,7 @@ export function GlobalAIOperatorSidebar() {
         signal: ctrl.signal,
         body: JSON.stringify({
           messages: history,
+          conversationId: "ai_operator_main",
           context: {
             tgReady,
             accountCount,

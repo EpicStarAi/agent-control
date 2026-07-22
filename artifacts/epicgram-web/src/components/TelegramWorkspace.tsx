@@ -225,6 +225,22 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
   const [discLog, setDiscLog] = useState<{ t: string; text: string }[]>([]);
   const [index, setIndex] = useState<any>(null);
 
+  // ---- MESSAGE HISTORY ----
+  type TgMessage = { id: string; senderId: string | null; content: string; date: string | null };
+  const [msgs, setMsgs] = useState<TgMessage[]>([]);
+  const [msgsLoading, setMsgsLoading] = useState(false);
+  const [msgsHasMore, setMsgsHasMore] = useState(false);
+  const msgsEndRef = useRef<HTMLDivElement>(null);
+
+  // ---- DIRECT COMPOSE ----
+  const [compose, setCompose] = useState("");
+  const [composeSending, setComposeSending] = useState(false);
+  const [composeError, setComposeError] = useState<string | null>(null);
+
+  // ---- AUDIT VIEWER ----
+  const [auditEvents, setAuditEvents] = useState<any[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+
   // ---- AI DRAFT APPROVAL — the only path that can put a message into a real chat.
   // A draft is proposed via /ai/suggest (never sent anywhere), reviewed here, and only
   // reaches Telegram if the operator explicitly clicks "Approve & Send", which sends
@@ -242,6 +258,28 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
   useEffect(() => { try { const d = JSON.parse(localStorage.getItem(LS) || "{}"); if (d.section) setSection(d.section); if (!slotId && d.acc) setAcc(d.acc); } catch {} }, []);
   useEffect(() => { try { localStorage.setItem(LS, JSON.stringify({ section, acc })); } catch {} }, [section, acc]);
   useEffect(() => { if (focusKind === "channel") setSection("channels"); else if (focusKind === "group") setSection("groups"); else if (focusKind === "bot") setSection("bots"); }, [focusKind]);
+
+  // ---- LOAD MESSAGE HISTORY when chat changes ----
+  useEffect(() => {
+    if (!chat) { setMsgs([]); setMsgsHasMore(false); return; }
+    let alive = true;
+    setMsgsLoading(true);
+    setMsgs([]);
+    setMsgsHasMore(false);
+    fetch(apiUrl(`/telegram/messages?chatId=${encodeURIComponent(chat)}&accountId=${encodeURIComponent(acc)}&limit=30`), { cache: "no-store" })
+      .then(r => r.ok ? r.json() : null)
+      .then(j => {
+        if (!alive) return;
+        const raw: TgMessage[] = Array.isArray(j?.messages) ? j.messages : [];
+        // TDLib returns newest-first; reverse to show oldest at top
+        setMsgs([...raw].reverse());
+        setMsgsHasMore(raw.length >= 30);
+      })
+      .catch(() => {})
+      .finally(() => { if (alive) setMsgsLoading(false); });
+    return () => { alive = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat, acc]);
   useEffect(() => { function onKey(e: KeyboardEvent) { if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); setPalette((v) => !v); setPq(""); } if (e.key === "Escape") setPalette(false); } window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey); }, []);
 
   // ---- READ-ONLY DATA FETCH from existing Telegram Layer ----
@@ -404,6 +442,29 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
       setDraftByChat((d) => ({ ...d, [chatId]: { ...d[chatId], sending: false, error: "Сетевая ошибка при отправке." } }));
     }
   };
+  // ---- DIRECT SEND ----
+  const directSend = async () => {
+    if (!selChat || !compose.trim() || composeSending) return;
+    const text = compose.trim();
+    setComposeSending(true);
+    setComposeError(null);
+    try {
+      const r = await fetch(apiUrl("/telegram/send"), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId: String(selChat.id), chatTitle: selChat.title || null, text, operatorApproved: true }),
+      });
+      const j = await r.json().catch(() => null);
+      if (r.ok && j?.sent) {
+        setCompose("");
+        const now = new Date().toISOString();
+        setSentByChat(s => ({ ...s, [String(selChat.id)]: [...(s[String(selChat.id)] || []), { text, at: now }] }));
+      } else {
+        setComposeError(j?.message || "Отправка заблокирована или не удалась.");
+      }
+    } catch { setComposeError("Сетевая ошибка при отправке."); }
+    finally { setComposeSending(false); }
+  };
+
   const rejectDraft = async () => {
     if (!selChat || !draftState) return;
     const chatId = String(selChat.id);
@@ -679,8 +740,8 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
   const DISC_LABEL: Record<string, string> = { idle: "Ожидание", discovering: "Поиск", indexing: "Индексация", building: "Построение графа", completed: "Готово", error: "Ошибка" };
   const DISC_CLR: Record<string, string> = { idle: "#9ca3af", discovering: "#fbbf24", indexing: "#38bdf8", building: "#a78bfa", completed: "#4ade80", error: "#f87171" };
 
-  const CC_TABS = ["overview", "discovery", "sessions", "dialogs", "channels", "groups", "bots", "media", "files", "analytics", "graph", "search"];
-  const CC_TAB_LABELS: Record<string, string> = { overview: "Обзор", discovery: "Обнаружение", sessions: "Сессии", dialogs: "Диалоги", channels: "Каналы", groups: "Группы", bots: "Боты", media: "Медиа", files: "Файлы", analytics: "Аналитика", graph: "Граф", search: "Поиск" };
+  const CC_TABS = ["overview", "discovery", "sessions", "dialogs", "channels", "groups", "bots", "analytics", "audit", "graph", "search"];
+  const CC_TAB_LABELS: Record<string, string> = { overview: "Обзор", discovery: "Обнаружение", sessions: "Сессии", dialogs: "Диалоги", channels: "Каналы", groups: "Группы", bots: "Боты", analytics: "Аналитика", audit: "Audit Log", graph: "Граф", search: "Поиск" };
   const Bar = ({ label, value, max, color }: { label: string; value: number; max: number; color: string }) => (
     <div className="flex items-center gap-2 text-[11px]"><span className="w-20 text-tg-muted">{label}</span><div className="h-2 flex-1 overflow-hidden rounded bg-tg-bg"><div className="h-full" style={{ width: (max ? Math.round((value / max) * 100) : 0) + "%", background: color }} /></div><span className="w-8 text-right font-bold">{value}</span></div>
   );
@@ -740,8 +801,44 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
         </div>
       );
     }
-    if (cc === "media") return <div className="grid grid-cols-3 gap-2 p-4 lg:grid-cols-7">{["Изображения", "Видео", "Голосовые", "Документы", "Ссылки", "Файлы", "Хранилище"].map((l) => <div key={l} className="rounded-xl border border-tg-line bg-tg-bg/40 p-3"><div className="text-[10px] uppercase text-tg-muted">{l}</div><div className="text-xl font-extrabold text-tg-accent">0</div></div>)}<div className="col-span-full text-[11px] text-tg-muted">Медиа-статистика недоступна в read-only режиме Telegram Layer.</div></div>;
-    if (cc === "files") return <div className="p-4 text-sm text-tg-muted">Файловая статистика недоступна в read-only режиме (Telegram Layer не отдаёт файловую историю).</div>;
+    if (cc === "audit") {
+      // Load audit events when tab opens
+      if (!auditLoading && auditEvents.length === 0) {
+        setAuditLoading(true);
+        fetch(apiUrl("/ai/audit?n=50"), { cache: "no-store" })
+          .then(r => r.ok ? r.json() : null)
+          .then(j => { setAuditEvents(j?.events ?? []); })
+          .catch(() => {})
+          .finally(() => setAuditLoading(false));
+      }
+      return (
+        <div className="p-3">
+          <div className="mb-2 flex items-center gap-2">
+            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-tg-accent">Audit Log — последние действия AI</div>
+            <button onClick={() => { setAuditEvents([]); setAuditLoading(false); }} className="ml-auto rounded-lg bg-tg-bg px-2 py-0.5 text-[10px] ring-1 ring-tg-line hover:ring-tg-accent">↻ Обновить</button>
+          </div>
+          {auditLoading && <div className="py-6 text-center text-sm text-tg-muted">Загрузка…</div>}
+          {!auditLoading && auditEvents.length === 0 && <div className="py-6 text-center text-sm text-tg-muted">Событий нет.</div>}
+          {!auditLoading && auditEvents.length > 0 && (
+            <div className="max-h-[60vh] overflow-auto">
+              <table className="w-full text-left text-[11px]">
+                <thead className="sticky top-0 bg-tg-panel text-tg-muted"><tr>{["Время", "Статус", "Тип", "Актор", "Чат", "Превью"].map(h => <th key={h} className="px-2 py-1">{h}</th>)}</tr></thead>
+                <tbody>{auditEvents.map((e: any) => (
+                  <tr key={e.auditId || e.ts} className="border-t border-tg-line hover:bg-tg-bg/40">
+                    <td className="px-2 py-1.5 text-tg-muted whitespace-nowrap">{e.ts ? new Date(e.ts).toLocaleTimeString() : "—"}</td>
+                    <td className="px-2"><span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${e.status === "executed" ? "bg-emerald-500/15 text-emerald-300" : e.status === "rejected" || e.status === "blocked" ? "bg-rose-500/15 text-rose-300" : "bg-amber-500/15 text-amber-300"}`}>{e.status || "—"}</span></td>
+                    <td className="px-2 text-tg-muted">{e.actionType || e.tool || "—"}</td>
+                    <td className="px-2"><span className={e.actor === "ai" ? "text-tg-accent" : "text-tg-text"}>{e.actor || "—"}</span></td>
+                    <td className="px-2 text-tg-muted">{e.chatTitle || e.chatId || "—"}</td>
+                    <td className="px-2 max-w-[180px] truncate text-tg-text">{e.preview || "—"}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      );
+    }
     if (cc === "analytics") return (
       <div className="space-y-2 p-4"><div className="text-[10px] font-black uppercase tracking-wide text-tg-accent">Аналитика Telegram</div>
         <div className="space-y-1.5">{([["Диалоги", stats.dialogs, "#9ca3af"], ["Каналы", stats.channels, "#3ea6ff"], ["Группы", stats.groups, "#34d399"], ["Боты", stats.bots, "#f59e0b"], ["Контакты", stats.contacts, "#e879f9"], ["Непрочитанные", stats.unread, "#ff2d6b"], ["Медиа", stats.media, "#a78bfa"], ["Файлы", stats.files, "#22c55e"]] as const).map(([l, v, c]) => <Bar key={l} label={l} value={v} max={maxStat} color={c} />)}</div>
@@ -885,40 +982,103 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
                 <div><div className="text-sm font-semibold">{selChat.title || "чат"}</div><div className="text-[11px] text-tg-muted">{cat(selChat)}{selChat.memberCount ? " · " + selChat.memberCount : ""} · только чтение</div></div>
                 <div className="ml-auto flex gap-2 text-tg-muted"><span>🔍</span><span>📌</span><span>🖼</span></div>
               </div>
-              <div className="min-h-0 flex-1 space-y-2 overflow-auto p-4">
-                {preview(selChat) ? (
-                  <div className="flex justify-start"><div className="max-w-[70%] rounded-2xl bg-tg-bubble px-3 py-1.5 text-sm">{preview(selChat)}<div className="mt-0.5 text-[10px] text-tg-muted">последнее сообщение</div></div></div>
-                ) : <div className="mx-auto mt-8 text-sm text-tg-muted">История сообщений недоступна в read-only режиме.</div>}
+              <div className="min-h-0 flex-1 overflow-auto p-3 space-y-1.5">
+                {msgsHasMore && (
+                  <div className="flex justify-center py-1">
+                    <button onClick={async () => {
+                      if (msgsLoading) return;
+                      setMsgsLoading(true);
+                      try {
+                        const oldest = msgs[0];
+                        const fromParam = oldest?.id ? `&fromMessageId=${encodeURIComponent(oldest.id)}` : "";
+                        const r = await fetch(apiUrl(`/telegram/messages?chatId=${encodeURIComponent(chat)}&accountId=${encodeURIComponent(acc)}&limit=30${fromParam}`), { cache: "no-store" });
+                        const j = r.ok ? await r.json() : null;
+                        const more: TgMessage[] = Array.isArray(j?.messages) ? [...j.messages].reverse() : [];
+                        setMsgs(prev => [...more, ...prev]);
+                        setMsgsHasMore(more.length >= 30);
+                      } catch {} finally { setMsgsLoading(false); }
+                    }} className="rounded-full bg-tg-bg px-3 py-0.5 text-[11px] text-tg-muted ring-1 ring-tg-line hover:ring-tg-accent">
+                      {msgsLoading ? "Загрузка…" : "↑ Загрузить ещё"}
+                    </button>
+                  </div>
+                )}
+                {msgsLoading && msgs.length === 0 && (
+                  <div className="flex justify-center py-8 text-sm text-tg-muted">Загрузка истории…</div>
+                )}
+                {!msgsLoading && msgs.length === 0 && (
+                  <div className="flex justify-center py-8 text-sm text-tg-muted">
+                    {preview(selChat) ? (
+                      <div className="max-w-[70%] rounded-2xl bg-tg-bubble px-3 py-1.5 text-sm self-start">
+                        {preview(selChat)}
+                        <div className="mt-0.5 text-[10px] text-tg-muted">последнее сообщение</div>
+                      </div>
+                    ) : "Нет сообщений или история недоступна"}
+                  </div>
+                )}
+                {msgs.map((m) => {
+                  const isOwn = false; // TDLib sender detection future TODO
+                  const time = m.date ? new Date(m.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+                  return (
+                    <div key={m.id} className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
+                      <div className={`max-w-[72%] rounded-2xl px-3 py-1.5 text-sm ${isOwn ? "bg-tg-active/70 text-white" : "bg-tg-bubble text-tg-text"}`}>
+                        {m.content}
+                        <div className={`mt-0.5 text-[10px] ${isOwn ? "text-white/60" : "text-tg-muted"}`}>{time}</div>
+                      </div>
+                    </div>
+                  );
+                })}
                 {(sentByChat[String(selChat.id)] || []).map((m, i) => (
-                  <div key={i} className="flex justify-end"><div className="max-w-[70%] rounded-2xl bg-tg-active/70 px-3 py-1.5 text-sm text-white">{m.text}<div className="mt-0.5 text-[10px] text-white/70">отправлено оператором · {new Date(m.at).toLocaleTimeString()}</div></div></div>
+                  <div key={"sent_" + i} className="flex justify-end">
+                    <div className="max-w-[72%] rounded-2xl bg-emerald-600/70 px-3 py-1.5 text-sm text-white">
+                      {m.text}
+                      <div className="mt-0.5 text-[10px] text-white/60">отправлено · {new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+                    </div>
+                  </div>
                 ))}
-                <div className="mx-auto w-fit rounded-full bg-tg-bg/60 px-3 py-0.5 text-[10px] text-tg-muted">Просмотр истории — только чтение · отправка возможна только через AI-черновик с ручным подтверждением</div>
+                <div ref={msgsEndRef} />
               </div>
-              {/* AI draft approval panel — the ONLY UI surface that can send a real message.
-                  Nothing here is appended to the visible history above unless /telegram/send
-                  actually returns sent:true; a 412 (approval-gate block) or any failure just
-                  shows an inline error and leaves the chat history untouched. */}
+              {/* Compose panel — direct send + AI draft option */}
               <div className="border-t border-tg-line bg-tg-panel px-3 py-2">
-                {!draftState || (!draftState.text && !draftState.loading && !draftState.error) ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-tg-muted">📎</span>
-                    <div className="flex-1 rounded-lg bg-tg-bg px-3 py-1.5 text-sm text-tg-muted">Ручной ввод отключён — сообщения уходят только после проверки AI-черновика оператором</div>
-                    <button onClick={requestDraft} className="rounded-lg bg-tg-active px-3 py-1.5 text-xs font-semibold text-white">🤖 Предложить черновик</button>
-                  </div>
-                ) : draftState.loading ? (
-                  <div className="rounded-lg bg-tg-bg px-3 py-2 text-sm text-tg-muted">Генерирую черновик…</div>
-                ) : draftState.error ? (
-                  <div className="space-y-1.5">
-                    <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">⚠️ {draftState.error}</div>
-                    <button onClick={requestDraft} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs hover:bg-white/20">Попробовать снова</button>
-                  </div>
+                {draftState?.text || draftState?.loading || draftState?.error ? (
+                  /* ── AI Draft approval UI ── */
+                  draftState.loading ? (
+                    <div className="rounded-lg bg-tg-bg px-3 py-2 text-sm text-tg-muted">Генерирую черновик…</div>
+                  ) : draftState.error ? (
+                    <div className="space-y-1.5">
+                      <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">⚠️ {draftState.error}</div>
+                      <button onClick={requestDraft} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs hover:bg-white/20">Попробовать снова</button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="rounded bg-amber-500/15 px-2 py-1 text-[10px] font-bold text-amber-200">🤖 Черновик AI · проверь и подтверди перед отправкой</div>
+                      <textarea value={draftState.text} onChange={(e) => editDraft(e.target.value)} rows={3} className="w-full resize-none rounded-lg bg-tg-bg px-3 py-2 text-sm outline-none" />
+                      <div className="flex justify-end gap-2">
+                        <button onClick={rejectDraft} disabled={draftState.sending} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/20 disabled:opacity-50">Отклонить</button>
+                        <button onClick={approveAndSend} disabled={draftState.sending || !draftState.text.trim()} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">{draftState.sending ? "Отправка…" : "✅ Подтвердить и отправить"}</button>
+                      </div>
+                    </div>
+                  )
                 ) : (
-                  <div className="space-y-2">
-                    <div className="rounded bg-amber-500/15 px-2 py-1 text-[10px] font-bold text-amber-200">Черновик AI · требуется подтверждение оператора перед отправкой</div>
-                    <textarea value={draftState.text} onChange={(e) => editDraft(e.target.value)} rows={3} className="w-full resize-none rounded-lg bg-tg-bg px-3 py-2 text-sm outline-none" />
-                    <div className="flex justify-end gap-2">
-                      <button onClick={rejectDraft} disabled={draftState.sending} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/20 disabled:opacity-50">Отклонить</button>
-                      <button onClick={approveAndSend} disabled={draftState.sending || !draftState.text.trim()} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">{draftState.sending ? "Отправка…" : "✅ Подтвердить и отправить"}</button>
+                  /* ── Direct compose UI ── */
+                  <div className="space-y-1.5">
+                    <textarea
+                      value={compose}
+                      onChange={e => { setCompose(e.target.value); setComposeError(null); }}
+                      onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); directSend(); } }}
+                      placeholder="Написать сообщение… (Enter — отправить, Shift+Enter — перенос)"
+                      rows={2}
+                      className="w-full resize-none rounded-lg bg-tg-bg px-3 py-2 text-sm outline-none placeholder:text-tg-muted/60"
+                    />
+                    {composeError && <div className="text-[11px] text-rose-300">⚠️ {composeError}</div>}
+                    <div className="flex items-center gap-2">
+                      <button onClick={requestDraft} className="rounded-lg bg-tg-bg px-3 py-1.5 text-xs text-tg-muted ring-1 ring-tg-line hover:ring-tg-accent hover:text-tg-text transition-colors">🤖 AI-черновик</button>
+                      <button
+                        onClick={directSend}
+                        disabled={composeSending || !compose.trim()}
+                        className="ml-auto rounded-lg bg-tg-active px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-40 hover:brightness-110 transition-all"
+                      >
+                        {composeSending ? "Отправка…" : "➤ Отправить"}
+                      </button>
                     </div>
                   </div>
                 )}

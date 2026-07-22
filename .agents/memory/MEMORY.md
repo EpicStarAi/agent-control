@@ -6,3 +6,4 @@
 - [EPICGRAM Add Account Wizard](epicgram-add-account-wizard.md) — phone/code/2FA auth flow: POST /accounts/new → /auth/phone → /auth/code → /auth/2fa; bump refreshTick to force re-poll after success.
 - [EPICGRAM AI Operator Glow System](epicgram-ai-glow-system.md) — neon border effect tied to real AI states via CustomEvent bus; fixed overlay + CSS keyframes; no layout impact.
 - [EPICGRAM TDLib enabled](epicgram-tdlib-enabled.md) — EPICGRAM_TDLIB_ENABLED=true now set in shared env; EPICGRAM API must be restarted after any env change to pick it up.
+- [EPICGRAM workspace improvements batch](epicgram-workspace-improvements.md) — real message history, direct send, AI memory, new tools, audit viewer: key decisions and constraints.

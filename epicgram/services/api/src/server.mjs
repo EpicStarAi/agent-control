@@ -2,7 +2,7 @@ import http from "node:http";
 import { loadLocalEnv } from "./env.mjs";
 import { getAiStatus } from "./ai-runtime.mjs";
 import { generateDraftReply } from "./ai-chat.mjs";
-import { getRecentMemory } from "./memory-store.mjs";
+import { getRecentMemory, appendMemory } from "./memory-store.mjs";
 import {
   getConfig,
   getChats,
@@ -292,6 +292,15 @@ const server = http.createServer(async (request, response) => {
       const limit = Number(url.searchParams.get("limit") ?? 20);
       const entries = await getRecentMemory(conversationId, Number.isFinite(limit) ? limit : 20);
       return send(response, 200, { conversationId, count: entries.length, entries });
+    }
+    if (request.method === "POST" && url.pathname === "/ai/memory") {
+      const body = await readJson(request);
+      const conversationId = body?.conversationId ?? body?.chatId;
+      const role = body?.role || "note";
+      const content = String(body?.content || "").trim();
+      if (!conversationId || !content) return send(response, 400, { error: "conversationId and content required" });
+      const record = await appendMemory(conversationId, { role, content, meta: body?.meta ?? null });
+      return send(response, 200, { ok: true, record });
     }
     if (request.method === "POST" && url.pathname === "/telegram/send") {
       const sendBody = await readJson(request);
