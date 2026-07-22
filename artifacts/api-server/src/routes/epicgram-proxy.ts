@@ -115,13 +115,20 @@ async function forward(req: Request, res: Response) {
       res.setHeader("x-accel-buffering", "no"); // disable nginx buffering if present
       res.flushHeaders();
       const reader = upstream.body.getReader();
-      req.on("close", () => reader.cancel());
+      // cancel() returns a Promise — swallow the rejection so an abrupt
+      // upstream disconnect (TypeError: terminated / UND_ERR_SOCKET) never
+      // becomes an unhandled rejection that crashes the process.
+      req.on("close", () => { reader.cancel().catch(() => {}); });
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           res.write(value);
         }
+      } catch {
+        // Upstream closed the stream abruptly (backend restart, network drop).
+        // Headers are already flushed so we can't send a status code — just
+        // end the response cleanly; the client will reconnect via EventSource.
       } finally {
         res.end();
       }
@@ -134,10 +141,13 @@ async function forward(req: Request, res: Response) {
     const buffer = Buffer.from(await upstream.arrayBuffer());
     res.send(buffer);
   } catch {
-    res.status(503).json({
-      runtime: "backend_offline",
-      message: `EPICGRAM backend is not reachable at ${API_BASE_URL}.`,
-    });
+    // Only reached for non-SSE requests (headers not yet flushed).
+    if (!res.headersSent) {
+      res.status(503).json({
+        runtime: "backend_offline",
+        message: `EPICGRAM backend is not reachable at ${API_BASE_URL}.`,
+      });
+    }
   }
 }
 
