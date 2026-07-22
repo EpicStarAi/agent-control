@@ -177,6 +177,8 @@ const ini = (s: string) => (s || "•").replace(/[^0-9A-Za-zÀ-ɏЀ-ӿ ]/g, "").
 const cat = (c: Chat): "channel" | "group" | "bot" | "private" => c.category === "channel" || c.isChannel ? "channel" : c.category === "bot" || c.isBot ? "bot" : c.category === "group" ? "group" : "private";
 const preview = (c: Chat) => c.lastMessage?.content || c.lastMessage?.text || "";
 
+type MobileTab = "chats" | "contacts" | "epic" | "settings" | "profile";
+
 export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, onClose, onOpenAgent }: {
   ctx: Ctx; slotId?: string; focusKind?: string; focusId?: string; command?: OperatorCommand | null; onClose: () => void; onOpenAgent?: (id: string) => void;
 }) {
@@ -214,6 +216,7 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
   const [loading, setLoading] = useState(false);
   const [fetchedAcc, setFetchedAcc] = useState("");
   const [mode, setMode] = useState<"client" | "command">("client");
+  const [mobileTab, setMobileTab] = useState<MobileTab>("chats");
   const [cc, setCc] = useState<string>("overview");
   const [gv, setGv] = useState({ tx: 40, ty: 20, s: 0.8 });
   const [gpos, setGpos] = useState<Record<string, { x: number; y: number }>>({});
@@ -889,245 +892,485 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
     );
   }
 
+
+  // ─── Mobile helpers ──────────────────────────────────────────────────────────
+  const fmtTs = (c: any) => {
+    const raw = c.lastMessage?.date || c.date;
+    if (!raw) return "";
+    const ms = typeof raw === "number" ? raw * 1000 : new Date(raw).getTime();
+    if (!ms) return "";
+    const d = new Date(ms), now = new Date();
+    const diff = now.getTime() - d.getTime();
+    if (diff < 86400000) return d.toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
+    if (diff < 604800000) return ["вс","пн","вт","ср","чт","пт","сб"][d.getDay()];
+    return d.toLocaleDateString("ru", { day: "numeric", month: "short" });
+  };
+  const chatOpen = !!chat && !!selChat;
+  const handleNavClick = (tab: MobileTab) => {
+    setMobileTab(tab);
+    if (tab === "chats") setSection("dialogs");
+    else if (tab === "contacts") setSection("contacts");
+    else if (tab === "epic") { setSection("accounts"); setChat(""); }
+    else if (tab === "settings") setSection("settings");
+  };
+  type NavItem = { id: MobileTab; label: string; icon: string; center?: boolean; badge?: number };
+  const NAV_ITEMS: NavItem[] = [
+    { id: "chats",    label: "Чаты",      icon: "💬", badge: stats.unread },
+    { id: "contacts", label: "Контакты",  icon: "👤" },
+    { id: "epic",     label: "",          icon: "☠️", center: true },
+    { id: "settings", label: "Настройки", icon: "⚙️" },
+    { id: "profile",  label: "Профиль",   icon: "○" },
+  ];
+
   return (
     <div className="fixed inset-0 z-[55] flex flex-col bg-tg-bg text-tg-text" style={themeVars}>
-      <header className="flex items-center gap-3 border-b border-tg-line bg-tg-panel px-4 py-2">
-        <button onClick={onClose} className="rounded-lg bg-tg-bg px-3 py-1.5 text-sm hover:text-tg-text">‹ Назад</button>
-        <div className="font-black tracking-wide">📨 РАБОЧАЯ ОБЛАСТЬ TELEGRAM</div>
-        <span className="flex items-center gap-1.5 rounded-full border border-tg-line bg-tg-bg px-2 py-0.5 text-[10px] font-bold"><span className="h-2 w-2 rounded-full" style={{ background: connClr }} />{connLbl}</span>
-        <span className="rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-400">ТОЛЬКО ЧТЕНИЕ</span>
-        {accounts.length > 0 && <span className="ml-2 flex items-center gap-1.5"><Avatar name={account?.name || ""} photoFileId={account?.photoFileId} accountId={acc} size={24} /><select value={acc} onChange={(e) => setAcc(e.target.value)} className="rounded-lg border border-tg-line bg-tg-bg px-2 py-1 text-xs">{accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</select></span>}
-        {/* stats strip */}
-        <div className="ml-2 hidden flex-wrap gap-1 text-[10px] md:flex">{([["D", stats.dialogs], ["G", stats.groups], ["C", stats.channels], ["B", stats.bots], ["Ct", stats.contacts]] as const).map(([l, v]) => <span key={l} className="rounded bg-tg-bg px-1.5 py-0.5 text-tg-muted">{l} <b className="text-tg-text">{v}</b></span>)}</div>
-        <div className="ml-auto flex items-center gap-1.5">
-          <div className="flex overflow-hidden rounded-lg ring-1 ring-tg-line">
-            <button onClick={() => setMode("client")} className={`px-3 py-1.5 text-xs font-semibold ${mode === "client" ? "bg-tg-active text-white" : "bg-tg-bg text-tg-muted"}`}>Клиент</button>
-            <button onClick={() => setMode("command")} className={`px-3 py-1.5 text-xs font-semibold ${mode === "command" ? "bg-cyan-600 text-white" : "bg-tg-bg text-tg-muted"}`}>🛰 Командный центр</button>
-          </div>
-          <button onClick={() => { setPalette(true); setPq(""); }} className="rounded-lg border border-cyan-500/40 bg-cyan-600/15 px-3 py-1.5 text-xs font-semibold text-cyan-200">⌘K</button>
-        </div>
-      </header>
 
+      {/* ═══════════════════════════════════════════════════════════════════════
+          COMMAND CENTER (legacy desktop mode — accessible via 🛰 button)
+         ═══════════════════════════════════════════════════════════════════════ */}
       {mode === "command" ? (
-        <div className="flex min-h-0 flex-1">
-          <nav style={{ width: panelW.ccNav, flex: "0 0 auto" }} className="min-h-0 overflow-auto bg-tg-panel p-2">
-            <div className="mb-1 px-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Командный центр</div>
-            {CC_TABS.map((t) => (
-              <button key={t} onClick={() => setCc(t)} className={`mb-0.5 w-full rounded-lg px-2.5 py-1.5 text-left text-sm ${cc === t ? "bg-cyan-600/30 text-tg-text ring-1 ring-cyan-500/50" : "text-tg-muted hover:bg-tg-bg/40 hover:text-tg-text"}`}>{CC_TAB_LABELS[t] || t}</button>
-            ))}
-          </nav>
-          <ColResizer onMouseDown={startPanelDrag("ccNav")} title="Изменить ширину панели командного центра" />
-          <main className="min-h-0 min-w-0 flex-1 overflow-auto bg-tg-bg"><CommandCenter /></main>
-        </div>
-      ) : (
-
-      <div className="flex min-h-0 flex-1">
-        <nav style={{ width: panelW.nav, flex: "0 0 auto" }} className="min-h-0 overflow-auto bg-tg-panel p-2">
-          {SECTIONS.map(([id, label]) => (
-            <button key={id} onClick={() => setSection(id)} className={`mb-0.5 flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-sm ${section === id ? "bg-tg-active/30 text-tg-text ring-1 ring-tg-accent" : "text-tg-muted hover:bg-tg-bg/40 hover:text-tg-text"}`}>
-              <span>{label}</span>
-              {id === "dialogs" && <span className="rounded-full bg-tg-bg px-1.5 text-[10px]">{stats.dialogs}</span>}
-              {id === "groups" && <span className="rounded-full bg-tg-bg px-1.5 text-[10px]">{stats.groups + LOCAL_ITEMS.filter((i) => i.folder === "groups").length}</span>}
-              {id === "channels" && <span className="rounded-full bg-tg-bg px-1.5 text-[10px]">{stats.channels + LOCAL_ITEMS.filter((i) => i.folder === "channels").length}</span>}
-              {id === "bots" && <span className="rounded-full bg-tg-bg px-1.5 text-[10px]">{stats.bots}</span>}
-              {id === "contacts" && <span className="rounded-full bg-tg-bg px-1.5 text-[10px]">{stats.contacts}</span>}
-              {id === "sessions" && <span className="rounded-full bg-tg-bg px-1.5 text-[10px]">{accounts.length}</span>}
-            </button>
-          ))}
-        </nav>
-        <ColResizer onMouseDown={startPanelDrag("nav")} title="Изменить ширину боковой навигации" />
-
-        <section style={{ width: panelW.list, flex: "0 0 auto" }} className="flex min-h-0 flex-col bg-tg-bg">
-          <div className="border-b border-tg-line p-2">
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск…" className="w-full rounded-lg bg-tg-panel px-3 py-1.5 text-sm outline-none" />
-            {(section === "dialogs") && <div className="mt-1.5 flex flex-wrap gap-1">{FILTERS.map((f) => <button key={f} onClick={() => setFilter(f)} className={`rounded-full px-2 py-0.5 text-[10px] ${filter === f ? "bg-tg-active text-white" : "bg-tg-bg text-tg-muted"}`}>{f}</button>)}</div>}
+        <>
+          <header className="flex shrink-0 items-center gap-2 border-b border-tg-line bg-tg-panel px-4 py-2">
+            <button onClick={() => setMode("client")} className="rounded-lg bg-tg-bg px-3 py-1.5 text-sm text-tg-accent">‹ Назад</button>
+            <div className="font-black tracking-wide text-cyan-300">🛰 Командный центр</div>
+            <button onClick={() => { setPalette(true); setPq(""); }} className="ml-auto rounded-lg border border-cyan-500/40 bg-cyan-600/15 px-3 py-1.5 text-xs font-semibold text-cyan-200">⌘K</button>
+          </header>
+          <div className="flex min-h-0 flex-1">
+            <nav style={{ width: panelW.ccNav, flex: "0 0 auto" }} className="min-h-0 overflow-auto bg-tg-panel p-2">
+              <div className="mb-1 px-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Командный центр</div>
+              {CC_TABS.map((t) => (
+                <button key={t} onClick={() => setCc(t)} className={`mb-0.5 w-full rounded-lg px-2.5 py-1.5 text-left text-sm ${cc === t ? "bg-cyan-600/30 text-tg-text ring-1 ring-cyan-500/50" : "text-tg-muted hover:bg-tg-bg/40 hover:text-tg-text"}`}>{CC_TAB_LABELS[t] || t}</button>
+              ))}
+            </nav>
+            <ColResizer onMouseDown={startPanelDrag("ccNav")} title="Изменить ширину панели командного центра" />
+            <main className="min-h-0 min-w-0 flex-1 overflow-auto bg-tg-bg"><CommandCenter /></main>
           </div>
-          <div className="min-h-0 flex-1 overflow-auto"><Center /></div>
-        </section>
-        <ColResizer onMouseDown={startPanelDrag("list")} title="Изменить ширину списка чатов" />
+        </>
 
-        <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-tg-bg" style={{ backgroundImage: "radial-gradient(circle at 50% 0,rgba(34,46,61,.6),transparent 60%)" }}>
-          {selLocalItem ? (
-            <>
-              <div className="flex items-center gap-2.5 border-b border-tg-line bg-tg-panel px-4 py-2"><Avatar name={selLocalItem.title} size={38} />
-                <div><div className="text-sm font-semibold">{selLocalItem.title}</div><div className="text-[11px] text-tg-muted">{selLocalItem.badge} · локальная рабочая область</div></div>
+      /* ═══════════════════════════════════════════════════════════════════════
+          CHAT DETAIL — full-screen when a chat is open
+         ═══════════════════════════════════════════════════════════════════════ */
+      ) : chatOpen ? (
+        <div className="flex h-full flex-col">
+          {/* Chat header */}
+          <div className="flex shrink-0 items-center gap-2.5 border-b border-tg-line bg-tg-panel px-3 py-2">
+            <button onClick={() => { setChat(""); setLocalItem(""); }} className="rounded-lg p-1.5 text-lg text-tg-accent hover:bg-white/10">‹</button>
+            <Avatar name={selChat.title || "чат"} size={38} photoFileId={selChat.photoSmallFileId} accountId={acc} />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[15px] font-semibold">{selChat.title || "чат"}</div>
+              <div className="text-[11px] text-tg-muted">{cat(selChat)}{selChat.memberCount ? " · " + selChat.memberCount.toLocaleString() + " участников" : ""}</div>
+            </div>
+            <div className="flex shrink-0 gap-2.5 text-tg-muted"><span className="text-xl">🔍</span><span className="text-xl">📌</span></div>
+          </div>
+          {/* Messages */}
+          <div className="min-h-0 flex-1 space-y-1.5 overflow-auto p-3">
+            {msgsHasMore && (
+              <div className="flex justify-center py-1">
+                <button onClick={async () => {
+                  if (msgsLoading) return; setMsgsLoading(true);
+                  try {
+                    const oldest = msgs[0];
+                    const fromParam = oldest?.id ? `&fromMessageId=${encodeURIComponent(oldest.id)}` : "";
+                    const r = await fetch(apiUrl(`/telegram/messages?chatId=${encodeURIComponent(chat)}&accountId=${encodeURIComponent(acc)}&limit=30${fromParam}`), { cache: "no-store" });
+                    const j = r.ok ? await r.json() : null;
+                    const more: TgMessage[] = Array.isArray(j?.messages) ? [...j.messages].reverse() : [];
+                    setMsgs(prev => [...more, ...prev]); setMsgsHasMore(more.length >= 30);
+                  } catch {} finally { setMsgsLoading(false); }
+                }} className="rounded-full bg-tg-bg px-3 py-0.5 text-[11px] text-tg-muted ring-1 ring-tg-line hover:ring-tg-accent">
+                  {msgsLoading ? "Загрузка…" : "↑ Загрузить ещё"}
+                </button>
               </div>
-              <div className="min-h-0 flex-1 overflow-auto p-4">
-                <div className="relative mx-auto flex max-w-2xl flex-col gap-4">
-                  <div className="mx-auto rounded-full bg-black/30 px-3 py-1 text-xs text-tg-muted">Создано по умолчанию</div>
-                  <section className="rounded-2xl bg-tg-bubble p-4">
-                    <div className="text-xs font-semibold text-tg-accent">Системное описание</div>
-                    <h2 className="mt-2 text-xl font-semibold">{selLocalItem.title}</h2>
-                    <p className="mt-2 text-sm leading-6 text-tg-muted">{selLocalItem.subtitle}</p>
-                  </section>
-                  <section className="rounded-2xl border border-tg-line bg-tg-bubble p-4">
-                    <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-tg-accent">🗄 Память</div>
-                    <div className="space-y-2">{selLocalItem.memory.map((m) => <div key={m} className="rounded-xl bg-black/20 px-3 py-2 text-sm leading-6">{m}</div>)}</div>
-                  </section>
-                  <section className="rounded-2xl bg-tg-bubble p-4">
-                    <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-tg-muted">✅ Технические задачи</div>
-                    <div className="space-y-2">{selLocalItem.tasks.map((t) => <label key={t} className="flex items-center gap-3 rounded-xl bg-tg-bg px-3 py-2 text-sm"><span className="h-4 w-4 rounded border border-tg-muted" />{t}</label>)}</div>
-                  </section>
-                  <section className="rounded-2xl bg-tg-panel p-4">
-                    <h3 className="font-semibold">Telegram-аккаунт пока не подключен</h3>
-                    <p className="mt-2 text-sm leading-6 text-tg-muted">Эти группы и каналы являются локальной AI-структурой проекта. Реальные Telegram-чаты появятся после авторизации через официальный TDLib backend.</p>
-                    <button onClick={() => setSection("accounts")} className="mt-4 rounded-xl bg-tg-active px-4 py-3 text-sm font-semibold text-white">Авторизовать Telegram</button>
-                  </section>
+            )}
+            {msgsLoading && msgs.length === 0 && <div className="flex justify-center py-8 text-sm text-tg-muted">Загрузка истории…</div>}
+            {!msgsLoading && msgs.length === 0 && (
+              <div className="flex justify-center py-8">
+                {preview(selChat) ? (
+                  <div className="max-w-[75%] rounded-2xl bg-tg-bubble px-3 py-1.5 text-sm text-tg-text">
+                    {preview(selChat)}
+                    <div className="mt-0.5 text-[10px] text-tg-muted">последнее сообщение</div>
+                  </div>
+                ) : <span className="text-sm text-tg-muted">Нет сообщений</span>}
+              </div>
+            )}
+            {msgs.map((m) => {
+              const time = m.date ? new Date(m.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+              return (
+                <div key={m.id} className="flex justify-start">
+                  <div className="max-w-[75%] rounded-2xl bg-tg-bubble px-3 py-1.5 text-sm text-tg-text">
+                    {m.content}
+                    <div className="mt-0.5 text-right text-[10px] text-tg-muted">{time}</div>
+                  </div>
+                </div>
+              );
+            })}
+            {(sentByChat[String(selChat.id)] || []).map((m, i) => (
+              <div key={"sent_" + i} className="flex justify-end">
+                <div className="max-w-[75%] rounded-2xl bg-tg-active px-3 py-1.5 text-sm text-white">
+                  {m.text}
+                  <div className="mt-0.5 text-right text-[10px] text-white/60">✓✓ {new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
                 </div>
               </div>
-            </>
-          ) : selChat ? (
-            <>
-              <div className="flex items-center gap-2.5 border-b border-tg-line bg-tg-panel px-4 py-2"><Avatar name={selChat.title || "чат"} size={38} photoFileId={selChat.photoSmallFileId} accountId={acc} />
-                <div><div className="text-sm font-semibold">{selChat.title || "чат"}</div><div className="text-[11px] text-tg-muted">{cat(selChat)}{selChat.memberCount ? " · " + selChat.memberCount : ""} · только чтение</div></div>
-                <div className="ml-auto flex gap-2 text-tg-muted"><span>🔍</span><span>📌</span><span>🖼</span></div>
-              </div>
-              <div className="min-h-0 flex-1 overflow-auto p-3 space-y-1.5">
-                {msgsHasMore && (
-                  <div className="flex justify-center py-1">
-                    <button onClick={async () => {
-                      if (msgsLoading) return;
-                      setMsgsLoading(true);
-                      try {
-                        const oldest = msgs[0];
-                        const fromParam = oldest?.id ? `&fromMessageId=${encodeURIComponent(oldest.id)}` : "";
-                        const r = await fetch(apiUrl(`/telegram/messages?chatId=${encodeURIComponent(chat)}&accountId=${encodeURIComponent(acc)}&limit=30${fromParam}`), { cache: "no-store" });
-                        const j = r.ok ? await r.json() : null;
-                        const more: TgMessage[] = Array.isArray(j?.messages) ? [...j.messages].reverse() : [];
-                        setMsgs(prev => [...more, ...prev]);
-                        setMsgsHasMore(more.length >= 30);
-                      } catch {} finally { setMsgsLoading(false); }
-                    }} className="rounded-full bg-tg-bg px-3 py-0.5 text-[11px] text-tg-muted ring-1 ring-tg-line hover:ring-tg-accent">
-                      {msgsLoading ? "Загрузка…" : "↑ Загрузить ещё"}
-                    </button>
+            ))}
+            <div ref={msgsEndRef} />
+          </div>
+          {/* Compose */}
+          <div className="shrink-0 border-t border-tg-line bg-tg-panel px-3 py-2">
+            {draftState?.text || draftState?.loading || draftState?.error ? (
+              draftState.loading ? (
+                <div className="rounded-lg bg-tg-bg px-3 py-2 text-sm text-tg-muted">Генерирую черновик…</div>
+              ) : draftState.error ? (
+                <div className="space-y-1.5">
+                  <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">⚠️ {draftState.error}</div>
+                  <button onClick={requestDraft} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs hover:bg-white/20">Попробовать снова</button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="rounded bg-amber-500/15 px-2 py-1 text-[10px] font-bold text-amber-200">🤖 Черновик AI · проверь перед отправкой</div>
+                  <textarea value={draftState.text} onChange={(e) => editDraft(e.target.value)} rows={2} className="w-full resize-none rounded-lg bg-tg-bg px-3 py-2 text-sm outline-none" />
+                  <div className="flex justify-end gap-2">
+                    <button onClick={rejectDraft} disabled={draftState.sending} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/20 disabled:opacity-50">Отклонить</button>
+                    <button onClick={approveAndSend} disabled={draftState.sending || !draftState.text.trim()} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">{draftState.sending ? "Отправка…" : "✅ Отправить"}</button>
                   </div>
-                )}
-                {msgsLoading && msgs.length === 0 && (
-                  <div className="flex justify-center py-8 text-sm text-tg-muted">Загрузка истории…</div>
-                )}
-                {!msgsLoading && msgs.length === 0 && (
-                  <div className="flex justify-center py-8 text-sm text-tg-muted">
-                    {preview(selChat) ? (
-                      <div className="max-w-[70%] rounded-2xl bg-tg-bubble px-3 py-1.5 text-sm self-start">
-                        {preview(selChat)}
-                        <div className="mt-0.5 text-[10px] text-tg-muted">последнее сообщение</div>
-                      </div>
-                    ) : "Нет сообщений или история недоступна"}
-                  </div>
-                )}
-                {msgs.map((m) => {
-                  const isOwn = false; // TDLib sender detection future TODO
-                  const time = m.date ? new Date(m.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
-                  return (
-                    <div key={m.id} className={`flex ${isOwn ? "justify-end" : "justify-start"}`}>
-                      <div className={`max-w-[72%] rounded-2xl px-3 py-1.5 text-sm ${isOwn ? "bg-tg-active/70 text-white" : "bg-tg-bubble text-tg-text"}`}>
-                        {m.content}
-                        <div className={`mt-0.5 text-[10px] ${isOwn ? "text-white/60" : "text-tg-muted"}`}>{time}</div>
-                      </div>
-                    </div>
-                  );
-                })}
-                {(sentByChat[String(selChat.id)] || []).map((m, i) => (
-                  <div key={"sent_" + i} className="flex justify-end">
-                    <div className="max-w-[72%] rounded-2xl bg-emerald-600/70 px-3 py-1.5 text-sm text-white">
-                      {m.text}
-                      <div className="mt-0.5 text-[10px] text-white/60">отправлено · {new Date(m.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
-                    </div>
-                  </div>
-                ))}
-                <div ref={msgsEndRef} />
-              </div>
-              {/* Compose panel — direct send + AI draft option */}
-              <div className="border-t border-tg-line bg-tg-panel px-3 py-2">
-                {draftState?.text || draftState?.loading || draftState?.error ? (
-                  /* ── AI Draft approval UI ── */
-                  draftState.loading ? (
-                    <div className="rounded-lg bg-tg-bg px-3 py-2 text-sm text-tg-muted">Генерирую черновик…</div>
-                  ) : draftState.error ? (
-                    <div className="space-y-1.5">
-                      <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">⚠️ {draftState.error}</div>
-                      <button onClick={requestDraft} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs hover:bg-white/20">Попробовать снова</button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="rounded bg-amber-500/15 px-2 py-1 text-[10px] font-bold text-amber-200">🤖 Черновик AI · проверь и подтверди перед отправкой</div>
-                      <textarea value={draftState.text} onChange={(e) => editDraft(e.target.value)} rows={3} className="w-full resize-none rounded-lg bg-tg-bg px-3 py-2 text-sm outline-none" />
-                      <div className="flex justify-end gap-2">
-                        <button onClick={rejectDraft} disabled={draftState.sending} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/20 disabled:opacity-50">Отклонить</button>
-                        <button onClick={approveAndSend} disabled={draftState.sending || !draftState.text.trim()} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">{draftState.sending ? "Отправка…" : "✅ Подтвердить и отправить"}</button>
-                      </div>
-                    </div>
-                  )
+                </div>
+              )
+            ) : (
+              <div className="flex items-end gap-2">
+                <textarea
+                  value={compose}
+                  onChange={e => { setCompose(e.target.value); setComposeError(null); }}
+                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); directSend(); } }}
+                  placeholder="Сообщение…"
+                  rows={1}
+                  className="flex-1 resize-none rounded-2xl bg-tg-bg px-4 py-2 text-sm outline-none placeholder:text-tg-muted/60"
+                  style={{ maxHeight: 96 }}
+                />
+                {compose.trim() ? (
+                  <button onClick={directSend} disabled={composeSending} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-tg-accent text-white disabled:opacity-40 transition-all hover:brightness-110">
+                    {composeSending ? "…" : "➤"}
+                  </button>
                 ) : (
-                  /* ── Direct compose UI ── */
-                  <div className="space-y-1.5">
-                    <textarea
-                      value={compose}
-                      onChange={e => { setCompose(e.target.value); setComposeError(null); }}
-                      onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); directSend(); } }}
-                      placeholder="Написать сообщение… (Enter — отправить, Shift+Enter — перенос)"
-                      rows={2}
-                      className="w-full resize-none rounded-lg bg-tg-bg px-3 py-2 text-sm outline-none placeholder:text-tg-muted/60"
-                    />
-                    {composeError && <div className="text-[11px] text-rose-300">⚠️ {composeError}</div>}
-                    <div className="flex items-center gap-2">
-                      <button onClick={requestDraft} className="rounded-lg bg-tg-bg px-3 py-1.5 text-xs text-tg-muted ring-1 ring-tg-line hover:ring-tg-accent hover:text-tg-text transition-colors">🤖 AI-черновик</button>
-                      <button
-                        onClick={directSend}
-                        disabled={composeSending || !compose.trim()}
-                        className="ml-auto rounded-lg bg-tg-active px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-40 hover:brightness-110 transition-all"
-                      >
-                        {composeSending ? "Отправка…" : "➤ Отправить"}
-                      </button>
+                  <button onClick={requestDraft} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-tg-bg text-sm ring-1 ring-tg-line hover:ring-tg-accent transition-all">🤖</button>
+                )}
+              </div>
+            )}
+            {composeError && <div className="mt-1 text-[11px] text-rose-300">⚠️ {composeError}</div>}
+          </div>
+        </div>
+
+      /* ═══════════════════════════════════════════════════════════════════════
+          MOBILE TABBED LAYOUT
+         ═══════════════════════════════════════════════════════════════════════ */
+      ) : (
+        <>
+          {/* ── Tab-specific header ── */}
+          {mobileTab === "chats" && (
+            <header className="shrink-0 border-b border-tg-line bg-tg-panel px-4 pt-3 pb-0">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {account && <Avatar name={account.name} photoFileId={account.photoFileId} accountId={acc} size={30} />}
+                  <span className="text-[17px] font-black tracking-tight">EPIC<span className="text-tg-accent">☠️</span>GRAM</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full" style={{ background: connClr }} title={connLbl} />
+                  {accounts.length > 1 && (
+                    <select value={acc} onChange={e => setAcc(e.target.value)} className="ml-1 rounded-lg border border-tg-line bg-tg-bg px-1.5 py-0.5 text-[11px] text-tg-muted">
+                      {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    </select>
+                  )}
+                  <button onClick={() => { setPalette(true); setPq(""); }} className="flex h-8 w-8 items-center justify-center rounded-full text-tg-muted hover:bg-white/10">🔍</button>
+                  <button onClick={() => setMode("command")} className="flex h-8 w-8 items-center justify-center rounded-full text-tg-muted hover:bg-white/10 text-sm" title="Командный центр">🛰</button>
+                </div>
+              </div>
+              <div className="mb-2 flex items-center gap-2 rounded-full bg-white/8 px-3 py-1.5">
+                <span className="text-sm text-tg-muted/60">🔍</span>
+                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Поиск" className="flex-1 bg-transparent text-sm outline-none placeholder:text-tg-muted/60" />
+                {q && <button onClick={() => setQ("")} className="text-tg-muted/60 text-sm">✕</button>}
+              </div>
+              <div className="flex gap-1.5 overflow-x-auto pb-2" style={{ scrollbarWidth: "none" }}>
+                {FILTERS.map(f => (
+                  <button key={f} onClick={() => setFilter(f)} className={`shrink-0 rounded-full px-3 py-0.5 text-[11.5px] font-medium transition-all ${filter === f ? "bg-tg-accent text-white" : "bg-white/8 text-tg-muted hover:text-tg-text"}`}>{f}</button>
+                ))}
+              </div>
+            </header>
+          )}
+          {mobileTab === "contacts" && (
+            <header className="shrink-0 border-b border-tg-line bg-tg-panel px-4 pt-3 pb-3">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-[20px] font-bold">Контакты</span>
+              </div>
+              <div className="flex items-center gap-2 rounded-full bg-white/8 px-3 py-1.5">
+                <span className="text-sm text-tg-muted/60">🔍</span>
+                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Поиск контактов" className="flex-1 bg-transparent text-sm outline-none placeholder:text-tg-muted/60" />
+                {q && <button onClick={() => setQ("")} className="text-tg-muted/60 text-sm">✕</button>}
+              </div>
+            </header>
+          )}
+          {mobileTab === "epic" && (
+            <header className="shrink-0 border-b border-tg-line bg-tg-panel px-4 py-3 flex items-center justify-between">
+              <span className="text-[17px] font-black">☠️ Аккаунты</span>
+              <button onClick={onClose} className="rounded-lg bg-tg-bg px-3 py-1.5 text-sm text-tg-muted hover:text-tg-text">‹ Выйти</button>
+            </header>
+          )}
+          {mobileTab === "settings" && (
+            <header className="shrink-0 border-b border-tg-line bg-tg-panel px-4 py-3 flex items-center justify-between">
+              <span className="text-[20px] font-bold">Настройки</span>
+            </header>
+          )}
+          {mobileTab === "profile" && (
+            <header className="shrink-0 border-b border-tg-line bg-tg-panel px-4 py-3 flex items-center justify-between">
+              <button onClick={onClose} className="text-sm text-tg-muted hover:text-tg-text">‹ Назад</button>
+              <span className="font-bold">Профиль</span>
+              <span className="w-14" />
+            </header>
+          )}
+
+          {/* ── Tab content ── */}
+          <main className="min-h-0 flex-1 overflow-auto">
+
+            {/* ──────────── ЧАТЫ ──────────── */}
+            {mobileTab === "chats" && (
+              fDialogs.length > 0 ? (
+                <div>
+                  {fDialogs.map(d => (
+                    <button
+                      key={d.id}
+                      onClick={() => { setChat(d.id); setLocalItem(""); }}
+                      className="flex w-full items-center gap-3 border-b border-tg-line/20 px-4 py-2.5 text-left transition-colors hover:bg-white/5 active:bg-white/8"
+                    >
+                      <Avatar name={d.title || "чат"} size={54} photoFileId={d.photoSmallFileId} accountId={acc} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1">
+                          <span className="flex-1 truncate text-[15px] font-semibold text-tg-text">
+                            {cat(d) === "channel" ? "📢 " : cat(d) === "bot" ? "🤖 " : ""}{d.title || "чат"}
+                          </span>
+                          <span className="shrink-0 text-[12px] text-tg-muted">{fmtTs(d as any)}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="flex-1 truncate text-[13px] leading-tight text-tg-muted">
+                            {preview(d) || (cat(d) === "channel" ? "Канал" : cat(d) === "group" ? "Группа" : cat(d) === "bot" ? "Бот" : "Личный чат")}
+                          </span>
+                          <div className="flex shrink-0 items-center gap-1">
+                            {d.isMuted && <span className="text-[11px] text-tg-muted">🔕</span>}
+                            {(d.unreadCount || 0) > 0 && (
+                              <span className={`min-w-[18px] rounded-full px-1.5 text-center text-[11px] font-bold leading-[18px] text-white ${d.isMuted ? "bg-tg-muted/50" : "bg-tg-accent"}`}>
+                                {(d.unreadCount || 0) > 99 ? "99+" : d.unreadCount}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-3 text-tg-muted">
+                  <div className="text-5xl opacity-30">💬</div>
+                  <div className="text-sm">
+                    {loading ? "Синхронизация…"
+                      : conn === "offline" ? "Нет подключённого аккаунта"
+                      : "Чатов нет"}
+                  </div>
+                  {conn === "offline" && !loading && (
+                    <button onClick={() => handleNavClick("epic")} className="rounded-xl bg-tg-active px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110">
+                      Добавить аккаунт ☠️
+                    </button>
+                  )}
+                </div>
+              )
+            )}
+
+            {/* ──────────── КОНТАКТЫ ──────────── */}
+            {mobileTab === "contacts" && (
+              <div>
+                <div className="mx-4 mt-3 mb-1 overflow-hidden rounded-2xl bg-tg-panel ring-1 ring-tg-line/40">
+                  <button className="flex w-full items-center gap-3 px-4 py-3 transition-colors hover:bg-white/5 active:bg-white/8">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sky-500 text-xl text-white">👥</div>
+                    <span className="text-[15px]">Пригласить друзей</span>
+                  </button>
+                  <div className="mx-4 h-px bg-tg-line/40" />
+                  <button className="flex w-full items-center gap-3 px-4 py-3 transition-colors hover:bg-white/5 active:bg-white/8">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-xl text-white">📞</div>
+                    <span className="text-[15px]">Недавние звонки</span>
+                  </button>
+                </div>
+                {contacts.length > 0 && (
+                  <div className="px-4 pt-3 pb-1 text-[12px] font-semibold text-tg-accent">
+                    Сортировка по времени захода
+                  </div>
+                )}
+                {contacts.filter(c => !q || (c.title || "").toLowerCase().includes(q.toLowerCase())).map(c => (
+                  <button key={c.id} onClick={() => { setChat(c.id); setLocalItem(""); }} className="flex w-full items-center gap-3 border-b border-tg-line/20 px-4 py-2.5 text-left transition-colors hover:bg-white/5 active:bg-white/8">
+                    <Avatar name={c.title || "user"} size={50} photoFileId={c.photoSmallFileId} accountId={acc} />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[15px] font-semibold">{c.title || "user"}</div>
+                      <div className="text-[12px] text-tg-accent">{c.username ? "@" + c.username : "в сети"}</div>
                     </div>
+                  </button>
+                ))}
+                {contacts.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-16 gap-2 text-tg-muted">
+                    <div className="text-4xl opacity-30">👤</div>
+                    <div className="text-sm">{loading ? "Загрузка…" : conn === "offline" ? "Подключи аккаунт в разделе ☠️" : "Контакты не загружены"}</div>
                   </div>
                 )}
               </div>
-            </>
-          ) : <div className="flex flex-1 items-center justify-center text-tg-muted">{loading ? "Синхронизация…" : "Выбери чат · группу · канал · бота"}</div>}
-        </section>
-        <ColResizer onMouseDown={startPanelDrag("aside")} title="Изменить ширину панели агента" />
+            )}
 
-        <aside style={{ width: panelW.aside, flex: "0 0 auto" }} className="min-h-0 overflow-auto bg-tg-panel p-3">
-          <div className="text-[10px] font-black uppercase tracking-[0.18em] text-tg-accent">Интеграция агента</div>
-          {ownerAgent ? (
-            <div className="mt-2 space-y-1.5 text-xs">
-              <div className="flex items-center gap-2"><Avatar name={ownerAgent.name} size={34} /><div><div className="text-sm font-bold">{ownerAgent.name}</div><div className="text-[11px] text-tg-muted">{ownerAgent.role}</div></div></div>
-              <div className="text-tg-muted">Миссия: <b className="text-tg-text">{ownerMissions[0]?.title || "—"}</b></div>
-              <div className="text-tg-muted">Цели: <b className="text-tg-text">{ownerAgent.goals?.length || 0}</b> · Задачи: <b className="text-tg-text">{ownerAgent.tasks?.length || ctx.exec?.filter((e) => e.agentId === ownerAgent.id).length || 0}</b></div>
-              <div className="text-tg-muted">Модели: <b className="text-tg-text">{ownerAgent.model || "—"}</b></div>
-              <div className="text-tg-muted">Сервисы: <b className="text-tg-text">{(ownerAgent.integrations || []).join(", ") || "—"}</b></div>
-              <div className="text-tg-muted">Память: <b className="text-tg-text">{(ownerAgent.shortMem?.length || 0) + (ownerAgent.longMem?.length || 0)}</b> · База знаний: <b className="text-tg-text">{ownerAgent.knowledge?.length || 0}</b></div>
-              {onOpenAgent && <button onClick={() => onOpenAgent(ownerAgent.id)} className="mt-1 w-full rounded-lg bg-tg-active px-3 py-2 text-xs font-semibold text-white">Открыть рабочую область агента →</button>}
+            {/* ──────────── EPIC☠️GRAM (аккаунты) ──────────── */}
+            {mobileTab === "epic" && (
+              <div className="space-y-2 p-3">
+                {showWizard ? (
+                  <AddAccountWizard
+                    onSuccess={newSlotId => {
+                      setShowWizard(false); setAcc(newSlotId);
+                      setTimeout(() => setRefreshTick(t => t + 1), 800);
+                      handleNavClick("chats");
+                    }}
+                    onCancel={() => setShowWizard(false)}
+                  />
+                ) : (
+                  <>
+                    {accounts.map(a => (
+                      <button
+                        key={a.id}
+                        onClick={() => { setAcc(a.id); handleNavClick("chats"); }}
+                        className={`flex w-full items-center gap-3 rounded-2xl p-3 text-left transition-all ${acc === a.id ? "bg-tg-active/20 ring-1 ring-tg-accent" : "bg-tg-panel hover:bg-tg-panel/70"}`}
+                      >
+                        <Avatar name={a.name} size={52} photoFileId={a.photoFileId} accountId={a.id} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[15px] font-semibold">{a.name}</div>
+                          <div className="text-[12px] text-tg-muted">{a.phone !== "—" ? a.phone + " · " : ""}{a.status === "ready" ? "✓ подключён" : a.status}</div>
+                        </div>
+                        {a.status === "ready" && <span className="shrink-0 text-xl text-emerald-400">✓</span>}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => setShowWizard(true)}
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 py-3 text-[13px] font-medium text-white/40 transition-all hover:border-sky-500/40 hover:text-sky-400"
+                    >
+                      <span className="text-lg">+</span> Добавить Telegram-аккаунт
+                    </button>
+                    {accounts.length === 0 && <p className="py-2 text-center text-[11px] text-white/30">Нет подключённых аккаунтов</p>}
+                    {chats.length > 0 && (
+                      <div className="mt-3 grid grid-cols-3 gap-2">
+                        {([["💬","Диалоги",stats.dialogs],["👥","Группы",stats.groups],["📢","Каналы",stats.channels],["🤖","Боты",stats.bots],["📇","Контакты",stats.contacts],["📨","Непрочит.",stats.unread]] as const).map(([icon, l, v]) => (
+                          <div key={l} className="rounded-xl bg-tg-panel p-3 text-center">
+                            <div className="text-xl font-bold text-tg-accent">{v}</div>
+                            <div className="mt-0.5 text-[10px] text-tg-muted">{icon} {l}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ──────────── НАСТРОЙКИ ──────────── */}
+            {mobileTab === "settings" && (
+              <div className="h-full"><SettingsCenter embedded /></div>
+            )}
+
+            {/* ──────────── ПРОФИЛЬ ──────────── */}
+            {mobileTab === "profile" && (
+              <div className="pb-6">
+                {account ? (
+                  <>
+                    {/* Profile card */}
+                    <div className="flex flex-col items-center gap-2 border-b border-tg-line bg-tg-panel py-8 px-4">
+                      <Avatar name={account.name} size={90} photoFileId={account.photoFileId} accountId={account.id} />
+                      <div className="mt-1 text-[22px] font-bold">{account.name}</div>
+                      {account.username && <div className="text-[13px] text-tg-accent">@{account.username}</div>}
+                      {account.phone && account.phone !== "—" && <div className="text-[13px] text-tg-muted">{account.phone}</div>}
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className="h-2 w-2 rounded-full" style={{ background: connClr }} />
+                        <span className="text-[12px] text-tg-muted">{connLbl}</span>
+                      </div>
+                    </div>
+                    {/* Stats grid */}
+                    <div className="mx-4 mt-4 grid grid-cols-2 gap-3">
+                      {([["💬","Диалоги",stats.dialogs,"chats"],["👥","Группы",stats.groups,"chats"],["📢","Каналы",stats.channels,"chats"],["🤖","Боты",stats.bots,"chats"]] as const).map(([icon, l, v, dest]) => (
+                        <button key={l} onClick={() => handleNavClick(dest as MobileTab)} className="flex flex-col items-start rounded-2xl bg-tg-panel p-4 text-left transition-all hover:bg-tg-panel/70">
+                          <div className="text-[26px] font-extrabold text-tg-accent">{v}</div>
+                          <div className="text-[12px] text-tg-muted">{icon} {l}</div>
+                        </button>
+                      ))}
+                    </div>
+                    {/* Account switcher */}
+                    {accounts.length > 1 && (
+                      <div className="mx-4 mt-4 overflow-hidden rounded-2xl bg-tg-panel ring-1 ring-tg-line/40">
+                        <div className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-tg-muted">Аккаунты</div>
+                        {accounts.map((a, i) => (
+                          <div key={a.id}>
+                            {i > 0 && <div className="mx-4 h-px bg-tg-line/40" />}
+                            <button onClick={() => { setAcc(a.id); handleNavClick("chats"); }} className={`flex w-full items-center gap-3 px-4 py-3 transition-colors hover:bg-white/5 ${acc === a.id ? "text-tg-accent" : ""}`}>
+                              <Avatar name={a.name} size={36} photoFileId={a.photoFileId} accountId={a.id} />
+                              <div className="flex-1 text-left">
+                                <div className="text-[14px] font-semibold">{a.name}</div>
+                                <div className="text-[11px] text-tg-muted">{a.phone}</div>
+                              </div>
+                              {acc === a.id && <span className="text-tg-accent text-sm">✓</span>}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-20 gap-3 text-tg-muted">
+                    <div className="text-5xl opacity-30">👤</div>
+                    <div className="text-sm">Нет активного аккаунта</div>
+                    <button onClick={() => handleNavClick("epic")} className="rounded-xl bg-tg-active px-4 py-2 text-sm font-semibold text-white">Добавить аккаунт</button>
+                  </div>
+                )}
+              </div>
+            )}
+          </main>
+
+          {/* ── Bottom navigation bar ── */}
+          <nav className="shrink-0 border-t border-tg-line bg-tg-panel" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+            <div className="flex items-end">
+              {NAV_ITEMS.map(item => {
+                const active = mobileTab === item.id;
+                if (item.center) return (
+                  <button key={item.id} onClick={() => handleNavClick(item.id)} className="flex flex-1 flex-col items-center pb-2 pt-0">
+                    <div className={`-mt-5 flex h-14 w-14 items-center justify-center rounded-full text-2xl shadow-xl ring-4 ring-tg-bg transition-all ${active ? "bg-tg-accent scale-110 shadow-tg-accent/40" : "bg-tg-panel"}`}>
+                      ☠️
+                    </div>
+                  </button>
+                );
+                return (
+                  <button key={item.id} onClick={() => handleNavClick(item.id)} className={`flex flex-1 flex-col items-center gap-0.5 py-2 transition-all ${active ? "text-tg-accent" : "text-tg-muted hover:text-tg-text"}`}>
+                    <div className="relative">
+                      <span className="text-[22px] leading-none">{item.icon}</span>
+                      {item.badge !== undefined && item.badge > 0 && (
+                        <span className="absolute -right-1 -top-0.5 min-w-[14px] rounded-full bg-rose-500 px-1 text-center text-[9px] font-bold leading-[14px] text-white">
+                          {item.badge > 99 ? "99+" : item.badge}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] font-medium leading-none">{item.label}</span>
+                  </button>
+                );
+              })}
             </div>
-          ) : <div className="mt-2 text-xs text-tg-muted">Аккаунт не привязан к агенту.</div>}
-          <div className="mt-3 text-[10px] font-black uppercase tracking-[0.18em] text-tg-accent">Сессия</div>
-          {account ? (
-            <div className="mt-1 space-y-0.5 text-xs text-tg-muted">
-              <div>Аккаунт: <b className="text-tg-text">{account.name}</b></div>
-              <div>Телефон: <b className="text-tg-text">{account.phone}</b></div>
-              <div>Соединение: <b style={{ color: connClr }}>{connLbl}</b></div>
-              <div>Устройство: <b className="text-tg-text">{account.device}</b></div>
-            </div>
-          ) : <div className="mt-1 text-xs text-tg-muted">Нет активной сессии.</div>}
-          <div className="mt-3 text-[10px] font-black uppercase tracking-[0.18em] text-tg-accent">Статистика</div>
-          <div className="mt-1 grid grid-cols-3 gap-1 text-[11px]">{([["Диалоги", stats.dialogs], ["Группы", stats.groups], ["Каналы", stats.channels], ["Боты", stats.bots], ["Контакты", stats.contacts], ["Непрочитанные", stats.unread]] as const).map(([l, v]) => <div key={l} className="rounded bg-tg-bg/50 px-1.5 py-1"><div className="text-tg-muted">{l}</div><b>{v}</b></div>)}</div>
-        </aside>
-      </div>
+          </nav>
+        </>
       )}
 
+      {/* ─── Command palette ─── */}
       {palette && (
         <div className="fixed inset-0 z-[80] flex items-start justify-center bg-black/50 pt-24" onMouseDown={() => setPalette(false)}>
-          <div className="w-[540px] max-w-[92vw] overflow-hidden rounded-2xl border border-cyan-500/30 bg-tg-panel shadow-2xl" onMouseDown={(e) => e.stopPropagation()}>
-            <input autoFocus value={pq} onChange={(e) => setPq(e.target.value)} placeholder="Команда или поиск по чатам…" className="w-full border-b border-tg-line bg-tg-bg px-4 py-3 text-sm outline-none" />
+          <div className="w-[540px] max-w-[92vw] overflow-hidden rounded-2xl border border-cyan-500/30 bg-tg-panel shadow-2xl" onMouseDown={e => e.stopPropagation()}>
+            <input autoFocus value={pq} onChange={e => setPq(e.target.value)} placeholder="Команда или поиск по чатам…" className="w-full border-b border-tg-line bg-tg-bg px-4 py-3 text-sm outline-none" />
             <div className="max-h-[52vh] overflow-auto p-2">
               {palCommands.length > 0 && <div className="px-2 py-1 text-[10px] font-bold uppercase text-tg-muted">Команды</div>}
-              {palCommands.map((c) => <button key={c.id} onClick={() => { c.run(); setPalette(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-tg-bg/60"><span className="text-cyan-300">⌁</span>{c.label}</button>)}
+              {palCommands.map(c => <button key={c.id} onClick={() => { c.run(); setPalette(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-tg-bg/60"><span className="text-cyan-300">⌁</span>{c.label}</button>)}
               {palNodes.length > 0 && <div className="px-2 py-1 pt-2 text-[10px] font-bold uppercase text-tg-muted">Чаты ({palNodes.length})</div>}
-              {palNodes.map((n) => <button key={n.id} onClick={() => { setChat(n.id); setLocalItem(""); setPalette(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-tg-bg/60"><Avatar name={n.title || "чат"} size={22} />{n.title || "чат"}</button>)}
+              {palNodes.map(n => <button key={n.id} onClick={() => { setChat(n.id); setLocalItem(""); setPalette(false); setMobileTab("chats"); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-tg-bg/60"><Avatar name={n.title || "чат"} size={22} />{n.title || "чат"}</button>)}
               {pq && palCommands.length === 0 && palNodes.length === 0 && <div className="px-3 py-3 text-sm text-tg-muted">Ничего не найдено.</div>}
             </div>
-            <div className="border-t border-tg-line px-3 py-1.5 text-[10px] text-tg-muted">Esc — закрыть · ⌘K — переключить</div>
+            <div className="border-t border-tg-line px-3 py-1.5 text-[10px] text-tg-muted">Esc — закрыть</div>
           </div>
         </div>
       )}
