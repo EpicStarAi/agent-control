@@ -14,9 +14,10 @@ EPICGRAM_BACKEND_SERVICE_TOKEN=<gateway token>
 EPICGRAM_STAGING_OWNER_MODE=true
 EPICGRAM_STAGING_OWNER_ACCOUNT_ID=owner
 TELEGRAM_MUTATION=false
+EPIC_DEV_REFERRAL=<Replit-only access code>
 ```
 
-The gateway token must never be committed to Git. The public alias `owner` is deliberately not the real TDLib slot id.
+The gateway token and Replit access code must never be committed to Git. The public alias `owner` is deliberately not the real TDLib slot id. The access code creates an EPICGRAM owner session; it does not authorize Telegram and cannot export the VPS TDLib session.
 
 ## Gateway policy
 
