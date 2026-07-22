@@ -935,46 +935,24 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
     { id: "profile",  label: "Профиль",   icon: "○" },
   ];
 
-  return (
-    <div className="fixed inset-0 z-[55] flex flex-col bg-tg-bg text-tg-text" style={themeVars}>
+  // ─── Shared renderers ──────────────────────────────────────────────────────
 
-      {/* ═══════════════════════════════════════════════════════════════════════
-          COMMAND CENTER (legacy desktop mode — accessible via 🛰 button)
-         ═══════════════════════════════════════════════════════════════════════ */}
-      {mode === "command" ? (
-        <>
-          <header className="flex shrink-0 items-center gap-2 border-b border-tg-line bg-tg-panel px-4 py-2">
-            <button onClick={() => setMode("client")} className="rounded-lg bg-tg-bg px-3 py-1.5 text-sm text-tg-accent">‹ Назад</button>
-            <div className="font-black tracking-wide text-cyan-300">🛰 Командный центр</div>
-            <button onClick={() => { setPalette(true); setPq(""); }} className="ml-auto rounded-lg border border-cyan-500/40 bg-cyan-600/15 px-3 py-1.5 text-xs font-semibold text-cyan-200">⌘K</button>
-          </header>
-          <div className="flex min-h-0 flex-1">
-            <nav style={{ width: panelW.ccNav, flex: "0 0 auto" }} className="min-h-0 overflow-auto bg-tg-panel p-2">
-              <div className="mb-1 px-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Командный центр</div>
-              {CC_TABS.map((t) => (
-                <button key={t} onClick={() => setCc(t)} className={`mb-0.5 w-full rounded-lg px-2.5 py-1.5 text-left text-sm ${cc === t ? "bg-cyan-600/30 text-tg-text ring-1 ring-cyan-500/50" : "text-tg-muted hover:bg-tg-bg/40 hover:text-tg-text"}`}>{CC_TAB_LABELS[t] || t}</button>
-              ))}
-            </nav>
-            <ColResizer onMouseDown={startPanelDrag("ccNav")} title="Изменить ширину панели командного центра" />
-            <main className="min-h-0 min-w-0 flex-1 overflow-auto bg-tg-bg"><CommandCenter /></main>
-          </div>
-        </>
-
-      /* ═══════════════════════════════════════════════════════════════════════
-          CHAT DETAIL — full-screen when a chat is open
-         ═══════════════════════════════════════════════════════════════════════ */
-      ) : chatOpen ? (
-        <div className="flex h-full flex-col">
-          {/* Chat header */}
-          <div className="flex shrink-0 items-center gap-2.5 border-b border-tg-line bg-tg-panel px-3 py-2">
-            <button onClick={() => { setChat(""); setLocalItem(""); }} className="rounded-lg p-1.5 text-lg text-tg-accent hover:bg-white/10">‹</button>
-            <Avatar name={selChat.title || "чат"} size={38} photoFileId={selChat.photoSmallFileId} accountId={acc} />
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[15px] font-semibold">{selChat.title || "чат"}</div>
-              <div className="text-[11px] text-tg-muted">{cat(selChat)}{selChat.memberCount ? " · " + selChat.memberCount.toLocaleString() + " участников" : ""}</div>
-            </div>
-            <div className="flex shrink-0 gap-2.5 text-tg-muted"><span className="text-xl">🔍</span><span className="text-xl">📌</span></div>
-          </div>
+  const renderChatPanel = (withBackBtn: boolean) => !chatOpen ? null : (
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 items-center gap-2.5 border-b border-tg-line bg-tg-panel px-3 py-2">
+        {withBackBtn && (
+          <button onClick={() => { setChat(""); setLocalItem(""); }} className="rounded-lg p-1.5 text-lg text-tg-accent hover:bg-white/10">‹</button>
+        )}
+        <Avatar name={selChat!.title || "чат"} size={38} photoFileId={selChat!.photoSmallFileId} accountId={acc} />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[15px] font-semibold">{selChat!.title || "чат"}</div>
+          <div className="text-[11px] text-tg-muted">{cat(selChat!)}{selChat!.memberCount ? " · " + selChat!.memberCount.toLocaleString() + " участников" : ""}</div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {!withBackBtn && <button onClick={() => { setChat(""); setLocalItem(""); }} className="flex h-8 w-8 items-center justify-center rounded-full text-tg-muted hover:bg-white/10">✕</button>}
+          <span className="text-xl text-tg-muted">🔍</span><span className="text-xl text-tg-muted">📌</span>
+        </div>
+      </div>
           {/* Messages */}
           <div className="min-h-0 flex-1 space-y-1.5 overflow-auto p-3">
             {msgsHasMore && (
@@ -1069,13 +1047,151 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
             {composeError && <div className="mt-1 text-[11px] text-rose-300">⚠️ {composeError}</div>}
           </div>
         </div>
+  ); // end renderChatPanel
 
-      /* ═══════════════════════════════════════════════════════════════════════
-          MOBILE TABBED LAYOUT
-         ═══════════════════════════════════════════════════════════════════════ */
-      ) : (
-        <>
-          {/* ── Tab-specific header ── */}
+  const renderChatList = () => (
+    <div className="min-h-0 flex-1 overflow-auto">
+      {fDialogs.length > 0 ? fDialogs.map(d => (
+        <button key={d.id} onClick={() => { setChat(d.id); setLocalItem(""); }}
+          className={`flex w-full items-center gap-3 border-b border-tg-line/20 px-4 py-2.5 text-left transition-colors hover:bg-white/5 ${chat === d.id ? "bg-white/8" : ""}`}
+        >
+          <Avatar name={d.title || "чат"} size={54} photoFileId={d.photoSmallFileId} accountId={acc} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1">
+              <span className="flex-1 truncate text-[15px] font-semibold text-tg-text">
+                {cat(d) === "channel" ? "📢 " : cat(d) === "bot" ? "🤖 " : ""}{d.title || "чат"}
+              </span>
+              <span className="shrink-0 text-[12px] text-tg-muted">{fmtTs(d as any)}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="flex-1 truncate text-[13px] leading-tight text-tg-muted">
+                {preview(d) || (cat(d) === "channel" ? "Канал" : cat(d) === "group" ? "Группа" : cat(d) === "bot" ? "Бот" : "Личный чат")}
+              </span>
+              <div className="flex shrink-0 items-center gap-1">
+                {d.isMuted && <span className="text-[11px] text-tg-muted">🔕</span>}
+                {(d.unreadCount || 0) > 0 && (
+                  <span className={`min-w-[18px] rounded-full px-1.5 text-center text-[11px] font-bold leading-[18px] text-white ${d.isMuted ? "bg-tg-muted/50" : "bg-tg-accent"}`}>
+                    {(d.unreadCount || 0) > 99 ? "99+" : d.unreadCount}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </button>
+      )) : (
+        <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-tg-muted">
+          {loading ? (
+            <>
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-tg-accent/30 border-t-tg-accent" />
+              <div className="text-sm">Синхронизация…</div>
+            </>
+          ) : (
+            <>
+              <div className="text-5xl opacity-30">💬</div>
+              <div className="text-sm">{conn === "offline" ? "Нет подключённого аккаунта" : "Чатов нет"}</div>
+              {conn === "offline"
+                ? <button onClick={() => setShowWizard(true)} className="rounded-xl bg-tg-active px-4 py-2 text-sm font-semibold text-white">Добавить аккаунт ☠️</button>
+                : <button onClick={() => setRefreshTick(t => t + 1)} className="rounded-xl border border-tg-line px-4 py-2 text-sm text-tg-muted hover:text-tg-text hover:bg-white/5">↺ Обновить</button>
+              }
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderCommandCenter = () => (
+    <>
+      <header className="flex shrink-0 items-center gap-2 border-b border-tg-line bg-tg-panel px-4 py-2">
+        <button onClick={() => setMode("client")} className="rounded-lg bg-tg-bg px-3 py-1.5 text-sm text-tg-accent">‹ Назад</button>
+        <div className="font-black tracking-wide text-cyan-300">🛰 Командный центр</div>
+        <button onClick={() => { setPalette(true); setPq(""); }} className="ml-auto rounded-lg border border-cyan-500/40 bg-cyan-600/15 px-3 py-1.5 text-xs font-semibold text-cyan-200">⌘K</button>
+      </header>
+      <div className="flex min-h-0 flex-1">
+        <nav style={{ width: panelW.ccNav, flex: "0 0 auto" }} className="min-h-0 overflow-auto bg-tg-panel p-2">
+          <div className="mb-1 px-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Командный центр</div>
+          {CC_TABS.map((t) => (
+            <button key={t} onClick={() => setCc(t)} className={`mb-0.5 w-full rounded-lg px-2.5 py-1.5 text-left text-sm ${cc === t ? "bg-cyan-600/30 text-tg-text ring-1 ring-cyan-500/50" : "text-tg-muted hover:bg-tg-bg/40 hover:text-tg-text"}`}>{CC_TAB_LABELS[t] || t}</button>
+          ))}
+        </nav>
+        <ColResizer onMouseDown={startPanelDrag("ccNav")} title="Изменить ширину панели командного центра" />
+        <main className="min-h-0 min-w-0 flex-1 overflow-auto bg-tg-bg"><CommandCenter /></main>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="fixed inset-0 z-[55] flex bg-tg-bg text-tg-text" style={themeVars}>
+
+      {/* ════════════════════════════════════════════════════════════════════════
+          DESKTOP SIDEBAR — always visible on md+, hidden on mobile
+         ════════════════════════════════════════════════════════════════════════ */}
+      <aside className="relative hidden md:flex md:flex-col border-r border-tg-line bg-tg-panel" style={{ width: 360, flexShrink: 0 }}>
+        <header className="shrink-0 border-b border-tg-line px-3 pt-3 pb-0">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {account && <Avatar name={account.name} photoFileId={account.photoFileId} accountId={acc} size={30} />}
+              <span className="text-[17px] font-black tracking-tight">EPIC<span className="text-tg-accent">☠️</span>GRAM</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full" style={{ background: connClr }} title={connLbl} />
+              {accounts.length > 1 && (
+                <select value={acc} onChange={e => setAcc(e.target.value)} className="ml-1 rounded-lg border border-tg-line bg-tg-bg px-1.5 py-0.5 text-[11px] text-tg-muted">
+                  {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              )}
+              <button onClick={() => { setPalette(true); setPq(""); }} className="flex h-8 w-8 items-center justify-center rounded-full text-tg-muted hover:bg-white/10">🔍</button>
+              <button onClick={() => setMode("command")} className="flex h-8 w-8 items-center justify-center rounded-full text-tg-muted hover:bg-white/10 text-sm" title="Командный центр">🛰</button>
+              <button onClick={() => setShowWizard(true)} className="flex h-8 w-8 items-center justify-center rounded-full text-tg-muted hover:bg-white/10 text-sm" title="Добавить аккаунт">☠️</button>
+            </div>
+          </div>
+          <div className="mb-2 flex items-center gap-2 rounded-full bg-white/8 px-3 py-1.5">
+            <span className="text-sm text-tg-muted/60">🔍</span>
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Поиск" className="flex-1 bg-transparent text-sm outline-none placeholder:text-tg-muted/60" />
+            {q && <button onClick={() => setQ("")} className="text-tg-muted/60 text-sm">✕</button>}
+          </div>
+          <div className="flex gap-1.5 overflow-x-auto pb-2" style={{ scrollbarWidth: "none" }}>
+            {FILTERS.map(f => (
+              <button key={f} onClick={() => setFilter(f)} className={`shrink-0 rounded-full px-3 py-0.5 text-[11.5px] font-medium transition-all ${filter === f ? "bg-tg-accent text-white" : "bg-white/8 text-tg-muted hover:text-tg-text"}`}>{f}</button>
+            ))}
+          </div>
+        </header>
+        {renderChatList()}
+        {showWizard && (
+          <div className="absolute inset-0 z-10 flex flex-col bg-tg-panel">
+            <div className="flex shrink-0 items-center gap-2 border-b border-tg-line px-4 py-3">
+              <button onClick={() => setShowWizard(false)} className="text-sm text-tg-accent">‹ Назад</button>
+              <span className="font-semibold">Добавить аккаунт</span>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto p-3">
+              <AddAccountWizard
+                onSuccess={newSlotId => { setShowWizard(false); setAcc(newSlotId); setTimeout(() => setRefreshTick(t => t + 1), 800); }}
+                onCancel={() => setShowWizard(false)}
+              />
+            </div>
+          </div>
+        )}
+      </aside>
+
+      {/* ════════════════════════════════════════════════════════════════════════
+          DESKTOP MAIN PANEL — right side on md+
+         ════════════════════════════════════════════════════════════════════════ */}
+      <div className="hidden md:flex md:flex-col md:flex-1 md:min-w-0">
+        {mode === "command" ? renderCommandCenter() : chatOpen ? renderChatPanel(false) : (
+          <div className="flex h-full flex-col items-center justify-center gap-2 text-tg-muted">
+            <div className="text-7xl opacity-10">💬</div>
+            <div className="text-sm">Выберите чат</div>
+          </div>
+        )}
+      </div>
+
+      {/* ════════════════════════════════════════════════════════════════════════
+          MOBILE LAYOUT — full-screen tabs + bottom nav (hidden on md+)
+         ════════════════════════════════════════════════════════════════════════ */}
+      <div className="flex flex-col flex-1 min-w-0 md:hidden">
+        {mode === "command" ? renderCommandCenter() : chatOpen ? renderChatPanel(true) : (
+          <>
+            {/* ── Tab-specific header ── */}
           {mobileTab === "chats" && (
             <header className="shrink-0 border-b border-tg-line bg-tg-panel px-4 pt-3 pb-0">
               <div className="mb-2 flex items-center justify-between">
@@ -1380,7 +1496,8 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
             </div>
           </nav>
         </>
-      )}
+        )}
+      </div>
 
       {/* ─── Command palette ─── */}
       {palette && (
