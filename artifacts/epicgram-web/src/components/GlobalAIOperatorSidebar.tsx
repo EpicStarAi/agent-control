@@ -10,7 +10,8 @@ import { emitGlowState } from "@/hooks/useAIGlowSettings";
 type Role = "user" | "assistant" | "system" | "tool_call";
 type ActionStatus = "executing" | "completed" | "error";
 interface ApprovalCard { type: string; tool: string; payload: Record<string, any>; warning: string }
-interface Msg { role: Role; content: string; id: string; streaming?: boolean; toolName?: string; approvalCards?: ApprovalCard[]; status?: ActionStatus }
+interface InlineImage { dataUrl: string; prompt: string }
+interface Msg { role: Role; content: string; id: string; streaming?: boolean; toolName?: string; approvalCards?: ApprovalCard[]; status?: ActionStatus; images?: InlineImage[] }
 type WinState = { x: number; y: number; w: number; h: number; minimized: boolean; maximized: boolean };
 interface Attachment { name: string; type: string; dataUrl: string; size: number }
 interface OperatorSettings { model: string; temperature: number; customSystemPrompt: string }
@@ -78,6 +79,7 @@ const TOOL_LABELS: Record<string, string> = {
   analyse_chat:               "🔎 Анализирую переписку…",
   extract_tasks:              "📋 Извлекаю задачи из чата…",
   get_daily_summary:          "📅 Собираю ежедневный дайджест…",
+  generate_image:             "🎨 Генерирую изображение…",
   propose_send_message:       "📨 Формирую запрос на отправку…",
   propose_forward_message:    "↩️ Формирую запрос на пересылку…",
   propose_set_reaction:       "😊 Формирую запрос на реакцию…",
@@ -313,6 +315,14 @@ export function GlobalAIOperatorSidebar() {
             if (payload.status) {
               setMessages(prev => prev.map(m =>
                 m.id === assistantId ? { ...m, status: payload.status as ActionStatus } : m
+              ));
+            }
+
+            if (payload.image) {
+              setMessages(prev => prev.map(m =>
+                m.id === assistantId
+                  ? { ...m, images: [...(m.images ?? []), payload.image as InlineImage] }
+                  : m
               ));
             }
 
@@ -606,6 +616,31 @@ export function GlobalAIOperatorSidebar() {
                         : { background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
                       <MessageContent content={msg.content} streaming={msg.streaming} />
                     </div>
+                    {/* Inline generated images */}
+                    {msg.role === "assistant" && msg.images && msg.images.length > 0 && (
+                      <div className="flex flex-col gap-2 pt-0.5">
+                        {msg.images.map((img, i) => (
+                          <div key={i} className="overflow-hidden rounded-xl border border-white/10 bg-white/4">
+                            <img
+                              src={img.dataUrl}
+                              alt={img.prompt}
+                              className="max-h-[240px] w-full object-contain"
+                              style={{ background: "rgba(0,0,0,0.3)" }}
+                            />
+                            <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+                              <p className="flex-1 truncate text-[9px] text-white/30 italic">{img.prompt.slice(0, 60)}</p>
+                              <a
+                                href={img.dataUrl}
+                                download={`epicgram-img-${i + 1}.png`}
+                                className="shrink-0 rounded-lg border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] text-white/50 hover:text-white/80 hover:bg-white/10 transition-all"
+                              >
+                                ↓ Сохранить
+                              </a>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {/* Action status chip — only shown for multi-step operations */}
                     {msg.role === "assistant" && msg.status && (
                       <div className="flex items-center gap-1.5 pl-1">

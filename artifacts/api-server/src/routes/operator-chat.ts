@@ -4,7 +4,8 @@
 // SAFETY: never sends Telegram messages itself, never exposes secrets/tokens.
 
 import { Router } from "express";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { openai, generateImageBuffer } from "@workspace/integrations-openai-ai-server";
+import pdfParse from "pdf-parse";
 
 const router = Router();
 
@@ -38,6 +39,9 @@ Always start complex tasks by reading real data first. Never guess or invent dat
 • extract_tasks         — extract action items with owners and implied deadlines from a chat
 • get_daily_summary     — full daily digest: unread, top chats, unanswered, recent actions
 
+═══ MEDIA TOOLS (auto-execute, return results inline) ══════════════
+• generate_image     — generate an image with DALL-E/gpt-image-1; returns the image inline in chat
+
 ═══ WRITE TOOLS (ALWAYS require approval card — NEVER auto-execute) ═══
 • propose_send_message     — draft a new message
 • propose_forward_message  — forward a message to another chat
@@ -45,6 +49,20 @@ Always start complex tasks by reading real data first. Never guess or invent dat
 • propose_pin_message      — pin a message
 • propose_edit_message     — edit your own message
 • propose_delete_message   — delete one or more messages
+
+═══ FILE & IMAGE PATTERNS ══════════════════════════════════════
+When user uploads an IMAGE:
+  — Vision is enabled automatically; describe it, extract text (OCR), or analyse content.
+  — Offer follow-up quick actions: describe, create similar, describe objects/text found.
+
+When user uploads a PDF:
+  — The document text is injected automatically as a <document> block.
+  — Summarise it, extract key points, or answer questions about its contents.
+
+When user asks to generate / "сгенерируй" / "нарисуй" an image:
+  1. Call generate_image with a detailed English prompt (images generate better in English).
+  2. The image appears inline in the chat — confirm what was generated.
+  3. Offer to regenerate with variations if requested.
 
 ═══ ANALYSIS PATTERNS ══════════════════════════════════════════
 When asked to "перескажи чат" / "summarise":
@@ -283,6 +301,22 @@ const TOOLS: any[] = [
       },
     },
   },
+  // MEDIA tools — auto-execute, return result inline
+  {
+    type: "function",
+    function: {
+      name: "generate_image",
+      description: "Generate an image using DALL-E / gpt-image-1. Use when user asks to 'сгенерируй', 'нарисуй', 'создай изображение', 'generate image', 'make a picture'. Always write the prompt in English for best results.",
+      parameters: {
+        type: "object",
+        required: ["prompt"],
+        properties: {
+          prompt: { type: "string", description: "Detailed English image generation prompt" },
+          size: { type: "string", enum: ["1024x1024", "512x512", "256x256"], description: "Image size (default 1024x1024)" },
+        },
+      },
+    },
+  },
   // WRITE tools — each surfaces an approval card, never auto-executes
   {
     type: "function",
@@ -393,8 +427,9 @@ const TOOLS: any[] = [
   },
 ];
 
-// ── tool executor (READ tools only — no writes) ───────────────────────────────
-async function executeTool(name: string, args: Record<string, any>): Promise<{ result: string; approvalCard?: object }> {
+// ── tool executor ─────────────────────────────────────────────────────────────
+interface ToolResult { result: string; approvalCard?: object; imageResult?: { dataUrl: string; prompt: string } }
+async function executeTool(name: string, args: Record<string, any>): Promise<ToolResult> {
   const get = (path: string): Promise<any> =>
     fetch(`${API_BASE}${path}`, { headers: { "Accept": "application/json" } })
       .then(r => r.json() as Promise<any>).catch(() => ({ error: "fetch failed" }));
@@ -565,6 +600,22 @@ async function executeTool(name: string, args: Record<string, any>): Promise<{ r
       }) };
     }
 
+    case "generate_image": {
+      const { prompt, size = "1024x1024" } = args;
+      if (!prompt?.trim()) return { result: "Error: prompt is required for image generation." };
+      const validSize = ["1024x1024", "512x512", "256x256"].includes(size) ? size : "1024x1024";
+      try {
+        const buf = await generateImageBuffer(prompt.trim(), validSize as "1024x1024" | "512x512" | "256x256");
+        const dataUrl = `data:image/png;base64,${buf.toString("base64")}`;
+        return {
+          result: `Изображение успешно сгенерировано по запросу: "${prompt.trim().slice(0, 80)}". Оно отображается в чате.`,
+          imageResult: { dataUrl, prompt: prompt.trim() },
+        };
+      } catch (err: any) {
+        return { result: `Ошибка генерации изображения: ${err?.message ?? "unknown error"}` };
+      }
+    }
+
     case "propose_send_message": {
       const card = {
         type: "APPROVAL_REQUIRED",
@@ -713,8 +764,23 @@ router.post("/operator/chat", async (req, res) => {
       return { role: m.role, content: m.content };
     });
 
-    // Add non-image attachment info to system context
-    const otherAtts = (attachments ?? []).filter(a => !a.type.startsWith("image/"));
+    // Extract text from PDF attachments and inject as <document> blocks
+    const pdfAtts = (attachments ?? []).filter(a => a.type === "application/pdf" || a.name?.toLowerCase().endsWith(".pdf"));
+    let pdfDocBlocks = "";
+    for (const pdf of pdfAtts.slice(0, 3)) {
+      try {
+        const b64 = pdf.dataUrl.split(",")[1] ?? pdf.dataUrl;
+        const buf = Buffer.from(b64, "base64");
+        const parsed = await pdfParse(buf);
+        const text = (parsed.text ?? "").trim().slice(0, 8000);
+        if (text) {
+          pdfDocBlocks += `\n<document name="${pdf.name}">\n${text}\n</document>\n`;
+        }
+      } catch { /* skip unreadable PDF */ }
+    }
+
+    // Add non-image/non-pdf attachment info to system context
+    const otherAtts = (attachments ?? []).filter(a => !a.type.startsWith("image/") && a.type !== "application/pdf");
     if (otherAtts.length > 0) {
       ctxLines.push(`\nПрикреплённые файлы: ${otherAtts.map(a => a.name).join(", ")}`);
     }
@@ -723,6 +789,30 @@ router.post("/operator/chat", async (req, res) => {
       { role: "system", content: systemContent },
       ...historyMsgs,
     ];
+
+    // Inject PDF text into the last user message as a document block.
+    // Preserves multimodal array structure (image_url blocks) when images + PDFs arrive together.
+    if (pdfDocBlocks) {
+      const lastUserIdx = [...chatMessages].map((m, i) => ({ m, i })).reverse().find(({ m }) => m.role === "user");
+      if (lastUserIdx) {
+        const idx = lastUserIdx.i;
+        const existing = chatMessages[idx];
+        if (Array.isArray(existing.content)) {
+          // Multimodal message — find the existing text block and append PDF text to it;
+          // if there's no text block yet, prepend one so image_url items remain intact.
+          const textBlock = (existing.content as any[]).find((c: any) => c.type === "text");
+          if (textBlock) {
+            textBlock.text = `${textBlock.text ?? ""}\n${pdfDocBlocks}`.trim();
+          } else {
+            (existing.content as any[]).unshift({ type: "text", text: pdfDocBlocks.trim() });
+          }
+        } else {
+          // Plain-text message — safe to replace with a string
+          const existingText = typeof existing.content === "string" ? existing.content : "";
+          chatMessages[idx] = { role: "user", content: `${existingText}\n${pdfDocBlocks}`.trim() };
+        }
+      }
+    }
 
     let approvalCards: object[] = [];
     let toolsWereCalled = false;
@@ -809,8 +899,9 @@ router.post("/operator/chat", async (req, res) => {
         // Signal to frontend that a tool is being called
         sse({ toolCall: { name: toolName, args } });
 
-        const { result, approvalCard } = await executeTool(toolName, args);
+        const { result, approvalCard, imageResult } = await executeTool(toolName, args);
         if (approvalCard) approvalCards.push(approvalCard);
+        if (imageResult) sse({ image: imageResult });
 
         chatMessages.push({
           role: "tool",
