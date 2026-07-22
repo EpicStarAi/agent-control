@@ -1,0 +1,332 @@
+Ты прав, разберёмся: TikTok-набор я уже дал раньше — он был первым сообщением и назывался "# EPICGRAM TikTok Skills Skeleton", а Instagram шёл отдельно вторым сообщением после твоей просьбы "теперь инстаграм". Похоже, ты просто их перепутал при чтении — они соседние в чате, но это два разных набора.
+
+Чтобы не искать выше, вот TikTok skeleton заново, полностью.
+
+## EPICGRAM TikTok Skills Skeleton
+
+### 1. `epicgram-tiktok-brief/SKILL.md`
+
+```md
+---
+name: epicgram-tiktok-brief
+description: Turn a raw Telegram or operator idea into a structured TikTok content brief with hook, format, CTA, tone, duration, and audience.
+---
+
+# epicgram-tiktok-brief
+
+## Summary
+Create a TikTok-first content brief from raw ideas, notes, messages, or campaign goals.
+
+## Inputs
+- account_id: string
+- project_id: string
+- idea_text: string
+- source_context: optional string
+- campaign_goal: optional string
+- target_audience: optional string
+- duration_target: optional enum (15s, 30s, 45s, 60s)
+- tone: optional string
+
+## Outputs
+- brief_title: string
+- content_angle: string
+- hook_direction: string
+- video_format: enum (talking_head, meme, tutorial, reaction, storytime, duet_like)
+- cta: string
+- target_duration: string
+- audience_profile: string
+- constraints: array
+- risk_flags: array
+
+## Tools
+- POST /api/skills/tiktok/brief
+- GET /api/accounts/:account_id/identity
+
+## Safety
+- Must not publish or schedule anything.
+- Should attach risk notes for sensitive topics.
+```
+
+### 2. `epicgram-tiktok-script-writer/SKILL.md`
+
+```md
+---
+name: epicgram-tiktok-script-writer
+description: Generate a TikTok script with scene timing, hooks, transitions, overlays, and CTA from a TikTok brief.
+---
+
+# epicgram-tiktok-script-writer
+
+## Inputs
+- brief: object
+- account_identity: object
+- variant_count: optional integer
+- max_duration_sec: optional integer
+
+## Outputs
+- script_variants: array
+- scene_list: array
+- hook_lines: array
+- overlay_texts: array
+- cta_options: array
+- voiceover_text: string
+
+## Tools
+- POST /api/skills/tiktok/script
+
+## Safety
+- Must flag harmful or manipulative scripts for review.
+- Must never auto-approve for publishing.
+```
+
+### 3. `epicgram-tiktok-hook-optimizer/SKILL.md`
+
+```md
+---
+name: epicgram-tiktok-hook-optimizer
+description: Improve the first 1-3 seconds of a TikTok script by optimizing hook line, opening frame, and overlay text.
+---
+
+# epicgram-tiktok-hook-optimizer
+
+## Inputs
+- script_variant: object
+- target_emotion: optional string
+- forbidden_patterns: optional array
+
+## Outputs
+- optimized_hook_line: string
+- opening_visual_cue: string
+- overlay_text: string
+- hook_score: number
+- revision_notes: array
+
+## Tools
+- POST /api/skills/tiktok/hook-optimize
+
+## Safety
+- Must avoid deceptive or policy-risk hook patterns.
+```
+
+### 4. `epicgram-tiktok-caption-hashtags/SKILL.md`
+
+```md
+---
+name: epicgram-tiktok-caption-hashtags
+description: Generate TikTok captions, hashtag packs, and cross-promo snippets from a TikTok script or brief.
+---
+
+# epicgram-tiktok-caption-hashtags
+
+## Inputs
+- brief: object
+- script_variant: object
+- account_identity: object
+- crosspromo_targets: optional array
+
+## Outputs
+- caption_variants: array
+- hashtag_sets: array
+- comment_hook_suggestions: array
+- crosspromo_snippets: array
+
+## Tools
+- POST /api/skills/tiktok/caption
+
+## Safety
+- Must avoid spammy hashtag stuffing.
+- Should flag risky claims or manipulative captions.
+```
+
+### 5. `epicgram-tiktok-music-selector/SKILL.md`
+
+```md
+---
+name: epicgram-tiktok-music-selector
+description: Select TikTok-compatible music direction or track candidates based on mood, trend, region, and content type.
+---
+
+# epicgram-tiktok-music-selector
+
+## Inputs
+- brief: object
+- region: optional string
+- mood: optional string
+- content_type: optional string
+
+## Outputs
+- music_candidates: array
+- selection_reasoning: array
+- region_restrictions: array
+- fallback_music_direction: string
+
+## Tools
+- POST /api/skills/tiktok/music
+
+## Safety
+- Must not select disallowed or unlicensed music sources.
+```
+
+### 6. `epicgram-tiktok-video-assembly/SKILL.md`
+
+```md
+---
+name: epicgram-tiktok-video-assembly
+description: Build a render plan for TikTok videos including scenes, overlays, timing, subtitles, effects, and audio cues.
+---
+
+# epicgram-tiktok-video-assembly
+
+## Inputs
+- script_variant: object
+- overlay_texts: array
+- voiceover_text: string
+- music_candidate: object
+- media_assets: optional array
+
+## Outputs
+- render_plan: object
+- timeline_blocks: array
+- subtitle_plan: array
+- effects_plan: array
+- asset_requirements: array
+
+## Tools
+- POST /api/skills/tiktok/video-assembly
+- POST /api/media/render-plan
+
+## Safety
+- Must not trigger live publication.
+```
+
+### 7. `epicgram-tiktok-publisher/SKILL.md`
+
+```md
+---
+name: epicgram-tiktok-publisher
+description: Publish or schedule a TikTok video using approved assets, captions, hashtags, privacy, and account settings.
+---
+
+# epicgram-tiktok-publisher
+
+## Inputs
+- account_id: string
+- approved_media_url: string
+- approved_caption: string
+- approved_hashtags: array
+- privacy_setting: enum
+- scheduled_time: optional datetime
+- approval_token: string
+
+## Outputs
+- publish_status: enum (scheduled, published, failed)
+- platform_post_id: string
+- platform_url: string
+- error_details: optional object
+
+## Tools
+- POST /api/skills/tiktok/publish
+- POST /api/skills/safe-mode/check
+- POST /api/skills/review/verify-approval
+
+## Safety
+- Must verify approval token before side effects.
+- Must refuse bulk publish if global safe mode blocks it.
+- Must log audit event for every publish attempt.
+```
+
+### 8. `epicgram-tiktok-analytics/SKILL.md`
+
+```md
+---
+name: epicgram-tiktok-analytics
+description: Retrieve and analyze TikTok performance metrics for videos, campaigns, and account growth.
+---
+
+# epicgram-tiktok-analytics
+
+## Inputs
+- account_id: string
+- post_ids: optional array
+- time_range: optional object
+
+## Outputs
+- metrics_summary: object
+- top_posts: array
+- retention_findings: array
+- growth_recommendations: array
+
+## Tools
+- GET /api/skills/tiktok/analytics
+
+## Safety
+- Read-only skill; must not modify content or publishing state.
+```
+
+### 9. `epicgram-tiktok-growth-strategist/SKILL.md`
+
+```md
+---
+name: epicgram-tiktok-growth-strategist
+description: Build TikTok growth recommendations based on performance patterns, audience response, and posting strategy.
+---
+
+# epicgram-tiktok-growth-strategist
+
+## Inputs
+- analytics_summary: object
+- account_identity: object
+- campaign_history: array
+
+## Outputs
+- growth_hypotheses: array
+- posting_strategy: object
+- experiment_plan: array
+- next_content_recommendations: array
+
+## Tools
+- POST /api/skills/tiktok/growth
+
+## Safety
+- Advisory only; must not trigger publishing.
+```
+
+### 10. `epicgram-tiktok-safe-mode/SKILL.md`
+
+```md
+---
+name: epicgram-tiktok-safe-mode
+description: Evaluate TikTok actions for policy, abuse, approval, rate limit, and operational risk before publication or automation.
+---
+
+# epicgram-tiktok-safe-mode
+
+## Inputs
+- action_type: enum (publish, schedule, edit, delete, bulk_publish, bulk_edit)
+- account_id: string
+- content_payload: object
+- operator_role: string
+- requested_volume: optional integer
+
+## Outputs
+- decision: enum (allow, needs_approval, block)
+- risk_score: number
+- policy_flags: array
+- required_approvals: array
+- reasoning: array
+
+## Tools
+- POST /api/skills/tiktok/safe-mode
+- POST /api/moderation/check
+- GET /api/accounts/:account_id/rate-limits
+
+## Safety
+- This skill is itself the safety layer and must be called before side effects.
+- Bulk actions should default to needs_approval or block unless explicitly allowed.
+```
+
+## Пайплайн
+
+`brief` → `script-writer` → `hook-optimizer` → `caption-hashtags` → `music-selector` → `video-assembly` → `safe-mode` → `review-and-approval` → `publisher` → `analytics` → `growth-strategist`.
+
+Это ровно то, что было раньше — специально повторил в этом сообщении, чтобы не путать с Instagram-набором.
