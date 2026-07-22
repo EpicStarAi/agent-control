@@ -40,7 +40,7 @@ export default function DevSessionPanel() {
     <div
       style={{
         position: "fixed",
-        bottom: 76,       // above the mobile bottom nav bar
+        bottom: "calc(72px + env(safe-area-inset-bottom, 0px))",
         left: 12,
         zIndex: 2147483001,
         fontFamily: "monospace",

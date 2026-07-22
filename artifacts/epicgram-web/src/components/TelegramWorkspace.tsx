@@ -286,18 +286,31 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
   useEffect(() => { function onKey(e: KeyboardEvent) { if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); setPalette((v) => !v); setPq(""); } if (e.key === "Escape") setPalette(false); } window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey); }, []);
 
   // ---- READ-ONLY DATA FETCH from existing Telegram Layer ----
+  // Helper: fetch with a timeout so we never hang forever on slow TDLib responses
+  function fetchWithTimeout(url: string, ms = 15000): Promise<Response> {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    return fetch(url, { cache: "no-store", signal: ctrl.signal }).finally(() => clearTimeout(timer));
+  }
+
   useEffect(() => {
     let alive = true;
     async function load() {
       setConn("syncing"); setLoading(true);
       try {
-        const s = await fetch(apiUrl("/telegram/status"), { cache: "no-store" }).then((r) => r.json()).catch(() => null);
+        // First try the fast accounts list so UI shows something quickly
+        const acj = await fetchWithTimeout(apiUrl("/v1/accounts"), 8000).then(r => r.ok ? r.json() : null).catch(() => null);
+        if (alive && Array.isArray(acj?.accounts) && acj.accounts.length) {
+          setStatusAccounts(acj.accounts);
+        }
+
+        const s = await fetchWithTimeout(apiUrl("/telegram/status"), 15000).then((r) => r.json()).catch(() => null);
         const active = (s?.accounts || []).find((a: any) => (a.slotId || a.label) === acc) || (s?.accounts || [])[0];
         const ready = active && (active.authorizationState === "authorizationStateReady" || active.status === "ready" || active.status === "authorized");
         if (!alive) return;
         if (Array.isArray(s?.accounts)) setStatusAccounts(s.accounts);
         if (!s || !active) { setConn("offline"); setChats([]); setLoading(false); setFetchedAcc(acc); return; }
-        const cj = await fetch(apiUrl("/telegram/chats?")+"accountId=" + encodeURIComponent(acc || active.slotId || ""), { cache: "no-store" }).then((r) => r.json()).catch(() => null);
+        const cj = await fetchWithTimeout(apiUrl("/telegram/chats?") + "accountId=" + encodeURIComponent(acc || active.slotId || ""), 20000).then((r) => r.json()).catch(() => null);
         if (!alive) return;
         const list: Chat[] = cj?.chats || (cj?.body && cj.body.chats) || [];
         setChats(Array.isArray(list) ? list : []);
@@ -1164,16 +1177,27 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
                 </div>
               ) : (
                 <div className="flex h-full flex-col items-center justify-center gap-3 text-tg-muted">
-                  <div className="text-5xl opacity-30">💬</div>
-                  <div className="text-sm">
-                    {loading ? "Синхронизация…"
-                      : conn === "offline" ? "Нет подключённого аккаунта"
-                      : "Чатов нет"}
-                  </div>
-                  {conn === "offline" && !loading && (
-                    <button onClick={() => handleNavClick("epic")} className="rounded-xl bg-tg-active px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110">
-                      Добавить аккаунт ☠️
-                    </button>
+                  {loading ? (
+                    <>
+                      <div className="h-8 w-8 animate-spin rounded-full border-2 border-tg-accent/30 border-t-tg-accent" />
+                      <div className="text-sm">Синхронизация…</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-5xl opacity-30">💬</div>
+                      <div className="text-sm">
+                        {conn === "offline" ? "Нет подключённого аккаунта" : "Чатов нет"}
+                      </div>
+                      {conn === "offline" ? (
+                        <button onClick={() => handleNavClick("epic")} className="rounded-xl bg-tg-active px-4 py-2 text-sm font-semibold text-white transition-all hover:brightness-110">
+                          Добавить аккаунт ☠️
+                        </button>
+                      ) : (
+                        <button onClick={() => setRefreshTick(t => t + 1)} className="rounded-xl border border-tg-line px-4 py-2 text-sm text-tg-muted hover:text-tg-text hover:bg-white/5 transition-all">
+                          ↺ Обновить
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               )

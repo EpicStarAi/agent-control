@@ -98,14 +98,15 @@ export function AdminTerminal() {
     <>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-4 left-4 z-[130] rounded-full border border-white/15 bg-black/70 px-3 py-1.5 text-[11px] font-mono text-emerald-300/90 shadow-lg backdrop-blur hover:bg-black/85"
+        className="fixed left-4 z-[130] rounded-full border border-white/15 bg-black/70 px-3 py-1.5 text-[11px] font-mono text-emerald-300/90 shadow-lg backdrop-blur hover:bg-black/85"
+        style={{ bottom: "calc(116px + env(safe-area-inset-bottom, 0px))" }}
         title="Технический терминал"
       >
         {open ? "▾" : "▸"} terminal
       </button>
 
       {open && (
-        <div className="fixed inset-x-0 bottom-0 z-[129] h-72 border-t border-white/10 bg-[#0a0d12]/97 text-[13px] text-white/90 shadow-2xl backdrop-blur">
+        <div className="fixed inset-x-0 z-[129] h-72 border-t border-white/10 bg-[#0a0d12]/97 text-[13px] text-white/90 shadow-2xl backdrop-blur" style={{ bottom: "calc(48px + env(safe-area-inset-bottom, 0px))" }}>
           {!unlocked ? (
             <form onSubmit={submitPassword} className="flex h-full flex-col items-center justify-center gap-3 px-4">
               <div className="font-mono text-xs uppercase tracking-widest text-white/40">Технический терминал · требуется пароль</div>

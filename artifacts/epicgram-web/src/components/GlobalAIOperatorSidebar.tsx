@@ -493,8 +493,8 @@ export function GlobalAIOperatorSidebar() {
       <button
         onClick={toggleOpen}
         aria-label="AI Оператор"
-        style={{ background: "linear-gradient(135deg,rgba(14,165,233,.85),rgba(168,85,247,.75))" }}
-        className="fixed bottom-4 right-4 z-[130] flex items-center gap-2 rounded-full border border-white/20 px-4 py-2.5 text-sm font-semibold text-white shadow-xl backdrop-blur hover:brightness-110 transition-all"
+        style={{ background: "linear-gradient(135deg,rgba(14,165,233,.85),rgba(168,85,247,.75))", bottom: "calc(72px + env(safe-area-inset-bottom, 0px))" }}
+        className="fixed right-4 z-[130] flex items-center gap-2 rounded-full border border-white/20 px-4 py-2.5 text-sm font-semibold text-white shadow-xl backdrop-blur hover:brightness-110 transition-all"
       >
         <span className="text-base">✦</span> AI Оператор
         {tgReady === false && <span className="h-2 w-2 rounded-full bg-red-400" />}
