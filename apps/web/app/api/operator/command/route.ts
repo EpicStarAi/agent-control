@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getPrincipal, resolveBoundAccount } from "@/lib/telegramGuard";
+import { assertChatBelongsToBoundAccount, getMessages } from "@/lib/telegramBindingService";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +46,14 @@ function isToolCommand(command: string): boolean {
   );
 }
 
+// Fix [MED]: "проанализируй/анализ" must yield a real LLM analysis, not a raw
+// message dump. The backend detectTool() picks get_last_messages whenever the text
+// contains "последн", so we force the summarize_chat tool for analyze intent.
+function isAnalyzeIntent(command: string): boolean {
+  const s = command.toLowerCase();
+  return /проанализир|анализ|analy[sz]e|разбор|осмысл|выжимк/.test(s);
+}
+
 // Render a read-only tool result (no proposedAction) as a plain, readable text.
 function renderToolResult(routed: any): string {
   const text = normalizeText(routed?.result?.text);
@@ -62,6 +72,28 @@ function renderToolResult(routed: any): string {
 }
 
 export async function POST(req: Request) {
+  // Auth (defence in depth). The operator command dispatcher is not open to
+  // anonymous callers even though it only produces drafts / approval cards.
+  const principal = await getPrincipal();
+  if (!principal) {
+    return NextResponse.json(
+      { ok: false, authenticated: false, message: "Требуется аутентифицированная сессия EPICGRAM." },
+      { status: 401, headers: { "cache-control": "no-store" } },
+    );
+  }
+
+  // The account is resolved SERVER-SIDE from the caller's owner-matched binding.
+  // The client-supplied accountId is ignored entirely. No ready binding -> 403
+  // (this endpoint acts on a real slot, so it denies hard rather than soft-empty).
+  const bound = await resolveBoundAccount(principal);
+  if (bound.kind !== "ok") {
+    return NextResponse.json(
+      { ok: false, ownerMatched: bound.kind !== "mismatch", error: "no_binding", message: "К вашему профилю не привязан owner-matched Telegram-аккаунт." },
+      { status: 403, headers: { "cache-control": "no-store" } },
+    );
+  }
+  const accountId = bound.accountId;
+
   let body: any = {};
 
   try {
@@ -86,29 +118,8 @@ export async function POST(req: Request) {
           ? body.conversationId
           : "";
 
-  const accountId =
-    typeof tg?.accountId === "string"
-      ? tg.accountId
-      : typeof body?.accountId === "string"
-        ? body.accountId
-        : "";
-
-  const chatTitle =
-    typeof tg?.chatTitle === "string" && tg.chatTitle
-      ? tg.chatTitle
-      : typeof body?.chatTitle === "string" && body.chatTitle
-        ? body.chatTitle
-        : typeof body?.conversationTitle === "string" && body.conversationTitle
-          ? body.conversationTitle
-          : "Telegram chat";
-
-  const tgMessages: TgMsg[] = Array.isArray(tg?.messages)
-    ? tg.messages
-    : Array.isArray(body?.messages)
-      ? body.messages
-      : Array.isArray(body?.history)
-        ? body.history
-        : [];
+  // accountId is the server-resolved bound slot (above) — the request body's
+  // tgContext.accountId / accountId are deliberately NOT read here.
 
   if (!chatId) {
     return NextResponse.json(
@@ -128,7 +139,46 @@ export async function POST(req: Request) {
     );
   }
 
-  const messages = tgMessages
+  const ownedChat = await assertChatBelongsToBoundAccount(principal, chatId);
+  if (!ownedChat.ok) {
+    return NextResponse.json(
+      {
+        ok: false,
+        text: `⚠ ${ownedChat.reason}`,
+        error: ownedChat.reason,
+        approval_required: false,
+        mode: "MANUAL_APPROVAL_ONLY",
+        runtime_mode: "READ_ONLY",
+        actions: [],
+        can_send: false,
+        auto_send: false,
+        bulk_actions: false,
+      },
+      { status: 403, headers: { "cache-control": "no-store" } },
+    );
+  }
+
+  const chatTitle = normalizeText(ownedChat.chat.title) || "Telegram chat";
+  const serverContext = await getMessages(principal, chatId, 40);
+  if (!serverContext.ok) {
+    return NextResponse.json(
+      {
+        ok: false,
+        text: `⚠ ${serverContext.reason}`,
+        error: serverContext.reason,
+        approval_required: false,
+        mode: "MANUAL_APPROVAL_ONLY",
+        runtime_mode: "READ_ONLY",
+        actions: [],
+        can_send: false,
+        auto_send: false,
+        bulk_actions: false,
+      },
+      { status: 409, headers: { "cache-control": "no-store" } },
+    );
+  }
+
+  const messages = (serverContext.messages as TgMsg[])
     .slice(-20)
     .map(normalizeMessage)
     .filter((m) => m.content.length > 0);
@@ -138,12 +188,12 @@ export async function POST(req: Request) {
   // P3.4b: tool-intent commands go to the non-destructive Tool Router v1.
   // It NEVER sends. Draft/prepare come back as an approval-card draft; read-only
   // tools (summary / last messages / competitors / plan) render as info only.
-  if (isToolCommand(command)) {
+  if (isToolCommand(command) || isAnalyzeIntent(command)) {
     try {
       const routedRes = await fetch(`${API_BASE_URL}/ai/route`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ command, instruction: command, chatId, chatTitle, messages }),
+        body: JSON.stringify({ command, instruction: command, chatId, chatTitle, messages, tool: isAnalyzeIntent(command) ? "summarize_chat" : undefined }),
         cache: "no-store",
       });
       const routed = await routedRes.json().catch(() => null);
@@ -164,6 +214,9 @@ export async function POST(req: Request) {
             ok: true,
             text: proposedText,
             draft: proposedText,
+            // Real external action → client shows the approval card ONLY when
+            // pendingAction is present.
+            pendingAction: { actionType: "telegram_send", chatId, chatTitle, text: proposedText, auditId: routed?.auditId ?? null },
             tool,
             auditId: routed?.auditId ?? null,
             model: routed?.model ?? null,
@@ -209,6 +262,7 @@ export async function POST(req: Request) {
             ok: true,
             text: proposedText,
             draft: proposedText,
+            pendingAction: { actionType: "publish_post", chatId, chatTitle, text: proposedText, auditId: routed?.auditId ?? null },
             tool,
             actionType: "publish_post",
             targetChatId: chatId,
@@ -343,6 +397,9 @@ export async function POST(req: Request) {
     if (upstream.ok && data?.ok && draft) {
       return NextResponse.json({
         ok: true,
+        // A prepared draft is INFORMATIONAL — draft preparation never requires
+        // approval. No pendingAction → client renders it as a plain reply.
+        readonly: true,
         text: draft,
         draft,
         auditId: data?.auditId ?? null,
@@ -351,7 +408,7 @@ export async function POST(req: Request) {
         latency_ms: latency,
         activeChatId: chatId,
         messagesCount: messages.length,
-        approval_required: true,
+        approval_required: false,
         mode: "MANUAL_APPROVAL_ONLY",
         runtime_mode: "READ_ONLY",
         actions: [],

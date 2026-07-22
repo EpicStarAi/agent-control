@@ -1,0 +1,30 @@
+name: Live Telegram E2E
+
+on:
+  workflow_dispatch:
+
+jobs:
+  live-telegram-e2e:
+    runs-on: ubuntu-latest
+    environment: epicgram-live-e2e
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Live E2E
+        env:
+          LIVE_TELEGRAM_E2E: "true"
+          EPICGRAM_LIVE_BASE_URL: ${{ secrets.EPICGRAM_LIVE_BASE_URL }}
+          EPICGRAM_E2E_COOKIE: ${{ secrets.EPICGRAM_E2E_COOKIE }}
+          LIVE_TEST_PRIVATE_CHAT_ID: ${{ secrets.LIVE_TEST_PRIVATE_CHAT_ID }}
+          LIVE_TEST_CHANNEL_ID: ${{ secrets.LIVE_TEST_CHANNEL_ID }}
+        run: node --test tests/live-telegram-e2e.test.mjs

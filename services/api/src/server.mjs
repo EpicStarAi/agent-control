@@ -24,6 +24,7 @@ import {
 import { evaluatePolicy } from "./policy.mjs";
 import { appendEvent as auditAppend, sha256 as auditSha, listEvents as auditList } from "./operator-audit.mjs";
 import { enqueueSchedule, tickSchedule, listSchedule } from "./schedule-queue.mjs";
+import { trustedSendApprovalFromHeaders } from "./internal-approval.mjs";
 
 await loadLocalEnv();
 
@@ -57,6 +58,10 @@ function sendBinary(response, status, body, contentType) {
     "cache-control": status === 200 ? "public, max-age=86400" : "no-store"
   });
   response.end(body);
+}
+
+function trustedSendApproval(request) {
+  return trustedSendApprovalFromHeaders(request.headers);
 }
 
 function redirect(response, location) {
@@ -295,7 +300,7 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === "POST" && url.pathname === "/telegram/send") {
       const sendBody = await readJson(request);
-      const result = await sendMessage(sendBody);
+      const result = await sendMessage(sendBody, { operatorApproved: trustedSendApproval(request) });
       try {
         const executed = result?.status >= 200 && result?.status < 300;
         const text = String(sendBody?.text || "").trim();
