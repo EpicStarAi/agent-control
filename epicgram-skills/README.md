@@ -8,8 +8,9 @@ Follows the [Agent Skills open standard](https://agentskills.io/specification).
 ```
 epicgram-skills/
 ├── product/          # Business-logic skills — content, approval, safety
-├── platform/         # Integration bridges — Telegram, Instagram, n8n, etc.
-├── clients/          # Client-compatibility adapters — Cursor, Claude Code, etc.
+├── platform/         # Platform API skills — Telegram, Instagram, YouTube, TikTok
+├── connectors/       # MCP server setup + tool mapping — the "hands" for platform skills
+├── clients/          # Client-compatibility adapters — Cursor, Claude Code, Gemini CLI, nanobot
 └── meta/             # Dev/meta skills — scaffolding, linting, registry, QA
 ```
 
@@ -26,6 +27,15 @@ epicgram-skills/
 | `epicgram-n8n-orchestrator` | platform | Trigger and monitor n8n workflows |
 | `epicgram-instagram-graph` | platform | Instagram Graph API publish + insights |
 | `epicgram-telegram-client-ops` | platform | Telegram messages, chats, bots, channels |
+
+## Connectors (MCP layer) — active
+
+| Connector | MCP server | Status |
+|---|---|---|
+| `epicgram-instagram-mcp` | [aleemhaider/instagram-mcp](https://github.com/aleemhaider/instagram-mcp) — 24 tools | ✅ ready |
+| `epicgram-youtube-mcp` | [ZubeidHendricks/youtube-mcp-server](https://github.com/ZubeidHendricks/youtube-mcp-server) | ✅ ready |
+| `epicgram-tiktok-connector` | Custom backend (Content Posting API) + [adsmcp](https://mcpservers.org/servers/adsmcp/tiktok-ads-mcp-server) for ads | ⚙️ custom needed |
+| `epicgram-facebook-connector` | [brijr/meta-ads-mcp](https://mcpservers.org/servers/brijr/meta-ads-mcp) for ads + custom for organic | ⚙️ hybrid |
 
 ## Wave 2 — Growth (planned)
 
