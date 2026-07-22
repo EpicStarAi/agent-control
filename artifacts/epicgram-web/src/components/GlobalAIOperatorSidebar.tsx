@@ -125,6 +125,7 @@ export function GlobalAIOperatorSidebar() {
   const [win, setWin]                   = useState<WinState>(DEFAULT_WIN);
   const [accountCount, setAccountCount] = useState<number>(0);
   const [activeAccount, setActiveAccount] = useState<string>("");
+  const [activeAccountId, setActiveAccountId] = useState<string>(""); // slotId for tool calls
 
   // new state
   const [settings, setSettings]         = useState<OperatorSettings>(DEFAULT_SETTINGS);
@@ -156,12 +157,23 @@ export function GlobalAIOperatorSidebar() {
       .then(j => {
         if (!j) { setTgReady(false); return; }
         setTgReady(!(j.ready === false || j.tdlibReady === false || j.systemState === "OFFLINE"));
-        const slots: any[] = j.slots ?? [];
+        const slots: any[] = j.slots ?? j.accounts ?? [];
         setAccountCount(slots.length);
         const active = slots.find((s: any) => s.active || s.selected);
-        if (active) setActiveAccount(active.phone ?? active.alias ?? active.accountId ?? "");
+        if (active) {
+          setActiveAccount(active.displayName ?? active.phone ?? active.alias ?? active.label ?? active.slotId ?? "");
+          setActiveAccountId(active.slotId ?? active.accountId ?? active.id ?? "");
+        }
       })
       .catch(() => setTgReady(false));
+
+    // Sync account selection from TelegramWorkspace
+    const onAccChange = (e: Event) => {
+      const id = (e as CustomEvent<{ accountId: string }>).detail?.accountId;
+      if (id) setActiveAccountId(id);
+    };
+    window.addEventListener("deepinside:account-changed", onAccChange);
+    return () => window.removeEventListener("deepinside:account-changed", onAccChange);
   }, []);
 
   // ── auto-scroll ─────────────────────────────────────────────────────────────
@@ -274,6 +286,7 @@ export function GlobalAIOperatorSidebar() {
             tgReady,
             accountCount,
             activeAccount: activeAccount || undefined,
+            activeAccountId: activeAccountId || undefined,
             currentSection: window.location.hash.replace("#", "") || window.location.pathname,
           },
           settings: {

@@ -260,6 +260,8 @@ export function TelegramWorkspace({ ctx, slotId, focusKind, focusId, command, on
 
   useEffect(() => { try { const d = JSON.parse(localStorage.getItem(LS) || "{}"); if (d.section) setSection(d.section); if (!slotId && d.acc) setAcc(d.acc); } catch {} }, []);
   useEffect(() => { try { localStorage.setItem(LS, JSON.stringify({ section, acc })); } catch {} }, [section, acc]);
+  // Broadcast selected account to AI Operator sidebar
+  useEffect(() => { if (acc) window.dispatchEvent(new CustomEvent("deepinside:account-changed", { detail: { accountId: acc } })); }, [acc]);
   useEffect(() => { if (focusKind === "channel") setSection("channels"); else if (focusKind === "group") setSection("groups"); else if (focusKind === "bot") setSection("bots"); }, [focusKind]);
 
   // ---- LOAD MESSAGE HISTORY when chat changes ----

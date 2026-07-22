@@ -801,7 +801,7 @@ router.post("/operator/chat", async (req, res) => {
   const { messages, context, settings, attachments, conversationId } = req.body as {
     messages: { role: "user" | "assistant"; content: string }[];
     context?: {
-      tgReady?: boolean; accountCount?: number; activeAccount?: string;
+      tgReady?: boolean; accountCount?: number; activeAccount?: string; activeAccountId?: string;
       currentSection?: string; selectedChatId?: string; selectedChatTitle?: string;
     };
     settings?: { model?: string; temperature?: number; customSystemPrompt?: string };
@@ -852,6 +852,7 @@ router.post("/operator/chat", async (req, res) => {
       ctxLines.push(`Telegram: ${context.tgReady === true ? "✅ готов" : context.tgReady === false ? "❌ не готов" : "⏳ неизвестно"}`);
       if (context.accountCount !== undefined) ctxLines.push(`Аккаунтов: ${context.accountCount}`);
       if (context.activeAccount)   ctxLines.push(`Активный аккаунт: ${context.activeAccount}`);
+      if (context.activeAccountId) ctxLines.push(`accountId для инструментов (используй по умолчанию во всех tool calls): ${context.activeAccountId}`);
       if (context.currentSection)  ctxLines.push(`Раздел: ${context.currentSection}`);
       if (context.selectedChatId)  ctxLines.push(`Открытый чат: ${context.selectedChatTitle || context.selectedChatId}`);
     }
