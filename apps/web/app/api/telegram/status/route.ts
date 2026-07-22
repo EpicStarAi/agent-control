@@ -16,7 +16,7 @@ export async function GET() {
   if (r.kind === "mismatch") return denyOwnerMismatch("/api/telegram/status", "GET", auth.principal);
   if (r.kind !== "ok") return guardedJson(safeEmptyState("no_binding"), 200);
 
-  const res = await getStatus({ userId: auth.principal.userId, workspaceId: auth.principal.workspaceId });
+  const res = await getStatus({ userId: auth.principal.userId, workspaceId: auth.principal.workspaceId, role: auth.principal.role });
   const binding = res.ok ? res.status.binding : null;
 
   return guardedJson(

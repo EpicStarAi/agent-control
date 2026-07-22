@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getPrincipal, resolveBoundAccountId, PRIVATE_NO_STORE, recordDenial } from "@/lib/telegramGuard";
+import { backendRequestHeaders } from "@/lib/backendRequest";
 
 // Account-aware avatar/media proxy. Requires an authenticated session and serves
 // files ONLY from the caller's owner-matched slot. The browser-supplied accountId
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
   upstreamUrl.searchParams.set("accountId", accountId);
   upstreamUrl.searchParams.set("fileId", fileId);
   try {
-    const upstream = await fetch(upstreamUrl, { cache: "no-store", signal: AbortSignal.timeout(10000) });
+    const upstream = await fetch(upstreamUrl, { headers: backendRequestHeaders(), cache: "no-store", signal: AbortSignal.timeout(10000) });
     if (!upstream.ok) {
       return new Response(null, { status: upstream.status === 404 || upstream.status === 409 ? 404 : 502, headers: PRIVATE_NO_STORE });
     }
