@@ -4,7 +4,9 @@ The Replit frontend does not store or receive TDLib session files. Telegram data
 
 ## Replit secrets
 
-Set these values in the Replit deployment secrets UI:
+Import `EpicStarAi/agent-control`, then check out the `replit/epicgram-client-dev` branch. The committed `.replit` file configures Preview and Publishing on port 3015.
+
+Set these values in the Replit Development Secrets UI and repeat them in Publishing deployment secrets:
 
 ```env
 EPICGRAM_API_BASE_URL=https://epicgram-stage.194-163-140-26.sslip.io
