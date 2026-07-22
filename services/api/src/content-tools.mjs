@@ -11,7 +11,7 @@ const LLM_TIMEOUT_MS = 45000;
 async function llmComplete(system, user, role = "content") {
   const provider = process.env.EPICGRAM_AI_PROVIDER || "openai";
   const endpoint = process.env.EPICGRAM_AI_BASE_URL || null;
-  const model = process.env.EPICGRAM_OPENAI_MODEL || "gpt-4.1-mini";
+  const model = process.env.EPICGRAM_AI_MODEL || process.env.EPICGRAM_OPENAI_MODEL || process.env.OPERATOR_PRIMARY_MODEL || "gpt-4.1-mini";
   const apiKey = process.env.EPICGRAM_AI_API_KEY || process.env.OPENAI_API_KEY || null;
   const selfHosted = provider !== "openai" && endpoint;
   if (!endpoint || (!apiKey && !selfHosted && provider !== "ollama")) {

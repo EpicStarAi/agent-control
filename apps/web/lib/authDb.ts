@@ -4,7 +4,8 @@ import { sha256, newId, newToken, devReferralHash, SESSION_TTL_MS,
 // P30 Postgres adapter. CREATE TABLE IF NOT EXISTS + seed dev referral code from env only.
 // NO DROP/DELETE (logout marks a session expired instead of deleting). Only hashes stored.
 type Row = Record<string, unknown>;
-type PgPool = { query: (t: string, p?: unknown[]) => Promise<{ rows: Row[] }> };
+type PgClient = { query: (t: string, p?: unknown[]) => Promise<{ rows: Row[] }>; release: () => void };
+type PgPool = { query: (t: string, p?: unknown[]) => Promise<{ rows: Row[] }>; connect: () => Promise<PgClient> };
 const g = globalThis as unknown as { __epicPgPool?: PgPool | null; __epicAuthInit?: Promise<void> };
 
 export function enabled(): boolean { return Boolean(process.env.DATABASE_URL); }
@@ -27,6 +28,14 @@ async function ensureInit(p: PgPool): Promise<void> {
       id text PRIMARY KEY, user_id text, token_hash text UNIQUE, expires_at timestamptz, created_at timestamptz DEFAULT now())`);
     await p.query(`CREATE TABLE IF NOT EXISTS workspaces (
       id text PRIMARY KEY, owner_user_id text, title text, created_at timestamptz DEFAULT now())`);
+    await p.query(`CREATE TABLE IF NOT EXISTS referral_redemptions (
+      id text PRIMARY KEY,
+      referral_code_id text NOT NULL,
+      user_id text NOT NULL UNIQUE,
+      workspace_id text NOT NULL UNIQUE,
+      redeemed_at timestamptz DEFAULT now())`);
+    await p.query(`CREATE INDEX IF NOT EXISTS referral_redemptions_code_idx
+      ON referral_redemptions(referral_code_id, redeemed_at DESC)`);
     const dev = devReferralHash();
     if (dev && Number((await p.query(`SELECT count(*)::int n FROM referral_codes`)).rows[0]?.n ?? 0) === 0)
       await p.query(`INSERT INTO referral_codes(id,code_hash,label,status,max_uses,used_count,created_by)
@@ -40,22 +49,35 @@ function uRow(r: any): User { return { id:r.id, displayName:r.display_name, role
 function wRow(r: any): Workspace { return { id:r.id, ownerUserId:r.owner_user_id, title:r.title, createdAt:new Date(r.created_at).toISOString() }; }
 
 export async function referralLogin(code: string): Promise<{ ok: boolean; reason?: string; token?: string; user?: User; workspace?: Workspace }> {
-  const p = await db(); const h = sha256(code || "");
-  const r = (await p.query(`SELECT * FROM referral_codes WHERE code_hash=$1`, [h])).rows[0] as any;
-  if (!r) return { ok: false, reason: "invalid" };
-  if (r.status !== "active") return { ok: false, reason: "revoked" };
-  if (r.expires_at && new Date(r.expires_at) < new Date()) return { ok: false, reason: "expired" };
-  if (Number(r.used_count) >= Number(r.max_uses)) return { ok: false, reason: "exhausted" };
-  const now = new Date(); const uid = newId("u"); const wid = newId("ws");
-  await p.query(`INSERT INTO users(id,display_name,role,created_at) VALUES($1,'Operator','owner',$2)`, [uid, now.toISOString()]);
-  await p.query(`INSERT INTO workspaces(id,owner_user_id,title,created_at) VALUES($1,$2,'Personal Workspace',$3)`, [wid, uid, now.toISOString()]);
-  const nextUsed = Number(r.used_count) + 1;
-  await p.query(`UPDATE referral_codes SET used_count=$2, status=CASE WHEN $2>=max_uses THEN 'used' ELSE status END WHERE id=$1`, [r.id, nextUsed]);
-  const token = newToken(); const exp = new Date(Date.now() + SESSION_TTL_MS).toISOString();
-  await p.query(`INSERT INTO sessions(id,user_id,token_hash,expires_at,created_at) VALUES($1,$2,$3,$4,$5)`, [newId("s"), uid, sha256(token), exp, now.toISOString()]);
-  const user = uRow((await p.query(`SELECT * FROM users WHERE id=$1`, [uid])).rows[0]);
-  const workspace = wRow((await p.query(`SELECT * FROM workspaces WHERE id=$1`, [wid])).rows[0]);
-  return { ok: true, token, user, workspace };
+  const p = await db(); const client = await p.connect(); const h = sha256(code || "");
+  try {
+    await client.query("BEGIN");
+    const r = (await client.query(`SELECT * FROM referral_codes WHERE code_hash=$1 FOR UPDATE`, [h])).rows[0] as any;
+    if (!r) { await client.query("ROLLBACK"); return { ok: false, reason: "invalid" }; }
+    if (r.status === "used") { await client.query("ROLLBACK"); return { ok: false, reason: "exhausted" }; }
+    if (r.status !== "active") { await client.query("ROLLBACK"); return { ok: false, reason: "revoked" }; }
+    if (r.expires_at && new Date(r.expires_at) < new Date()) { await client.query("ROLLBACK"); return { ok: false, reason: "expired" }; }
+    if (Number(r.used_count) >= Number(r.max_uses)) { await client.query("ROLLBACK"); return { ok: false, reason: "exhausted" }; }
+
+    const now = new Date(); const uid = newId("u"); const wid = newId("ws");
+    await client.query(`INSERT INTO users(id,display_name,role,created_at) VALUES($1,'Operator','owner',$2)`, [uid, now.toISOString()]);
+    await client.query(`INSERT INTO workspaces(id,owner_user_id,title,created_at) VALUES($1,$2,'Personal Workspace',$3)`, [wid, uid, now.toISOString()]);
+    const nextUsed = Number(r.used_count) + 1;
+    await client.query(`UPDATE referral_codes SET used_count=$2, status=CASE WHEN $2>=max_uses THEN 'used' ELSE status END WHERE id=$1`, [r.id, nextUsed]);
+    const token = newToken(); const exp = new Date(Date.now() + SESSION_TTL_MS).toISOString();
+    await client.query(`INSERT INTO sessions(id,user_id,token_hash,expires_at,created_at) VALUES($1,$2,$3,$4,$5)`, [newId("s"), uid, sha256(token), exp, now.toISOString()]);
+    await client.query(`INSERT INTO referral_redemptions(id,referral_code_id,user_id,workspace_id,redeemed_at)
+      VALUES($1,$2,$3,$4,$5)`, [newId("rr"), r.id, uid, wid, now.toISOString()]);
+    const user = uRow((await client.query(`SELECT * FROM users WHERE id=$1`, [uid])).rows[0]);
+    const workspace = wRow((await client.query(`SELECT * FROM workspaces WHERE id=$1`, [wid])).rows[0]);
+    await client.query("COMMIT");
+    return { ok: true, token, user, workspace };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 export async function getSession(token: string): Promise<{ authenticated: boolean; user?: User; workspace?: Workspace }> {
   if (!token) return { authenticated: false };

@@ -3,7 +3,7 @@
 // EPIC GRAM PUBLISHER — the working publishing vertical (PHASE P1 actions + Q1 Draft Studio
 // + Q2 Approval + Q3 Publish Queue + Manual Publish + Log). ADDITIVE: a new overlay module.
 // Real data only via the existing /api/telegram/* proxy routes. The publish path calls
-// /api/telegram/send with operatorApproved=true (the human in the Queue IS the operator).
+// /api/telegram/send with a human-action marker (the human in the Queue IS the operator).
 // Does NOT change routes, TDLib, the approval gate, /agents, Ω-FINAL, or TelegramWorkspace.
 
 import { useCallback, useEffect, useState } from "react";
@@ -215,10 +215,26 @@ export function EpicGramPublisher({ onClose }: { onClose: () => void }) {
   }
 
   async function publish(x: Draft) {
+    const target = channels.find((chat) => String(chat.id) === String(x.channelId));
+    const isChannel = target?.isChannel === true || target?.category === "channel";
+    if (!confirm(`${isChannel ? "Опубликовать" : "Отправить"} одобренный текст в «${x.channelTitle || x.channelId}»?`)) return;
     const entry: LogEntry = { id: rid(), draftId: x.id, accountId: x.accountId, channelId: x.channelId, channelTitle: x.channelTitle, text: x.text, status: "PUBLISHING", createdAt: now() };
     const nextLog = [entry, ...log]; writeLog(nextLog);
-    // operatorApproved=true: the human approving + clicking Publish IS the operator action.
-    const r = await post("/api/telegram/send", { accountId: x.accountId, chatId: x.channelId, text: x.text, operatorApproved: true });
+    setBusy(true); setNote("");
+    const response = await fetch("/api/telegram/send", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-epicgram-human-action": "send-button-v1" },
+      body: JSON.stringify({
+        chatId: x.channelId,
+        text: x.text,
+        actionType: isChannel ? "publish_channel" : "send_text",
+        confirmation: isChannel ? "human_publish_confirm_v1" : "human_send_button_v1",
+      }),
+    }).catch(() => null);
+    const r = response
+      ? { ok: response.ok, status: response.status, body: await response.json().catch(() => ({})) }
+      : { ok: false, status: 0, body: { message: "Backend недоступен." } };
+    setBusy(false);
     const ok = r.ok && r.body?.sent === true;
     writeLog(nextLog.map((e) => e.id === entry.id ? { ...e, status: ok ? "SUCCESS" : "FAILED", publishedAt: now(), result: ok ? (r.body?.message || "sent") : undefined, error: ok ? undefined : (r.body?.message || ("HTTP " + r.status)) } : e));
     if (ok) setStatus(x.id, "PUBLISHED");
@@ -384,7 +400,7 @@ export function EpicGramPublisher({ onClose }: { onClose: () => void }) {
       </div>
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4"><div className="flex flex-col items-center gap-1">{steps.map((s, i) => <div key={s} className="flex flex-col items-center"><div className={"rounded-lg px-4 py-1.5 text-[12px] font-semibold " + (s === "APPROVAL" ? "border border-amber-400/50 bg-amber-500/15 text-amber-200" : "bg-white/5 text-tg-text")}>{s}{s === "APPROVAL" && " 🔒 (человек)"}</div>{i < steps.length - 1 && <div className="text-tg-muted">↓</div>}</div>)}</div></div>
       <div className="grid gap-1.5 sm:grid-cols-2 text-[11px]">
-        {[["✅ Готово сейчас", "AGENT → DRAFT → APPROVAL → QUEUE → PUBLISH → лог/аналитика"], ["⛔ Намеренно НЕ авто", "DRAFT GENERATION (AI) и автопубликация — только после явного approve"], ["🔜 Следующий батч", "Content Brain (R6), Memory (R5), Calendar/Schedule (R2/R3), Media Library (R8)"], ["🔒 Инвариант", "Approval Gate никогда не отключается; operatorApproved=true ставит человек"]].map(([t, v]) => <div key={t} className="rounded-lg bg-white/5 p-2"><b className="text-fuchsia-200">{t}:</b> {v}</div>)}
+        {[["✅ Готово сейчас", "AGENT → DRAFT → APPROVAL → QUEUE → PUBLISH → лог/аналитика"], ["⛔ Намеренно НЕ авто", "DRAFT GENERATION (AI) и автопубликация — только после явного approve"], ["🔜 Следующий батч", "Content Brain (R6), Memory (R5), Calendar/Schedule (R2/R3), Media Library (R8)"], ["🔒 Инвариант", "Отправка доступна только после явного действия человека"]].map(([t, v]) => <div key={t} className="rounded-lg bg-white/5 p-2"><b className="text-fuchsia-200">{t}:</b> {v}</div>)}
       </div>
     </div></main>;
   }

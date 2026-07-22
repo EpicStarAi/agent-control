@@ -12,15 +12,28 @@ function safeNextPath(): string {
   return value.startsWith("/") && !value.startsWith("//") ? value : "/client";
 }
 
+function safeNextParam(): string {
+  return safeNextPath();
+}
+
 export default function LoginPage() {
   const [code, setCode] = useState("");
-  const [state, setState] = useState<LoginState>("checking");
+  const [state, setState] = useState<LoginState>("idle");
   const [message, setMessage] = useState("");
+  const [nextPath, setNextPath] = useState("/client");
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      controller.abort();
+      if (active) setState("idle");
+    }, 3500);
 
-    fetch("/api/auth/session", { cache: "no-store", credentials: "same-origin" })
+    setNextPath(safeNextParam());
+    setState("checking");
+
+    fetch("/api/auth/session", { cache: "no-store", credentials: "same-origin", signal: controller.signal })
       .then(async (response) => {
         const data = await response.json().catch(() => null);
         if (!active) return;
@@ -36,6 +49,8 @@ export default function LoginPage() {
 
     return () => {
       active = false;
+      window.clearTimeout(timer);
+      controller.abort();
     };
   }, []);
 
@@ -92,7 +107,8 @@ export default function LoginPage() {
           Сначала создаётся защищённая EPICGRAM-сессия. Затем в Web Client подключается ваш Telegram через QR-код или номер телефона.
         </p>
 
-        <form className={card} onSubmit={submit}>
+        <form className={card} action="/api/auth/referral-login" method="post" onSubmit={submit}>
+          <input type="hidden" name="next" value={nextPath} />
           <label htmlFor="referral-code" className="mb-2 block text-sm uppercase tracking-widest text-fuchsia-300/70">
             Код доступа
           </label>
@@ -103,7 +119,7 @@ export default function LoginPage() {
             autoComplete="one-time-code"
             value={code}
             onChange={(event) => setCode(event.target.value)}
-            disabled={busy}
+            disabled={state === "submitting"}
             placeholder="Введите код EPICGRAM"
             className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-fuchsia-400/60 disabled:opacity-60"
           />
@@ -116,7 +132,7 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={busy}
+            disabled={state === "submitting"}
             className="mt-4 block w-full rounded-xl bg-fuchsia-600/50 px-4 py-3 text-center text-sm font-semibold hover:bg-fuchsia-600/70 disabled:cursor-wait disabled:opacity-60"
           >
             {state === "checking" ? "Проверяем сессию…" : state === "submitting" ? "Входим…" : "Продолжить в Telegram Web Client"}

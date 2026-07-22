@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   if (r.kind !== "ok") return guardedJson({ ...safeEmptyState("no_binding"), chats: [] }, 200);
 
   const limit = Number(request.nextUrl.searchParams.get("limit")) || 30;
-  const res = await getChats({ userId: auth.principal.userId, workspaceId: auth.principal.workspaceId }, limit);
+  const res = await getChats({ userId: auth.principal.userId, workspaceId: auth.principal.workspaceId, role: auth.principal.role }, limit);
 
   return guardedJson(
     {

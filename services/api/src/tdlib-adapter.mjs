@@ -250,6 +250,26 @@ function formatMessageContent(content) {
   return content._ ? content._.replace(/^message/, "") : "Сообщение";
 }
 
+function fileId(file) {
+  return file?.id ? String(file.id) : null;
+}
+
+function formatMessageMedia(content) {
+  if (!content) return null;
+  if (content._ === "messagePhoto") {
+    const sizes = Array.isArray(content.photo?.sizes) ? content.photo.sizes : [];
+    const largest = sizes.at(-1) ?? null;
+    return largest ? { kind: "image", fileId: fileId(largest.photo), thumbnailFileId: fileId(sizes[0]?.photo), mimeType: "image/jpeg", fileName: null, width: largest.width ?? null, height: largest.height ?? null, duration: null } : null;
+  }
+  if (content._ === "messageVideo") return { kind: "video", fileId: fileId(content.video?.video), thumbnailFileId: fileId(content.video?.thumbnail?.file), mimeType: content.video?.mime_type || "video/mp4", fileName: content.video?.file_name || null, width: content.video?.width ?? null, height: content.video?.height ?? null, duration: content.video?.duration ?? null };
+  if (content._ === "messageAnimation") return { kind: "animation", fileId: fileId(content.animation?.animation), thumbnailFileId: fileId(content.animation?.thumbnail?.file), mimeType: content.animation?.mime_type || "video/mp4", fileName: content.animation?.file_name || null, width: content.animation?.width ?? null, height: content.animation?.height ?? null, duration: content.animation?.duration ?? null };
+  if (content._ === "messageAudio") return { kind: "audio", fileId: fileId(content.audio?.audio), thumbnailFileId: null, mimeType: content.audio?.mime_type || "audio/mpeg", fileName: content.audio?.file_name || null, width: null, height: null, duration: content.audio?.duration ?? null };
+  if (content._ === "messageVoiceNote") return { kind: "voice", fileId: fileId(content.voice_note?.voice), thumbnailFileId: null, mimeType: content.voice_note?.mime_type || "audio/ogg", fileName: null, width: null, height: null, duration: content.voice_note?.duration ?? null };
+  if (content._ === "messageDocument") return { kind: "document", fileId: fileId(content.document?.document), thumbnailFileId: fileId(content.document?.thumbnail?.file), mimeType: content.document?.mime_type || "application/octet-stream", fileName: content.document?.file_name || null, width: null, height: null, duration: null };
+  if (content._ === "messageSticker") return { kind: "sticker", fileId: fileId(content.sticker?.sticker), thumbnailFileId: fileId(content.sticker?.thumbnail?.file), mimeType: content.sticker?.format?._ === "stickerFormatWebm" ? "video/webm" : "image/webp", fileName: null, width: content.sticker?.width ?? null, height: content.sticker?.height ?? null, duration: null };
+  return null;
+}
+
 function formatMessage(message) {
   if (!message) return null;
   return {
@@ -259,6 +279,7 @@ function formatMessage(message) {
     isOutgoing: Boolean(message.is_outgoing),
     senderId: message.sender_id?.user_id ? String(message.sender_id.user_id) : message.sender_id?.chat_id ? String(message.sender_id.chat_id) : null,
     content: formatMessageContent(message.content),
+    media: formatMessageMedia(message.content),
     authorSignature: message.author_signature || null
   };
 }

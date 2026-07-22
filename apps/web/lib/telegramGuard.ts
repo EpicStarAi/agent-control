@@ -4,6 +4,7 @@ import { getSession } from "@/lib/authData";
 import { SESSION_COOKIE } from "@/lib/auth";
 import * as bindingsDb from "@/lib/telegramBindingsDb";
 import { isForbiddenAccountId } from "@/lib/telegramBindings";
+import { stagingOwnerAccountId } from "@/lib/stagingOwner";
 
 // INCIDENT hotfix/client-auth-guard — server-side authorization gate for the
 // Telegram surface.
@@ -170,7 +171,13 @@ export async function resolveBoundAccount(principal: Principal): Promise<BoundRe
     // DB unavailable -> deny-by-default (safe empty), never fall through.
     return { kind: "none" };
   }
-  if (!binding) return { kind: "none" };
+  if (!binding) {
+    const stagingAccountId = stagingOwnerAccountId(principal.role);
+    if (stagingAccountId && !isForbiddenAccountId(stagingAccountId)) {
+      return { kind: "ok", accountId: stagingAccountId };
+    }
+    return { kind: "none" };
+  }
 
   // Owner match: the binding must belong to this principal's tenant. The lookup
   // is by workspace, so this is normally always true; the explicit check makes
