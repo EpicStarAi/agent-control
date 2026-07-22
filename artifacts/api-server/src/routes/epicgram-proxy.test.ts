@@ -55,6 +55,11 @@ describe("epicgram-proxy allowlist", () => {
 
   const allowlisted = [
     ["/api/telegram/send", "POST"],
+    ["/api/telegram/forward", "POST"],
+    ["/api/telegram/react", "POST"],
+    ["/api/telegram/pin", "POST"],
+    ["/api/telegram/edit", "POST"],
+    ["/api/telegram/delete", "POST"],
     ["/api/telegram/auth/code", "POST"],
     ["/api/telegram/auth/qr", "POST"],
     ["/api/telegram/auth/phone", "POST"],

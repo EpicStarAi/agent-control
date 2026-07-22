@@ -15,16 +15,33 @@ const MAX_TOKENS     = parseInt(process.env["OPENAI_MAX_OUTPUT_TOKENS"] ?? "2048
 const API_BASE       = process.env["EPICGRAM_API_BASE_URL"]  ?? "http://127.0.0.1:8788";
 
 // ── system prompt ──────────────────────────────────────────────────────────────
-const SYSTEM_PROMPT = `You are the EPICGRAM AI Operator — an intelligent assistant embedded inside the EPICGRAM Telegram management platform.
+const SYSTEM_PROMPT = `You are the EPICGRAM AI Operator — an intelligent execution engine embedded inside the EPICGRAM Telegram management platform.
 
-You have access to tools that let you read real Telegram workspace state: accounts, chats, messages, status.
-Use them proactively to answer questions accurately instead of guessing.
+You have access to tools that let you read real Telegram workspace state AND propose write actions for user approval.
+Use read tools proactively to answer questions accurately instead of guessing.
 
-STRICT SAFETY RULES (never violate):
-- You are ADVISORY and READ-ONLY by default.
-- WRITE operations (send_message, create_channel, etc.) require explicit user approval — propose them as structured actions, never execute them yourself.
+READ TOOLS (execute automatically):
+- get_status, list_accounts, list_chats, get_chat_history, get_audit_log, search_chats, get_workspace_stats
+- find_unanswered_messages — finds chats where the last message is incoming (you haven't replied)
+
+WRITE TOOLS (always surface an approval card — never auto-execute):
+- propose_send_message — draft a new message to a chat
+- propose_forward_message — forward a message to another chat
+- propose_set_reaction — add an emoji reaction to a message
+- propose_pin_message — pin a message in a chat
+- propose_edit_message — edit one of your own sent messages
+- propose_delete_message — delete one or more messages
+
+WORKFLOW for write actions:
+1. Use a read tool first to confirm the chat/message exists (e.g. get_chat_history to find the message ID)
+2. Call the propose_ tool with exact IDs — this surfaces a confirmation card to the user
+3. Wait for user to confirm; execution happens client-side after confirmation
+4. You NEVER execute writes yourself — only propose them
+
+SAFETY RULES (never violate):
 - NEVER expose secrets, API keys, session tokens, phone numbers, passwords, or TDLib database paths.
-- All sends require MANUAL approval via the approval gate. Remind user of this clearly.
+- Always get exact chatId and messageId from tools before proposing a write action.
+- For find_unanswered_messages: report the count and chat names, then ask if user wants to act on them.
 
 Navigation: when the user wants to open a section/chat, end your message with a single action tag:
 <action>{"kind":"navigate","target":"dialogs"}</action>  (targets: dialogs, groups, channels, private, contacts, bots, accounts, settings, analytics)
@@ -145,12 +162,26 @@ const TOOLS: any[] = [
       parameters: { type: "object", properties: {} },
     },
   },
-  // WRITE tool — surfaces an approval card, never auto-executes
+  {
+    type: "function",
+    function: {
+      name: "find_unanswered_messages",
+      description: "Find chats where the last message is incoming (not sent by you) — i.e. conversations you haven't replied to yet.",
+      parameters: {
+        type: "object",
+        properties: {
+          accountId: { type: "string", description: "Account slot ID. Use active if omitted." },
+          limit:     { type: "number", description: "Max chats to scan (default 100)" },
+        },
+      },
+    },
+  },
+  // WRITE tools — each surfaces an approval card, never auto-executes
   {
     type: "function",
     function: {
       name: "propose_send_message",
-      description: "Propose sending a message to a chat. This ALWAYS requires user approval before execution.",
+      description: "Propose sending a new message to a chat. ALWAYS requires user approval before execution.",
       parameters: {
         type: "object",
         required: ["chatId", "text"],
@@ -159,6 +190,96 @@ const TOOLS: any[] = [
           chatTitle: { type: "string", description: "Chat display name for the approval card" },
           accountId: { type: "string", description: "Account to send from" },
           text:      { type: "string", description: "Message text to send" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "propose_forward_message",
+      description: "Propose forwarding a message to another chat. ALWAYS requires user approval.",
+      parameters: {
+        type: "object",
+        required: ["fromChatId", "messageId", "toChatId"],
+        properties: {
+          fromChatId:  { type: "string", description: "Source chat ID containing the message" },
+          messageId:   { type: "string", description: "ID of the message to forward" },
+          toChatId:    { type: "string", description: "Target chat ID to forward to" },
+          toChatTitle: { type: "string", description: "Target chat display name for the approval card" },
+          accountId:   { type: "string", description: "Account slot ID" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "propose_set_reaction",
+      description: "Propose adding an emoji reaction to a message. ALWAYS requires user approval.",
+      parameters: {
+        type: "object",
+        required: ["chatId", "messageId", "emoji"],
+        properties: {
+          chatId:    { type: "string", description: "Chat ID containing the message" },
+          chatTitle: { type: "string", description: "Chat display name" },
+          messageId: { type: "string", description: "Message ID to react to" },
+          emoji:     { type: "string", description: "Emoji to react with (e.g. 👍 ❤️ 🔥 👏 😊 🎉 🤔 😢)" },
+          accountId: { type: "string", description: "Account slot ID" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "propose_pin_message",
+      description: "Propose pinning a message in a chat. ALWAYS requires user approval.",
+      parameters: {
+        type: "object",
+        required: ["chatId", "messageId"],
+        properties: {
+          chatId:              { type: "string", description: "Chat ID" },
+          chatTitle:           { type: "string", description: "Chat display name" },
+          messageId:           { type: "string", description: "Message ID to pin" },
+          disableNotification: { type: "boolean", description: "Pin silently without notification (default false)" },
+          accountId:           { type: "string", description: "Account slot ID" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "propose_edit_message",
+      description: "Propose editing one of your own previously sent messages. ALWAYS requires user approval.",
+      parameters: {
+        type: "object",
+        required: ["chatId", "messageId", "text"],
+        properties: {
+          chatId:    { type: "string", description: "Chat ID containing the message" },
+          chatTitle: { type: "string", description: "Chat display name" },
+          messageId: { type: "string", description: "Message ID to edit (must be your own message)" },
+          text:      { type: "string", description: "New message text" },
+          accountId: { type: "string", description: "Account slot ID" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "propose_delete_message",
+      description: "Propose deleting one or more messages. ALWAYS requires user approval.",
+      parameters: {
+        type: "object",
+        required: ["chatId", "messageIds"],
+        properties: {
+          chatId:     { type: "string", description: "Chat ID containing the messages" },
+          chatTitle:  { type: "string", description: "Chat display name" },
+          messageIds: { type: "array", items: { type: "string" }, description: "Array of message IDs to delete" },
+          revoke:     { type: "boolean", description: "Delete for all participants (true) or only for yourself (false). Default true." },
+          accountId:  { type: "string", description: "Account slot ID" },
         },
       },
     },
@@ -242,8 +363,28 @@ async function executeTool(name: string, args: Record<string, any>): Promise<{ r
       return { result: JSON.stringify({ totalChats: all.length, unread, byCategory, accounts }) };
     }
 
+    case "find_unanswered_messages": {
+      const accountId = args.accountId || "";
+      const scanLimit = Math.min(args.limit ?? 100, 200);
+      const data = await get(`/telegram/chats?accountId=${encodeURIComponent(accountId)}&limit=${scanLimit}`);
+      const all = (data.chats ?? data.dialogs ?? []) as any[];
+      // Unanswered = last message is incoming (not outgoing) AND chat has content
+      const unanswered = all.filter((c: any) => {
+        const lm = c.lastMessage;
+        if (!lm) return false;
+        return lm.isOutgoing === false && lm.content;
+      }).slice(0, 30).map((c: any) => ({
+        id: c.id,
+        title: c.title,
+        category: c.category,
+        unreadCount: c.unreadCount ?? 0,
+        lastMessagePreview: (c.lastMessage?.content || "").slice(0, 80),
+        lastMessageDate: c.lastMessage?.date,
+      }));
+      return { result: JSON.stringify({ unansweredCount: unanswered.length, chats: unanswered }) };
+    }
+
     case "propose_send_message": {
-      // WRITE tool — return approval card, never execute
       const card = {
         type: "APPROVAL_REQUIRED",
         tool: "send_message",
@@ -251,6 +392,56 @@ async function executeTool(name: string, args: Record<string, any>): Promise<{ r
         warning: "Сообщение НЕ будет отправлено автоматически. Требуется ручное подтверждение оператора.",
       };
       return { result: "Approval card создана. Отправка заблокирована до подтверждения оператора.", approvalCard: card };
+    }
+
+    case "propose_forward_message": {
+      const card = {
+        type: "APPROVAL_REQUIRED",
+        tool: "forward_message",
+        payload: { fromChatId: args.fromChatId, messageId: args.messageId, toChatId: args.toChatId, toChatTitle: args.toChatTitle, accountId: args.accountId },
+        warning: "Сообщение будет переслано только после подтверждения.",
+      };
+      return { result: "Approval card создана для пересылки сообщения.", approvalCard: card };
+    }
+
+    case "propose_set_reaction": {
+      const card = {
+        type: "APPROVAL_REQUIRED",
+        tool: "set_reaction",
+        payload: { chatId: args.chatId, chatTitle: args.chatTitle, messageId: args.messageId, emoji: args.emoji, accountId: args.accountId },
+        warning: "Реакция будет добавлена только после подтверждения.",
+      };
+      return { result: `Approval card создана для реакции ${args.emoji}.`, approvalCard: card };
+    }
+
+    case "propose_pin_message": {
+      const card = {
+        type: "APPROVAL_REQUIRED",
+        tool: "pin_message",
+        payload: { chatId: args.chatId, chatTitle: args.chatTitle, messageId: args.messageId, disableNotification: args.disableNotification ?? false, accountId: args.accountId },
+        warning: "Сообщение будет закреплено только после подтверждения.",
+      };
+      return { result: "Approval card создана для закрепления сообщения.", approvalCard: card };
+    }
+
+    case "propose_edit_message": {
+      const card = {
+        type: "APPROVAL_REQUIRED",
+        tool: "edit_message",
+        payload: { chatId: args.chatId, chatTitle: args.chatTitle, messageId: args.messageId, text: args.text, accountId: args.accountId },
+        warning: "Сообщение будет изменено только после подтверждения.",
+      };
+      return { result: "Approval card создана для редактирования сообщения.", approvalCard: card };
+    }
+
+    case "propose_delete_message": {
+      const card = {
+        type: "APPROVAL_REQUIRED",
+        tool: "delete_message",
+        payload: { chatId: args.chatId, chatTitle: args.chatTitle, messageIds: args.messageIds, revoke: args.revoke ?? true, accountId: args.accountId },
+        warning: `${(args.messageIds ?? []).length} сообщение(ий) будет удалено только после подтверждения.`,
+      };
+      return { result: "Approval card создана для удаления сообщений.", approvalCard: card };
     }
 
     default:

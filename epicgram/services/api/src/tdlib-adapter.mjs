@@ -446,6 +446,139 @@ export async function sendTdlibMessage({ accountId = "main", chatId, text } = {}
   };
 }
 
+export async function forwardTdlibMessage({ accountId = "main", fromChatId, messageId, toChatId } = {}) {
+  const id = safeAccountId(accountId);
+  if (!fromChatId) throw new Error("fromChatId is required");
+  if (!messageId) throw new Error("messageId is required");
+  if (!toChatId) throw new Error("toChatId is required");
+
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
+  if (!READY_STATES.has(authorizationState?._)) {
+    return { ok: false, authorizationState, message: "Telegram account is not authorized yet." };
+  }
+
+  const result = await tdClient.invoke({
+    _: "forwardMessages",
+    chat_id: Number(toChatId),
+    from_chat_id: Number(fromChatId),
+    message_ids: [Number(messageId)],
+    options: { _: "messageSendOptions" },
+    send_copy: false,
+    remove_caption: false
+  });
+
+  return {
+    ok: true,
+    authorizationState,
+    message: "Message forwarded via TDLib.",
+    messages: (result.messages ?? []).map(formatMessage)
+  };
+}
+
+export async function addTdlibReaction({ accountId = "main", chatId, messageId, emoji } = {}) {
+  const id = safeAccountId(accountId);
+  if (!chatId) throw new Error("chatId is required");
+  if (!messageId) throw new Error("messageId is required");
+  if (!emoji) throw new Error("emoji is required");
+
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
+  if (!READY_STATES.has(authorizationState?._)) {
+    return { ok: false, authorizationState, message: "Telegram account is not authorized yet." };
+  }
+
+  await tdClient.invoke({
+    _: "addMessageReaction",
+    chat_id: Number(chatId),
+    message_id: Number(messageId),
+    reaction_type: { _: "reactionTypeEmoji", emoji },
+    is_big: false,
+    update_recent_reactions: true
+  });
+
+  return { ok: true, authorizationState, message: `Reaction ${emoji} added via TDLib.` };
+}
+
+export async function pinTdlibMessage({ accountId = "main", chatId, messageId, disableNotification = false } = {}) {
+  const id = safeAccountId(accountId);
+  if (!chatId) throw new Error("chatId is required");
+  if (!messageId) throw new Error("messageId is required");
+
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
+  if (!READY_STATES.has(authorizationState?._)) {
+    return { ok: false, authorizationState, message: "Telegram account is not authorized yet." };
+  }
+
+  await tdClient.invoke({
+    _: "pinChatMessage",
+    chat_id: Number(chatId),
+    message_id: Number(messageId),
+    disable_notification: Boolean(disableNotification),
+    only_for_self: false
+  });
+
+  return { ok: true, authorizationState, message: "Message pinned via TDLib." };
+}
+
+export async function editTdlibMessage({ accountId = "main", chatId, messageId, text } = {}) {
+  const id = safeAccountId(accountId);
+  const cleanText = String(text ?? "").trim();
+  if (!chatId) throw new Error("chatId is required");
+  if (!messageId) throw new Error("messageId is required");
+  if (!cleanText) throw new Error("text is required");
+
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
+  if (!READY_STATES.has(authorizationState?._)) {
+    return { ok: false, authorizationState, message: "Telegram account is not authorized yet." };
+  }
+
+  const result = await tdClient.invoke({
+    _: "editMessageText",
+    chat_id: Number(chatId),
+    message_id: Number(messageId),
+    input_message_content: {
+      _: "inputMessageText",
+      text: { _: "formattedText", text: cleanText }
+    }
+  });
+
+  return {
+    ok: true,
+    authorizationState,
+    message: "Message edited via TDLib.",
+    editedMessage: formatMessage(result)
+  };
+}
+
+export async function deleteTdlibMessages({ accountId = "main", chatId, messageIds, revoke = true } = {}) {
+  const id = safeAccountId(accountId);
+  if (!chatId) throw new Error("chatId is required");
+  if (!Array.isArray(messageIds) || messageIds.length === 0) throw new Error("messageIds array is required");
+
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
+  if (!READY_STATES.has(authorizationState?._)) {
+    return { ok: false, authorizationState, message: "Telegram account is not authorized yet." };
+  }
+
+  await tdClient.invoke({
+    _: "deleteMessages",
+    chat_id: Number(chatId),
+    message_ids: messageIds.map(Number),
+    revoke: Boolean(revoke)
+  });
+
+  return {
+    ok: true,
+    authorizationState,
+    message: `${messageIds.length} message(s) deleted via TDLib.`,
+    deletedCount: messageIds.length
+  };
+}
+
 export async function getTdlibPhotoFile(fileId, accountId = "main") {
   const id = safeAccountId(accountId);
   const numericFileId = Number(fileId);

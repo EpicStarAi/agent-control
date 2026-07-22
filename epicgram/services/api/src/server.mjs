@@ -327,6 +327,117 @@ const server = http.createServer(async (request, response) => {
       } catch {}
       return send(response, result.status, result.body);
     }
+    if (request.method === "POST" && url.pathname === "/telegram/forward") {
+      const body = await readJson(request);
+      const { fromChatId, messageId, toChatId, toChatTitle, accountId } = body ?? {};
+      if (!fromChatId || !messageId || !toChatId) return send(response, 400, { ok: false, message: "fromChatId, messageId, toChatId required" });
+      try {
+        const { forwardTdlibMessage } = await import("./tdlib-adapter.mjs");
+        const result = await forwardTdlibMessage({ accountId, fromChatId, messageId, toChatId });
+        auditAppend({
+          status: result.ok ? "executed" : "rejected",
+          actor: "operator",
+          source: "telegram_forward",
+          tool: "propose_forward_message",
+          actionType: "telegram_forward",
+          chatId: String(toChatId),
+          chatTitle: toChatTitle ?? null,
+          preview: `forward msg ${messageId} → chat ${toChatId}`,
+          safety: { executedExternalAction: result.ok, approvalRequiredForSend: true }
+        });
+        return send(response, result.ok ? 200 : 409, result);
+      } catch (e) {
+        return send(response, 500, { ok: false, message: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    if (request.method === "POST" && url.pathname === "/telegram/react") {
+      const body = await readJson(request);
+      const { chatId, messageId, emoji, accountId } = body ?? {};
+      if (!chatId || !messageId || !emoji) return send(response, 400, { ok: false, message: "chatId, messageId, emoji required" });
+      try {
+        const { addTdlibReaction } = await import("./tdlib-adapter.mjs");
+        const result = await addTdlibReaction({ accountId, chatId, messageId, emoji });
+        auditAppend({
+          status: result.ok ? "executed" : "rejected",
+          actor: "operator",
+          source: "telegram_react",
+          tool: "propose_set_reaction",
+          actionType: "telegram_react",
+          chatId: String(chatId),
+          preview: `react ${emoji} to msg ${messageId}`,
+          safety: { executedExternalAction: result.ok, approvalRequiredForSend: true }
+        });
+        return send(response, result.ok ? 200 : 409, result);
+      } catch (e) {
+        return send(response, 500, { ok: false, message: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    if (request.method === "POST" && url.pathname === "/telegram/pin") {
+      const body = await readJson(request);
+      const { chatId, messageId, disableNotification, accountId } = body ?? {};
+      if (!chatId || !messageId) return send(response, 400, { ok: false, message: "chatId, messageId required" });
+      try {
+        const { pinTdlibMessage } = await import("./tdlib-adapter.mjs");
+        const result = await pinTdlibMessage({ accountId, chatId, messageId, disableNotification });
+        auditAppend({
+          status: result.ok ? "executed" : "rejected",
+          actor: "operator",
+          source: "telegram_pin",
+          tool: "propose_pin_message",
+          actionType: "telegram_pin",
+          chatId: String(chatId),
+          preview: `pin msg ${messageId} in chat ${chatId}`,
+          safety: { executedExternalAction: result.ok, approvalRequiredForSend: true }
+        });
+        return send(response, result.ok ? 200 : 409, result);
+      } catch (e) {
+        return send(response, 500, { ok: false, message: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    if (request.method === "POST" && url.pathname === "/telegram/edit") {
+      const body = await readJson(request);
+      const { chatId, messageId, text, accountId } = body ?? {};
+      if (!chatId || !messageId || !text) return send(response, 400, { ok: false, message: "chatId, messageId, text required" });
+      try {
+        const { editTdlibMessage } = await import("./tdlib-adapter.mjs");
+        const result = await editTdlibMessage({ accountId, chatId, messageId, text });
+        auditAppend({
+          status: result.ok ? "executed" : "rejected",
+          actor: "operator",
+          source: "telegram_edit",
+          tool: "propose_edit_message",
+          actionType: "telegram_edit",
+          chatId: String(chatId),
+          preview: String(text).slice(0, 80),
+          safety: { executedExternalAction: result.ok, approvalRequiredForSend: true }
+        });
+        return send(response, result.ok ? 200 : 409, result);
+      } catch (e) {
+        return send(response, 500, { ok: false, message: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    if (request.method === "POST" && url.pathname === "/telegram/delete") {
+      const body = await readJson(request);
+      const { chatId, messageIds, revoke, accountId } = body ?? {};
+      if (!chatId || !Array.isArray(messageIds) || messageIds.length === 0) return send(response, 400, { ok: false, message: "chatId, messageIds[] required" });
+      try {
+        const { deleteTdlibMessages } = await import("./tdlib-adapter.mjs");
+        const result = await deleteTdlibMessages({ accountId, chatId, messageIds, revoke });
+        auditAppend({
+          status: result.ok ? "executed" : "rejected",
+          actor: "operator",
+          source: "telegram_delete",
+          tool: "propose_delete_message",
+          actionType: "telegram_delete",
+          chatId: String(chatId),
+          preview: `delete ${messageIds.length} msg(s) in chat ${chatId}`,
+          safety: { executedExternalAction: result.ok, approvalRequiredForSend: true }
+        });
+        return send(response, result.ok ? 200 : 409, result);
+      } catch (e) {
+        return send(response, 500, { ok: false, message: e instanceof Error ? e.message : String(e) });
+      }
+    }
     if (request.method === "GET" && url.pathname === "/telegram/status") {
       return send(response, 200, await getStatus());
     }

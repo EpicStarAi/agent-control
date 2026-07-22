@@ -66,14 +66,20 @@ function dispatchNavigate(action: { kind: string; target?: string; query?: strin
 
 // ── tool call human-readable labels ──────────────────────────────────────────
 const TOOL_LABELS: Record<string, string> = {
-  get_status:           "🔍 Получаю статус Telegram…",
-  list_accounts:        "👤 Загружаю список аккаунтов…",
-  list_chats:           "💬 Загружаю чаты…",
-  get_chat_history:     "📜 Читаю историю чата…",
-  get_audit_log:        "📋 Читаю audit log…",
-  search_chats:         "🔍 Ищу чаты…",
-  get_workspace_stats:  "📊 Собираю статистику…",
-  propose_send_message: "📨 Формирую запрос на отправку…",
+  get_status:                 "🔍 Получаю статус Telegram…",
+  list_accounts:              "👤 Загружаю список аккаунтов…",
+  list_chats:                 "💬 Загружаю чаты…",
+  get_chat_history:           "📜 Читаю историю чата…",
+  get_audit_log:              "📋 Читаю audit log…",
+  search_chats:               "🔍 Ищу чаты…",
+  get_workspace_stats:        "📊 Собираю статистику…",
+  find_unanswered_messages:   "📬 Ищу неотвеченные сообщения…",
+  propose_send_message:       "📨 Формирую запрос на отправку…",
+  propose_forward_message:    "↩️ Формирую запрос на пересылку…",
+  propose_set_reaction:       "😊 Формирую запрос на реакцию…",
+  propose_pin_message:        "📌 Формирую запрос на закрепление…",
+  propose_edit_message:       "✏️ Формирую запрос на редактирование…",
+  propose_delete_message:     "🗑️ Формирую запрос на удаление…",
 };
 
 // ── quick suggestion chips shown before first message ─────────────────────────
@@ -116,6 +122,8 @@ export function GlobalAIOperatorSidebar() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [attachments, setAttachments]   = useState<Attachment[]>([]);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+  const [cardStates, setCardStates]     = useState<Record<string, "idle" | "executing" | "done" | "error">>({});
+  const [cardErrors, setCardErrors]     = useState<Record<string, string>>({});
 
   const scrollRef   = useRef<HTMLDivElement>(null);
   const inputRef    = useRef<HTMLTextAreaElement>(null);
@@ -381,6 +389,33 @@ export function GlobalAIOperatorSidebar() {
 
   const clearChat = () => { setMessages([]); save(CHAT_KEY, []); };
 
+  // ── approval card execution ──────────────────────────────────────────────────
+  const executeApprovalCard = useCallback(async (cardKey: string, card: ApprovalCard) => {
+    setCardStates(prev => ({ ...prev, [cardKey]: "executing" }));
+    try {
+      const routeMap: Record<string, string> = {
+        forward_message: "/telegram/forward",
+        set_reaction:    "/telegram/react",
+        pin_message:     "/telegram/pin",
+        edit_message:    "/telegram/edit",
+        delete_message:  "/telegram/delete",
+      };
+      const route = routeMap[card.tool];
+      if (!route) throw new Error(`Unknown action type: ${card.tool}`);
+      const res = await fetch(apiUrl(route), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(card.payload),
+      });
+      const data = await res.json() as any;
+      if (!res.ok || data.ok === false) throw new Error(data.message || `HTTP ${res.status}`);
+      setCardStates(prev => ({ ...prev, [cardKey]: "done" }));
+    } catch (err: any) {
+      setCardStates(prev => ({ ...prev, [cardKey]: "error" }));
+      setCardErrors(prev => ({ ...prev, [cardKey]: err.message ?? "Ошибка выполнения" }));
+    }
+  }, []);
+
   if (!mounted) return null;
 
   // ── collapsed button ─────────────────────────────────────────────────────────
@@ -560,24 +595,101 @@ export function GlobalAIOperatorSidebar() {
                       <MessageContent content={msg.content} streaming={msg.streaming} />
                     </div>
                     {/* Approval cards */}
-                    {msg.approvalCards?.map((card, i) => (
-                      <div key={i} className="rounded-xl border border-amber-500/30 bg-amber-500/8 p-3 text-[11px]">
-                        <div className="mb-1.5 flex items-center gap-1.5 font-semibold text-amber-400">
-                          <span>⚠️</span> Требуется подтверждение
-                        </div>
-                        <div className="space-y-1 text-white/60">
-                          <div><span className="text-white/40">Действие:</span> {card.tool}</div>
-                          {card.payload.chatTitle && <div><span className="text-white/40">Чат:</span> {card.payload.chatTitle}</div>}
-                          {card.payload.text && (
-                            <div><span className="text-white/40">Текст:</span>
-                              <span className="ml-1 rounded bg-white/5 px-1">{card.payload.text.slice(0, 80)}{card.payload.text.length > 80 ? "…" : ""}</span>
+                    {msg.approvalCards?.map((card, i) => {
+                      const cardKey = `${msg.id}_${i}`;
+                      const cState = cardStates[cardKey] ?? "idle";
+                      const cError = cardErrors[cardKey];
+                      const isSendCard = card.tool === "send_message";
+
+                      const ACTION_ICONS: Record<string, string> = {
+                        send_message:    "📨",
+                        forward_message: "↩️",
+                        set_reaction:    "😊",
+                        pin_message:     "📌",
+                        edit_message:    "✏️",
+                        delete_message:  "🗑️",
+                      };
+                      const ACTION_LABELS: Record<string, string> = {
+                        send_message:    "Отправка сообщения",
+                        forward_message: "Пересылка сообщения",
+                        set_reaction:    "Добавление реакции",
+                        pin_message:     "Закрепление сообщения",
+                        edit_message:    "Редактирование сообщения",
+                        delete_message:  "Удаление сообщений",
+                      };
+
+                      return (
+                        <div key={i} className="rounded-xl border border-amber-500/30 bg-amber-500/8 p-3 text-[11px]">
+                          <div className="mb-1.5 flex items-center gap-1.5 font-semibold text-amber-400">
+                            <span>{ACTION_ICONS[card.tool] ?? "⚠️"}</span>
+                            {ACTION_LABELS[card.tool] ?? "Требуется подтверждение"}
+                          </div>
+                          <div className="space-y-1 text-white/60">
+                            {(card.payload.chatTitle || card.payload.toChatTitle) && (
+                              <div><span className="text-white/40">Чат:</span> {card.payload.chatTitle || card.payload.toChatTitle}</div>
+                            )}
+                            {card.payload.emoji && (
+                              <div><span className="text-white/40">Реакция:</span> <span className="text-base">{card.payload.emoji}</span></div>
+                            )}
+                            {card.payload.messageId && (
+                              <div><span className="text-white/40">Сообщение:</span> <span className="font-mono text-[10px] text-white/40">#{card.payload.messageId}</span></div>
+                            )}
+                            {card.payload.messageIds && (
+                              <div><span className="text-white/40">Сообщений:</span> {(card.payload.messageIds as string[]).length} шт.</div>
+                            )}
+                            {card.payload.text && (
+                              <div><span className="text-white/40">Текст:</span>
+                                <span className="ml-1 rounded bg-white/5 px-1">{card.payload.text.slice(0, 80)}{card.payload.text.length > 80 ? "…" : ""}</span>
+                              </div>
+                            )}
+                            {card.payload.revoke === false && (
+                              <div className="text-[10px] text-white/30">Только для себя</div>
+                            )}
+                          </div>
+                          <p className="mt-2 text-[10px] text-amber-400/70">{card.warning}</p>
+
+                          {/* send_message: use workspace button */}
+                          {isSendCard && (
+                            <p className="mt-1.5 text-[10px] text-white/25">Используй кнопку «Approve & Send» в рабочей области</p>
+                          )}
+
+                          {/* other write actions: inline confirm/cancel */}
+                          {!isSendCard && cState === "idle" && (
+                            <div className="mt-2.5 flex gap-2">
+                              <button
+                                onClick={() => executeApprovalCard(cardKey, card)}
+                                className="flex-1 rounded-lg py-1.5 text-[11px] font-semibold text-white transition-all hover:brightness-110"
+                                style={{ background: "linear-gradient(135deg,rgba(14,165,233,.7),rgba(34,197,94,.5))" }}
+                              >
+                                ✓ Подтвердить
+                              </button>
+                            </div>
+                          )}
+                          {!isSendCard && cState === "executing" && (
+                            <div className="mt-2.5 flex items-center gap-2 text-[10px] text-white/50">
+                              <span className="h-3 w-3 animate-spin rounded-full border border-sky-500/40 border-t-sky-400" />
+                              Выполняется…
+                            </div>
+                          )}
+                          {!isSendCard && cState === "done" && (
+                            <div className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-emerald-400">
+                              <span>✓</span> Выполнено
+                            </div>
+                          )}
+                          {!isSendCard && cState === "error" && (
+                            <div className="mt-2 space-y-1.5">
+                              <div className="text-[10px] text-red-400">⚠️ Ошибка: {cError}</div>
+                              <button
+                                onClick={() => executeApprovalCard(cardKey, card)}
+                                className="rounded-lg border border-white/10 px-2 py-1 text-[10px] text-white/50 hover:text-white/80 hover:bg-white/10 transition-all"
+                              >
+                                ↺ Повторить
+                              </button>
                             </div>
                           )}
                         </div>
-                        <p className="mt-2 text-[10px] text-amber-400/70">{card.warning}</p>
-                        <p className="mt-1.5 text-[10px] text-white/25">Используй кнопку «Approve & Send» в рабочей области</p>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
