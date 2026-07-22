@@ -284,7 +284,10 @@ async function syncTdlibState(state) {
 }
 
 export async function getStatus() {
-  return withStateLock(async () => {
+  // Run lock-free: syncTdlibState does a TDLib network call that takes 10–30s.
+  // Holding withStateLock for that duration blocks every user-triggered mutation
+  // (createAccountSlot, requestPhoneAuth, etc.) for the full poll cycle.
+  // Status is a read-mostly snapshot — skipping the lock here is safe.
   const state = await syncTdlibState(await readState());
   const accountId = safeAccountId(state.activeAccountId);
   const activeAccount = state.accounts.find((slot) => slot.slotId === accountId) ?? null;
@@ -307,7 +310,6 @@ export async function getStatus() {
       ? "Telegram аккаунт авторизован."
       : "TDLib configuration is present. Runtime adapter is ready for TDLib client wiring."
   };
-  });
 }
 
 export async function createAccountSlot() {
