@@ -10,6 +10,7 @@ export type UiActionName =
   | "ui.highlight_element"
   | "ui.focus_composer"
   | "ui.insert_draft"
+  | "ui.show_operator_reply"
   | "ui.show_approval"
   | "ui.show_task_progress"
   | "ui.open_scheduler"
@@ -200,6 +201,18 @@ export const UI_ACTION_REGISTRY: Record<UiActionName, UiActionDefinition> = {
     failureCondition: "Draft was not inserted.",
     visualTarget: "composer",
     auditEvent: "ui.insert_draft",
+  },
+  "ui.show_operator_reply": {
+    name: "ui.show_operator_reply",
+    inputSchema: { text: "string" },
+    allowedPages: ["/client", "/chats"],
+    allowedTargets: ["operator-window"],
+    timeoutMs: 5000,
+    precondition: "Operator response is available.",
+    successCondition: "Response is visible in the operator dialogue.",
+    failureCondition: "Operator response was not rendered.",
+    visualTarget: "operator-window",
+    auditEvent: "ui.show_operator_reply",
   },
   "ui.show_approval": {
     name: "ui.show_approval",

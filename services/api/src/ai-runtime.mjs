@@ -15,7 +15,8 @@ function maskSecret(value) {
 
 export function getAiStatus() {
   const provider = process.env.EPICGRAM_AI_PROVIDER || "openai";
-  const model = process.env.EPICGRAM_OPENAI_MODEL || "gpt-4.1-mini";
+  const model = process.env.EPICGRAM_AI_MODEL || process.env.EPICGRAM_OPENAI_MODEL || process.env.OPERATOR_PRIMARY_MODEL || "gpt-4.1-mini";
+  const visionModel = process.env.EPICGRAM_AI_VISION_MODEL || (provider === "ollama" ? "llava:7b" : model);
   const enabled = process.env.EPICGRAM_AI_ENABLED === "true";
   // OpenAI-compatible base URL (our own EPIC☠STAR brain proxy, or any OpenAI-style endpoint).
   const baseUrl = process.env.EPICGRAM_AI_BASE_URL || null;
@@ -52,6 +53,7 @@ export function getAiStatus() {
     apiKeyPresent,
     apiKeyMasked: maskSecret(apiKey),
     model,
+    visionModel,
     sendMode,
     message
   };

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TelegramBindingWizard } from "./TelegramBindingWizard";
 import {
   Archive,
@@ -37,12 +37,10 @@ import {
   Sparkles,
   User,
   Users,
-  Volume2,
-  VolumeX,
   X
 } from "lucide-react";
 import { VisualExecutionLayer } from "./VisualExecutionLayer";
-import type { AgentVisualStep, AgentStepStatus, VisualTarget } from "@/lib/uiActionRegistry";
+import type { AgentVisualStep, AgentStepStatus, UiActionName, VisualTarget } from "@/lib/uiActionRegistry";
 import { UI_ACTION_REGISTRY } from "@/lib/uiActionRegistry";
 type Section = "dashboard" | "chats" | "agents" | "accounts" | "logs" | "settings";
 
@@ -394,8 +392,6 @@ export function EpicGramShell({ section }: Props) {
   const [sendBusy, setSendBusy] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [memoryCount, setMemoryCount] = useState<number | null>(null);
-  const [soundEnabled, setSoundEnabled] = useState(false);
-  const [redButtonNotice, setRedButtonNotice] = useState("");
   const telegramReady = isTelegramReady(telegramStatus);
   const activeAccountId = telegramStatus?.activeAccountId ?? primaryTelegramAccount(telegramStatus)?.slotId ?? "main";
 
@@ -412,53 +408,6 @@ export function EpicGramShell({ section }: Props) {
 
     setClientDiagnostics(`версия ${CLIENT_VERSION}; service workers: ${registrations.length}; caches: ${cacheKeys.length}`);
     if (reload) window.location.reload();
-  }
-
-  function playOperatorBeep() {
-    try {
-      const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AudioContextClass) return;
-      const context = new AudioContextClass();
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      oscillator.type = "square";
-      oscillator.frequency.value = 520;
-      gain.gain.value = 0.035;
-      oscillator.connect(gain);
-      gain.connect(context.destination);
-      oscillator.start();
-      oscillator.stop(context.currentTime + 0.08);
-      window.setTimeout(() => context.close().catch(() => undefined), 180);
-    } catch {
-      // Browser audio can be unavailable; the UI state is still authoritative.
-    }
-  }
-
-  function toggleSound() {
-    setSoundEnabled((enabled) => {
-      const next = !enabled;
-      if (next) playOperatorBeep();
-      return next;
-    });
-  }
-
-  async function handleRedButton() {
-    if (soundEnabled) playOperatorBeep();
-    setRedButtonNotice("SAFE MODE: активирую аварийную блокировку оператора…");
-    try {
-      const r = await fetch("/api/operator/production/lock", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ operator: "human", reason: "red_button" })
-      }).then((x) => x.json()).catch(() => null);
-      if (r && (r.killSwitch === true || r.runtimeMode === "LOCKED" || r.ok === true)) {
-        setRedButtonNotice("🔒 SAFE MODE ACTIVE — оператор LOCKED. Write/автопилот выключены, отправки заблокированы. Просмотр чатов остаётся. Разблокировка: Agent OS → Production Gate → Unlock (фраза «UNLOCK OPERATOR»).");
-      } else {
-        setRedButtonNotice("SAFE MODE недоступен (backend не ответил). Отправки в любом случае требуют подтверждения человека.");
-      }
-    } catch {
-      setRedButtonNotice("SAFE MODE недоступен (backend не ответил). Отправки в любом случае требуют подтверждения человека.");
-    }
   }
 
   useEffect(() => {
@@ -502,35 +451,18 @@ export function EpicGramShell({ section }: Props) {
       if (cancelled) return;
 
       setTelegramStatus(status);
-      const controller = new AbortController();
-      const timer = window.setTimeout(() => controller.abort(), 6000);
-      const activeAuth = await fetch("/api/telegram/active-auth/status", { cache: "no-store", signal: controller.signal })
-        .then((r) => r.json())
-        .catch(() => null)
-        .finally(() => window.clearTimeout(timer)) as { activeAccountId?: string | null; waitingForCode?: boolean; waitingForPassword?: boolean; waitingForQr?: boolean } | null;
-      if (
-        !cancelled &&
-        activeAuth?.activeAccountId &&
-        (activeAuth?.waitingForCode || activeAuth?.waitingForPassword || activeAuth?.waitingForQr) &&
-        window.location.pathname !== "/telegram-code"
-      ) {
-        window.location.assign("/telegram-code");
-        return;
-      }
       if (authOpen && status.qrLink) setQrLink(status.qrLink);
 
       const authState = activeAuthorizationState(status);
-      if (authState === "authorizationStateWaitCode") {
+      if (authFlowActive && authState === "authorizationStateWaitCode") {
         setAuthMode("phone");
         setAuthOpen(true);
-        setAuthFlowActive(true);
         setQrLink("");
         setQrDataUrl("");
         const active = primaryTelegramAccount(status);
         setAuthMessage(active?.phoneMasked ? `Введите код Telegram для ${active.phoneMasked}.` : "Введите код Telegram.");
-      } else if (authState === "authorizationStateWaitPassword") {
+      } else if (authFlowActive && authState === "authorizationStateWaitPassword") {
         setAuthOpen(true);
-        setAuthFlowActive(true);
         setAuthMessage("Введите облачный пароль Telegram (2FA).");
       }
 
@@ -960,30 +892,6 @@ export function EpicGramShell({ section }: Props) {
   return (
     <main className="h-screen min-h-0 overflow-hidden bg-tg-bg text-tg-text">
       <TelegramBindingWizard />
-      <div className="fixed right-4 top-4 z-30 flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-2xl border border-tg-line bg-tg-panel/95 p-2 shadow-telegram backdrop-blur">
-        <button
-          onClick={toggleSound}
-          className={`flex h-10 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-semibold ${soundEnabled ? "bg-tg-active text-white" : "bg-tg-bg text-tg-muted hover:bg-tg-hover hover:text-white"}`}
-          aria-pressed={soundEnabled}
-          title={soundEnabled ? "Выключить звук" : "Включить звук"}
-        >
-          {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-          <span className="hidden sm:inline">Звук {soundEnabled ? "вкл" : "выкл"}</span>
-        </button>
-        <button
-          onClick={handleRedButton}
-          className="flex h-10 shrink-0 items-center gap-2 rounded-xl bg-red-600 px-4 text-sm font-black uppercase tracking-wide text-white shadow-[0_0_18px_rgba(220,38,38,.45)] hover:bg-red-500"
-          title="Не нажимать"
-        >
-          <AlertTriangle className="h-4 w-4" />
-          Не нажимать
-        </button>
-      </div>
-      {redButtonNotice && (
-        <div className="fixed right-4 top-20 z-30 max-w-sm rounded-2xl border border-red-500/50 bg-red-950/95 p-3 text-sm leading-6 text-red-50 shadow-telegram backdrop-blur">
-          {redButtonNotice}
-        </div>
-      )}
       <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[auto_minmax(300px,380px)_1fr] xl:grid-cols-[auto_380px_1fr_320px]">
         <AccountRail
           className="hidden md:flex"
@@ -1160,7 +1068,7 @@ export function EpicGramShell({ section }: Props) {
           }}
         />
       )}
-      {activeAuthorizationState(telegramStatus) === "authorizationStateWaitCode" && !authOpen && (
+      {authFlowActive && activeAuthorizationState(telegramStatus) === "authorizationStateWaitCode" && !authOpen && (
         <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-lg rounded-2xl border border-fuchsia-400/40 bg-tg-panel/95 p-4 shadow-telegram backdrop-blur">
           <div className="flex items-start gap-3">
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-fuchsia-500/20 text-lg">#</div>
@@ -1199,19 +1107,33 @@ export function EpicGramShell({ section }: Props) {
       <OperatorDock
           activeAccountId={activeAccountId}
           selectedTelegramChatId={selectedTelegramChatId}
+          selectedTelegramChatTitle={activeTelegramChat?.title ?? ""}
+          telegramChats={telegramChats}
           telegramMessages={telegramMessages}
+          onSetSearchQuery={setSearchQuery}
+          onSelectTelegramChat={setSelectedTelegramChatId}
+          onDraftGenerated={(draft) => {
+            setMessageDraft(draft);
+            setApprovalNotice("EPIC💀CLAW AI вывел результат в composer выбранного чата. Проверьте текст и отправьте вручную.");
+          }}
         />
     </main>
   );
 }
 
 type OpAction = { tool: string; chatId: string; chatTitle: string; text: string; accountId?: string; auditId?: string; actionType?: string; approvalId?: string; token?: string; stage?: string };
-type OpMsg = { role: "user" | "op"; text: string; files?: string[]; pending?: OpAction | null };
+type OpAttachment = { name: string; type: string; previewUrl?: string };
+type OpMsg = { role: "user" | "op"; text: string; tool?: string; files?: string[]; attachments?: OpAttachment[]; pending?: OpAction | null };
+type BackendToolDetection = { tool: string; message: string; visualTarget: VisualTarget };
+const OPERATOR_STORAGE_VERSION = "v4";
+const operatorMessagesKey = (projectId: string) => `epicstar_op_msgs_${OPERATOR_STORAGE_VERSION}_${projectId}`;
 type OperatorWindowState = "CLOSED" | "BUTTON" | "COMPACT" | "DOCKED" | "FLOATING" | "MAXIMIZED";
 type OperatorGeometry = { x: number; y: number; width: number; height: number; previous?: { x: number; y: number; width: number; height: number } | null };
 type OperatorRunStatus = "ready" | "running" | "approval" | "error" | "complete" | "paused" | "cancelled";
 
-const OPERATOR_WINDOW_STORAGE = "epicgram.operator.window.v1";
+const OPERATOR_WINDOW_STORAGE_VERSION = "v2";
+const operatorWindowStorageKey = (accountId: string) =>
+  `epicgram.operator.window.${OPERATOR_WINDOW_STORAGE_VERSION}.${accountId || "default"}`;
 const OPERATOR_MIN_WIDTH = 340;
 const OPERATOR_MIN_HEIGHT = 420;
 const OPERATOR_MAX_WIDTH = 920;
@@ -1268,14 +1190,25 @@ function makeVisualStep(input: {
 function OperatorDock({
   activeAccountId,
   selectedTelegramChatId,
+  selectedTelegramChatTitle,
+  telegramChats,
   telegramMessages,
+  onSetSearchQuery,
+  onSelectTelegramChat,
+  onDraftGenerated,
 }: {
   activeAccountId: string;
   selectedTelegramChatId: string;
+  selectedTelegramChatTitle: string;
+  telegramChats: TelegramChat[];
   telegramMessages: any[];
+  onSetSearchQuery: (query: string) => void;
+  onSelectTelegramChat: (chatId: string) => void;
+  onDraftGenerated: (draft: string) => void;
 }) {
-  const [windowState, setWindowState] = useState<OperatorWindowState>("DOCKED");
-  const [geometry, setGeometry] = useState<OperatorGeometry>(() => defaultOperatorGeometry());
+  const [windowState, setWindowState] = useState<OperatorWindowState>("FLOATING");
+  const [geometry, setGeometry] = useState<OperatorGeometry>({ x: 96, y: 72, width: 420, height: 680, previous: null });
+  const [loadedWindowStorageKey, setLoadedWindowStorageKey] = useState<string | null>(null);
   const [runStatus, setRunStatus] = useState<OperatorRunStatus>("ready");
   const [activeStep, setActiveStep] = useState<AgentVisualStep | null>(null);
   const [stepCount, setStepCount] = useState(0);
@@ -1284,10 +1217,11 @@ function OperatorDock({
   const [stepLogOpen, setStepLogOpen] = useState(false);
   const [stepLog, setStepLog] = useState<AgentVisualStep[]>([]);
   const [msgs, setMsgs] = useState<OpMsg[]>([
-    { role: "op", text: "На связи. Я EPIC💀CLAW AI. Пиши задачу, кидай фото/видео/аудио — разрулю." }
+    { role: "op", text: "EPIC💀CLAW на связи. Работаю с клиентом, выбранным Telegram-чатом, n8n и локальным AI. Пиши задачу обычным текстом или запускай несколько команд списком." }
   ]);
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  const [filePreviews, setFilePreviews] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([{ id: "p_main", name: "Основной" }]);
   const [activeId, setActiveId] = useState("p_main");
@@ -1295,29 +1229,65 @@ function OperatorDock({
   const [confirming, setConfirming] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const operatorRootRef = useRef<HTMLDivElement | null>(null);
+  const filePreviewsRef = useRef<Record<string, string>>({});
   const dragRef = useRef<{ x: number; y: number; gx: number; gy: number } | null>(null);
   const resizeRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const toolsPanelRef = useRef<HTMLDivElement | null>(null);
+  const windowStorageKey = operatorWindowStorageKey(activeAccountId);
   const visibleWindow = windowState !== "CLOSED" && windowState !== "BUTTON";
+  const selectedChat = useMemo(
+    () => telegramChats.find((chat) => chat.id === selectedTelegramChatId) ?? null,
+    [telegramChats, selectedTelegramChatId],
+  );
+  const selectedChatActionType = selectedChat?.isChannel || selectedChat?.category === "channel" ? "publish_channel" : "send_text";
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 1e9, behavior: "smooth" });
   }, [msgs, visibleWindow]);
 
   useEffect(() => {
+    filePreviewsRef.current = filePreviews;
+  }, [filePreviews]);
+
+  useEffect(() => () => {
+    Object.values(filePreviewsRef.current).forEach((url) => URL.revokeObjectURL(url));
+  }, []);
+
+  useEffect(() => {
+    setLoadedWindowStorageKey(null);
     try {
-      const raw = localStorage.getItem(OPERATOR_WINDOW_STORAGE);
-      if (!raw) return;
+      const raw = localStorage.getItem(windowStorageKey);
+      if (!raw) {
+        setWindowState("FLOATING");
+        setGeometry(defaultOperatorGeometry());
+        setLoadedWindowStorageKey(windowStorageKey);
+        return;
+      }
       const saved = JSON.parse(raw) as { state?: OperatorWindowState; geometry?: OperatorGeometry; visualSkipped?: boolean };
       if (saved.state) setWindowState(saved.state);
       if (saved.geometry) setGeometry(clampOperatorGeometry(saved.geometry));
       if (typeof saved.visualSkipped === "boolean") setVisualSkipped(saved.visualSkipped);
-    } catch {}
-  }, []);
+    } catch {
+      setWindowState("FLOATING");
+      setGeometry(defaultOperatorGeometry());
+    }
+    setLoadedWindowStorageKey(windowStorageKey);
+  }, [windowStorageKey]);
 
   useEffect(() => {
+    if (loadedWindowStorageKey !== windowStorageKey) return;
     try {
-      localStorage.setItem(OPERATOR_WINDOW_STORAGE, JSON.stringify({ state: windowState, geometry, visualSkipped }));
+      localStorage.setItem(windowStorageKey, JSON.stringify({ state: windowState, geometry, visualSkipped }));
     } catch {}
-  }, [windowState, geometry, visualSkipped]);
+  }, [windowState, geometry, visualSkipped, windowStorageKey, loadedWindowStorageKey]);
+
+  useEffect(() => {
+    function onViewportResize() {
+      setGeometry((current) => clampOperatorGeometry(current));
+    }
+    window.addEventListener("resize", onViewportResize);
+    return () => window.removeEventListener("resize", onViewportResize);
+  }, []);
 
   useEffect(() => {
     function onMove(event: PointerEvent) {
@@ -1380,6 +1350,437 @@ function OperatorDock({
     }, 900);
   }
 
+  function runUiStep(input: {
+    tool: string;
+    uiAction: UiActionName;
+    visualTarget: VisualTarget;
+    message: string;
+    expectedResult?: string;
+    action: () => string | void;
+  }) {
+    const definition = UI_ACTION_REGISTRY[input.uiAction];
+    const step = beginStep({
+      tool: input.tool,
+      uiAction: input.uiAction,
+      visualTarget: input.visualTarget,
+      message: input.message,
+      expectedResult: input.expectedResult || definition.successCondition,
+    });
+    try {
+      const result = input.action() || definition.successCondition;
+      completeStep(step.stepId, result, "COMPLETED");
+      setRunStatus("complete");
+      setMsgs((p) => [...p, { role: "op", text: `Готово: ${result}` }]);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      completeStep(step.stepId, reason || definition.failureCondition, "FAILED");
+      setRunStatus("error");
+      setMsgs((p) => [...p, { role: "op", text: `⚠ Не смог выполнить UI-действие: ${reason || definition.failureCondition}` }]);
+    }
+  }
+
+  function focusDomTarget(target: VisualTarget) {
+    const selector = `[data-ui-target="${CSS.escape(target)}"]`;
+    const node = document.querySelector<HTMLElement>(selector);
+    if (!node) throw new Error(`цель ${target} не найдена`);
+    node.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+    const focusable = node.matches("input, textarea, button, a")
+      ? node
+      : node.querySelector<HTMLElement>("input, textarea, button, a");
+    focusable?.focus();
+  }
+
+  function extractAfter(command: string, markers: RegExp[]) {
+    for (const marker of markers) {
+      const match = command.match(marker);
+      const value = match?.[1]?.trim();
+      if (value) return value;
+    }
+    return "";
+  }
+
+  function executeLocalUiCommand(raw: string): boolean {
+    const command = raw.trim();
+    const s = command.toLowerCase();
+    if (!command) return false;
+
+    if (/открой|перейди|покажи|сфокус|найди|поиск|вставь|черновик|разверни|сверни|закрепи|чат/.test(s) === false) {
+      return false;
+    }
+
+    if (/настройк|settings/.test(s)) {
+      runUiStep({
+        tool: "client.navigate",
+        uiAction: "ui.open_settings",
+        visualTarget: "settings-button",
+        message: "Открываю настройки клиента",
+        action: () => {
+          window.location.assign("/settings");
+          return "открываю /settings";
+        },
+      });
+      return true;
+    }
+
+    if (/(?:открой|перейди|покажи).*(?:лог|audit|журнал)|(?:лог|журнал).*(?:открой|перейди|покажи)/.test(s)) {
+      runUiStep({
+        tool: "client.navigate",
+        uiAction: "ui.open_audit_log",
+        visualTarget: "operator-window",
+        message: "Открываю журнал клиента",
+        action: () => {
+          window.location.assign("/logs");
+          return "открываю /logs";
+        },
+      });
+      return true;
+    }
+
+    if (/разверни|полный экран|maximiz|fullscreen/.test(s)) {
+      runUiStep({
+        tool: "client.operator_window",
+        uiAction: "ui.maximize_operator",
+        visualTarget: "operator-window",
+        message: "Разворачиваю окно оператора",
+        action: () => {
+          if (windowState !== "MAXIMIZED") toggleMaximize();
+          return "окно оператора развёрнуто";
+        },
+      });
+      return true;
+    }
+
+    if (/сверни|минимиз|minimiz/.test(s)) {
+      runUiStep({
+        tool: "client.operator_window",
+        uiAction: "ui.minimize_operator",
+        visualTarget: "operator-window",
+        message: "Сворачиваю окно оператора",
+        action: () => {
+          setOperatorState("BUTTON");
+          return "окно оператора свернуто в кнопку";
+        },
+      });
+      return true;
+    }
+
+    if (/закрепи|справа|dock/.test(s)) {
+      runUiStep({
+        tool: "client.operator_window",
+        uiAction: "ui.open_operator",
+        visualTarget: "operator-window",
+        message: "Закрепляю окно оператора справа",
+        action: () => {
+          setOperatorState("DOCKED");
+          return "окно оператора закреплено справа";
+        },
+      });
+      return true;
+    }
+
+    if (/поиск|найди|search|сфокус.*чат/.test(s)) {
+      const query = extractAfter(command, [/поиск(?:ай)?\s+(.+)$/i, /найди\s+(.+)$/i, /search\s+(.+)$/i]);
+      runUiStep({
+        tool: "client.focus_search",
+        uiAction: "ui.focus_chat_search",
+        visualTarget: "chat-search",
+        message: query ? `Фокусирую поиск: ${query}` : "Фокусирую поиск чатов",
+        action: () => {
+          if (query) onSetSearchQuery(query);
+          focusDomTarget("chat-search");
+          return query ? `поиск чатов сфокусирован; запрос: ${query}` : "поиск чатов сфокусирован";
+        },
+      });
+      return true;
+    }
+
+    if (/composer|поле ввода|поле ответа|фокус.*ответ|сообщени/.test(s) && /сфокус|открой|перейди|поле/.test(s)) {
+      runUiStep({
+        tool: "client.focus_composer",
+        uiAction: "ui.focus_composer",
+        visualTarget: "composer",
+        message: "Фокусирую composer выбранного чата",
+        action: () => {
+          focusDomTarget("composer");
+          return "composer выбранного чата сфокусирован";
+        },
+      });
+      return true;
+    }
+
+    if (/вставь|черновик|draft/.test(s)) {
+      const draft = extractAfter(command, [/вставь(?:\s+черновик)?[:\s]+([\s\S]+)$/i, /черновик[:\s]+([\s\S]+)$/i, /draft[:\s]+([\s\S]+)$/i]);
+      if (draft) {
+        runUiStep({
+          tool: "client.insert_draft",
+          uiAction: "ui.insert_draft",
+          visualTarget: "composer",
+          message: "Вставляю черновик в composer",
+          action: () => {
+            onDraftGenerated(draft);
+            window.setTimeout(() => focusDomTarget("composer"), 80);
+            return "черновик вставлен в composer";
+          },
+        });
+        return true;
+      }
+    }
+
+    const chatName = extractAfter(command, [/открой\s+чат\s+(.+)$/i, /перейди\s+в\s+чат\s+(.+)$/i, /чат\s+(.+)$/i]);
+    if (chatName) {
+      const needle = chatName.toLowerCase();
+      const chat = telegramChats.find((item) => item.title.toLowerCase().includes(needle) || item.id === chatName);
+      runUiStep({
+        tool: "client.open_chat",
+        uiAction: "ui.open_chat",
+        visualTarget: chat ? `chat-row:${chat.id}` : "chat-list",
+        message: `Открываю чат: ${chatName}`,
+        action: () => {
+          if (!chat) throw new Error(`чат "${chatName}" не найден в текущем списке`);
+          onSelectTelegramChat(chat.id);
+          return `чат открыт: ${chat.title}`;
+        },
+      });
+      return true;
+    }
+
+    return false;
+  }
+
+  function detectBackendToolSegment(raw: string): BackendToolDetection | null {
+    const s = raw.trim().toLowerCase();
+    if (!s) return null;
+    if (/аудит|проверь.*epic.?gram|read[\s-]?only.*(?:проверк|audit)|проверь.*(?:ui|api).*(?:telegram|tdlib|n8n|openclaw)|с чего (?:нач|старт)|что (?:делаем|дальше)|начн[её]м работу|первый шаг/.test(s)) {
+      return { tool: "system_audit", message: "Провожу READ-ONLY аудит EPICGRAM", visualTarget: "operator-window" };
+    }
+    if (/проверь.*состояни.*клиент|состояни.*клиент|state|inspect|диагност.*клиент|что открыто/.test(s)) {
+      return { tool: "inspect_state", message: "Читаю состояние клиента", visualTarget: "operator-window" };
+    }
+    if (/n8n|воркфлоу|workflow|workflows/.test(s)) {
+      if (/draft|черновик|ответ|approval|апрув|карточ/i.test(s)) {
+        return { tool: "n8n_draft_approval", message: "Готовлю черновик через n8n", visualTarget: "approval-card" };
+      }
+      return { tool: /воркфлоу|workflow|workflows/.test(s) ? "n8n_workflows" : "n8n_status", message: "Проверяю n8n", visualTarget: "operator-window" };
+    }
+    if (/openclaw|open claw|claw|qclaw/.test(s)) {
+      return { tool: "openclaw_status", message: "Проверяю OpenClaw runtime", visualTarget: "operator-window" };
+    }
+    if (/прочитай.*чат|покажи.*сообщ|послед.*сообщ|read.*chat|last.*message/.test(s)) {
+      return { tool: "read_chat", message: "Читаю выбранный Telegram-чат", visualTarget: "message-list" };
+    }
+    if (/суммар|резюм|summary|summar|проанализ.*чат|анализ.*чат/.test(s)) {
+      return { tool: "summarize_chat", message: "Суммаризирую выбранный Telegram-чат", visualTarget: "message-list" };
+    }
+    if (/approval|апрув|подтвержден|подтверждён|карточк.*подтверж|создай.*карточ/.test(s)) {
+      return { tool: "create_approval", message: "Готовлю approval-карточку", visualTarget: "approval-card" };
+    }
+    if (/черновик|draft|подготов.*ответ|предлож.*ответ|ответь/.test(s)) {
+      return { tool: "prepare_draft", message: "Готовлю черновик ответа", visualTarget: "composer" };
+    }
+    return null;
+  }
+
+  function detectBackendTools(raw: string): BackendToolDetection[] {
+    const segments = raw
+      .split(/\r?\n|;|[.!?]+\s+|\s+(?:затем|потом|после этого)\s+|\s+и\s+(?=(?:проверь|прочитай|покажи|суммар|проанализ|подготов|создай|сделай|открой))/i)
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+    const candidates = segments.length > 1 ? segments : [raw];
+    const seen = new Set<string>();
+    const detected: BackendToolDetection[] = [];
+
+    for (const candidate of candidates) {
+      const item = detectBackendToolSegment(candidate);
+      if (!item || seen.has(item.tool)) continue;
+      seen.add(item.tool);
+      detected.push(item);
+    }
+
+    if (detected.length === 0) {
+      const item = detectBackendToolSegment(raw);
+      if (item) detected.push(item);
+    }
+    return detected;
+  }
+
+  function formatToolResult(tool: string, result: any) {
+    const r = result?.result ?? result;
+    if (tool === "system_audit") {
+      const rows = Array.isArray(r?.rows) ? r.rows : [];
+      return [
+        "READ-ONLY аудит EPICGRAM",
+        "Компонент | Статус | Результат | Решение",
+        "--- | --- | --- | ---",
+        ...rows.map((row: any) => [row.component, row.status, row.detail, row.solution]
+          .map((value) => String(value ?? "-").replace(/\|/g, "/").replace(/\s+/g, " ").trim())
+          .join(" | ")),
+      ].join("\n");
+    }
+    if (tool === "inspect_state") {
+      return [
+        "Состояние клиента:",
+        `section: ${r?.clientState?.section ?? "client"}`,
+        `selectedChat: ${r?.clientState?.selectedTelegramChatTitle || r?.clientState?.selectedTelegramChatId || "не выбран"}`,
+        `visibleChats: ${r?.clientState?.visibleChatsCount ?? 0}`,
+        `telegramBinding: ${r?.telegramBinding?.bound ? "bound" : "not bound"}`,
+      ].join("\n");
+    }
+    if (tool === "n8n_status") {
+      return `n8n: ${r?.online ? "online" : "offline"}${r?.workflows != null ? ` · workflows: ${r.workflows}` : ""}${r?.executions != null ? ` · executions: ${r.executions}` : ""}`;
+    }
+    if (tool === "n8n_workflows") {
+      const workflows = Array.isArray(r?.workflows) ? r.workflows.slice(0, 8) : [];
+      return workflows.length
+        ? `n8n workflows (${r?.counts?.total ?? workflows.length}):\n` + workflows.map((w: any) => `• ${w.name} · ${w.active ? "active" : "off"} · nodes ${w.nodesCount ?? "?"}`).join("\n")
+        : `n8n workflows: ${r?.reason || "список пуст"}`;
+    }
+    if (tool === "openclaw_status") {
+      return `OpenClaw/operator status:\n${JSON.stringify(r, null, 2).slice(0, 1600)}`;
+    }
+    return String(r?.text || result?.text || result?.error || "Готово.");
+  }
+
+  async function executeBackendTool(raw: string, detected: { tool: string; message: string; visualTarget: VisualTarget }) {
+    const step = beginStep({
+      tool: `operator.${detected.tool}`,
+      uiAction: detected.tool === "create_approval" ? "ui.show_approval" : detected.tool === "prepare_draft" ? "ui.insert_draft" : "ui.show_task_progress",
+      visualTarget: detected.visualTarget,
+      message: detected.message,
+      expectedResult: "Backend tool вернёт read-only результат или approval-карточку",
+    });
+    setBusy(true);
+    try {
+      const response = await fetch("/api/operator-tools", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          tool: detected.tool,
+          instruction: raw,
+          chatId: selectedTelegramChatId || activeId,
+          chatTitle: selectedTelegramChatTitle || selectedTelegramChatId || "Telegram chat",
+          clientState: {
+            section: "client",
+            activeAccountId,
+            selectedTelegramChatId,
+            selectedTelegramChatTitle,
+            visibleChatsCount: telegramChats.length,
+            operatorWindow: { state: windowState, runStatus, visualSkipped },
+          },
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok) {
+        const reason = String(data?.text || data?.error || `HTTP ${response.status}`);
+        completeStep(step.stepId, reason, "FAILED");
+        setRunStatus("error");
+        setMsgs((p) => [...p, { role: "op", text: `⚠ ${reason}` }]);
+        return;
+      }
+
+      const resultText = formatToolResult(detected.tool, data);
+      if (data.pendingAction?.text) {
+        setMsgs((p) => [...p, {
+          role: "op",
+          text: resultText,
+          tool: `operator.${detected.tool}`,
+          pending: {
+            tool: "tg_send",
+            accountId: activeAccountId,
+            chatId: data.pendingAction.chatId || selectedTelegramChatId,
+            chatTitle: data.pendingAction.chatTitle || selectedTelegramChatTitle || "Telegram chat",
+            text: String(data.pendingAction.text || ""),
+            auditId: data.pendingAction.auditId || undefined,
+            actionType: data.pendingAction.actionType || "telegram_send",
+          },
+        }]);
+        completeStep(step.stepId, "Approval card создана", "COMPLETED");
+        setRunStatus("approval");
+        return;
+      }
+
+      setMsgs((p) => [...p, { role: "op", text: resultText, tool: `operator.${detected.tool}` }]);
+      if (detected.tool === "prepare_draft" && selectedTelegramChatId) onDraftGenerated(resultText);
+      completeStep(step.stepId, "Tool result получен", "COMPLETED");
+      setRunStatus("complete");
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      completeStep(step.stepId, reason, "FAILED");
+      setRunStatus("error");
+      setMsgs((p) => [...p, { role: "op", text: `⚠ Backend tool недоступен: ${reason}` }]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runToolButton(tool: string, label: string) {
+    const detected: { tool: string; message: string; visualTarget: VisualTarget } = {
+      tool,
+      message:
+        tool === "system_audit" ? "Провожу READ-ONLY аудит EPICGRAM"
+          : tool === "inspect_state" ? "Читаю состояние клиента"
+          : tool === "n8n_workflows" ? "Проверяю n8n workflows"
+          : tool === "n8n_draft_approval" ? "Готовлю черновик через n8n"
+          : tool === "openclaw_status" ? "Проверяю OpenClaw runtime"
+          : tool === "read_chat" ? "Читаю выбранный Telegram-чат"
+          : tool === "summarize_chat" ? "Суммаризирую выбранный Telegram-чат"
+          : tool === "create_approval" ? "Готовлю approval-карточку"
+          : "Готовлю черновик ответа",
+      visualTarget:
+        tool === "read_chat" || tool === "summarize_chat" ? "message-list"
+          : tool === "prepare_draft" ? "composer"
+          : tool === "create_approval" || tool === "n8n_draft_approval" ? "approval-card"
+          : "operator-window",
+    };
+    await executeBackendTool(label, detected);
+  }
+
+  async function allowlistSelectedChat() {
+    const step = beginStep({
+      tool: "telegram.allowlist_chat",
+      uiAction: "ui.show_task_progress",
+      visualTarget: "operator-window",
+      message: "Добавляю выбранный чат в allowlist",
+      expectedResult: "Approval gate разрешит подготовку отправки в этот чат",
+    });
+    if (!selectedTelegramChatId) {
+      completeStep(step.stepId, "Чат не выбран", "FAILED");
+      setRunStatus("error");
+      setMsgs((p) => [...p, { role: "op", text: "⚠ Сначала выбери Telegram-чат слева." }]);
+      return;
+    }
+    setBusy(true);
+    try {
+      const response = await fetch("/api/telegram/binding/send/allowlist", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          chatId: selectedTelegramChatId,
+          actionType: selectedChatActionType,
+          label: selectedTelegramChatTitle || selectedTelegramChatId,
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.ok) {
+        const reason = humanReason(data?.reason || `HTTP ${response.status}`);
+        completeStep(step.stepId, reason, "FAILED");
+        setRunStatus("error");
+        setMsgs((p) => [...p, { role: "op", text: `⚠ Allowlist не добавлен: ${reason}` }]);
+        return;
+      }
+      const title = data.chatTitle || selectedTelegramChatTitle || selectedTelegramChatId;
+      completeStep(step.stepId, `allowlist ok: ${title}`, "COMPLETED");
+      setRunStatus("complete");
+      setMsgs((p) => [...p, { role: "op", text: `✅ Чат добавлен в allowlist для ${selectedChatActionType}: ${title}` }]);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      completeStep(step.stepId, reason, "FAILED");
+      setRunStatus("error");
+      setMsgs((p) => [...p, { role: "op", text: `⚠ Allowlist endpoint недоступен: ${reason}` }]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function startDrag(event: React.PointerEvent) {
     if (windowState !== "FLOATING") return;
     const target = event.target as HTMLElement;
@@ -1415,7 +1816,14 @@ function OperatorDock({
     setWindowState("MAXIMIZED");
   }
 
-  const GREET: OpMsg[] = [{ role: "op", text: "На связи. Я EPIC💀CLAW AI. Пиши задачу, кидай фото/видео/аудио — разрулю." }];
+  function revealToolsPanel() {
+    if (windowState === "BUTTON" || windowState === "CLOSED" || windowState === "COMPACT") {
+      setOperatorState("DOCKED");
+    }
+    window.setTimeout(() => toolsPanelRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }), 80);
+  }
+
+  const GREET: OpMsg[] = [{ role: "op", text: "EPIC💀CLAW на связи. Работаю с клиентом, выбранным Telegram-чатом, n8n и локальным AI. Пиши задачу обычным текстом или запускай несколько команд списком." }];
   useEffect(() => {
     try {
       const rp = localStorage.getItem("epicstar_op_projects");
@@ -1427,13 +1835,13 @@ function OperatorDock({
   useEffect(() => {
     try {
       localStorage.setItem("epicstar_op_active", activeId);
-      const rm = localStorage.getItem("epicstar_op_msgs_" + activeId);
+      const rm = localStorage.getItem(operatorMessagesKey(activeId));
       setMsgs(rm ? JSON.parse(rm) : GREET);
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
   useEffect(() => {
-    try { localStorage.setItem("epicstar_op_msgs_" + activeId, JSON.stringify(msgs)); } catch {}
+    try { localStorage.setItem(operatorMessagesKey(activeId), JSON.stringify(msgs)); } catch {}
   }, [msgs, activeId]);
   useEffect(() => {
     try { localStorage.setItem("epicstar_op_projects", JSON.stringify(projects)); } catch {}
@@ -1445,19 +1853,133 @@ function OperatorDock({
     setActiveId(id);
   }
 
+  const fileKey = useCallback((file: File) => {
+    return `${file.name}:${file.size}:${file.lastModified}`;
+  }, []);
+
+  const addOperatorFiles = useCallback((nextFiles: File[]) => {
+    if (nextFiles.length === 0) return;
+    setFiles((current) => {
+      const duplicateKey = (file: File) => `${file.name}:${file.size}:${file.type}`;
+      const existing = new Set(current.map(duplicateKey));
+      const unique = nextFiles.filter((file) => {
+        const key = duplicateKey(file);
+        if (existing.has(key)) return false;
+        existing.add(key);
+        return true;
+      });
+      const merged = [...current, ...unique].slice(0, 8);
+      return merged;
+    });
+    setFilePreviews((current) => {
+      const next = { ...current };
+      for (const file of nextFiles) {
+        if (file.type.startsWith("image/")) {
+          const key = fileKey(file);
+          if (!next[key]) next[key] = URL.createObjectURL(file);
+        }
+      }
+      return next;
+    });
+  }, [fileKey]);
+
+  function removeOperatorFile(index: number) {
+    setFiles((current) => {
+      const file = current[index];
+      if (file) {
+        const key = fileKey(file);
+        const preview = filePreviews[key];
+        if (preview) URL.revokeObjectURL(preview);
+        setFilePreviews((previews) => {
+          const next = { ...previews };
+          delete next[key];
+          return next;
+        });
+      }
+      return current.filter((_, i) => i !== index);
+    });
+  }
+
+  function onPaste(event: React.ClipboardEvent) {
+    const pastedFiles = Array.from(event.clipboardData?.items ?? [])
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file));
+    if (pastedFiles.length === 0) return;
+    event.preventDefault();
+    addOperatorFiles(pastedFiles);
+    setText((value) => value || "Проанализируй вложенный скриншот и выдай результат прямо в окне оператора.");
+  }
+
+  async function readImageAttachmentsForAi(sourceFiles: File[]) {
+    const images = sourceFiles.filter((file) => file.type.startsWith("image/")).slice(0, 3);
+    const maxBytes = 2_500_000;
+    const readOne = (file: File) => new Promise<{ name: string; type: string; size: number; dataUrl: string } | null>((resolve) => {
+      if (file.size > maxBytes) {
+        resolve(null);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => resolve({
+        name: file.name,
+        type: file.type || "image/png",
+        size: file.size,
+        dataUrl: typeof reader.result === "string" ? reader.result : "",
+      });
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+    const result = await Promise.all(images.map(readOne));
+    return result.filter((item): item is { name: string; type: string; size: number; dataUrl: string } => Boolean(item?.dataUrl));
+  }
+
+  useEffect(() => {
+    function onWindowPaste(event: ClipboardEvent) {
+      if (!visibleWindow) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, [contenteditable='true']")) return;
+      if (!operatorRootRef.current?.contains(target)) return;
+      const pastedFiles = Array.from(event.clipboardData?.items ?? [])
+        .filter((item) => item.kind === "file")
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => Boolean(file));
+      if (pastedFiles.length === 0) return;
+      event.preventDefault();
+      addOperatorFiles(pastedFiles);
+    }
+    window.addEventListener("paste", onWindowPaste);
+    return () => window.removeEventListener("paste", onWindowPaste);
+  }, [addOperatorFiles, visibleWindow]);
+
   async function send() {
     const t = text.trim();
     if (!t && files.length === 0) return;
     const fnames = files.map((f) => f.name);
-    const mine: OpMsg = { role: "user", text: t, files: fnames };
+    const attachments = files.map((f) => ({ name: f.name, type: f.type || "application/octet-stream", previewUrl: filePreviews[fileKey(f)] }));
+    const aiAttachments = await readImageAttachmentsForAi(files);
+    const mine: OpMsg = { role: "user", text: t, files: fnames, attachments };
     const next = [...msgs, mine];
-    const history = next.slice(-16).map((m) => ({
+    const operatorHistory = next.slice(-16).map((m) => ({
       content: (m.files && m.files.length ? "[вложения: " + m.files.join(", ") + "] " : "") + m.text,
-      isOutgoing: m.role === "user"
+      role: m.role,
+      isOutgoing: m.role === "op"
     }));
     setMsgs(next);
     setText("");
     setFiles([]);
+
+    if (files.length === 0 && executeLocalUiCommand(t)) {
+      return;
+    }
+
+    const backendTools = files.length === 0 ? detectBackendTools(t) : [];
+    if (backendTools.length > 0) {
+      for (const backendTool of backendTools) {
+        await executeBackendTool(t, backendTool);
+      }
+      return;
+    }
+
     setBusy(true);
     const commandStep = beginStep({
       tool: "operator.command",
@@ -1476,7 +1998,9 @@ function OperatorDock({
           conversationId: selectedTelegramChatId || activeId,
           chatId: selectedTelegramChatId || activeId,
           accountId: activeAccountId,
-          chatTitle: selectedTelegramChatId || "Telegram chat",
+          chatTitle: selectedTelegramChatTitle || selectedTelegramChatId || "Telegram chat",
+          attachments: aiAttachments,
+          operatorHistory,
           history: telegramMessages.slice(-20).map((m: any) => ({
             content: String(m?.content ?? m?.text ?? m?.message ?? ""),
             isOutgoing: Boolean(m?.isOutgoing ?? m?.outgoing ?? m?.is_outgoing),
@@ -1484,7 +2008,8 @@ function OperatorDock({
           tgContext: {
             accountId: activeAccountId,
             chatId: selectedTelegramChatId || activeId,
-            chatTitle: selectedTelegramChatId || "Telegram chat",
+            chatTitle: selectedTelegramChatTitle || selectedTelegramChatId || "Telegram chat",
+            attachments: aiAttachments,
             messages: telegramMessages.slice(-20).map((m: any) => ({
               content: String(m?.content ?? m?.text ?? m?.message ?? ""),
               isOutgoing: Boolean(m?.isOutgoing ?? m?.outgoing ?? m?.is_outgoing),
@@ -1493,7 +2018,12 @@ function OperatorDock({
         })
       });
       const d = await r.json().catch(() => null);
-      completeStep(commandStep.stepId, r.ok ? "Команда обработана backend" : "Backend вернул ошибку", r.ok ? "COMPLETED" : "FAILED");
+      const executedTool = String(d?.tool || "").trim();
+      completeStep(
+        commandStep.stepId,
+        r.ok ? (executedTool ? `Выполнен ${executedTool}` : "Команда обработана backend") : "Backend вернул ошибку",
+        r.ok ? "COMPLETED" : "FAILED",
+      );
       // The approval card appears ONLY when the backend proposes a REAL external
       // action (pendingAction). Drafts, analysis, summaries, read-only results and
       // plain answers render as a normal reply with no controls.
@@ -1511,6 +2041,7 @@ function OperatorDock({
           {
             role: "op",
             text: String(d.text || pa.text || "").trim() || "Готово.",
+            tool: executedTool || undefined,
             pending: {
               tool: "tg_send",
               accountId: activeAccountId,
@@ -1525,15 +2056,24 @@ function OperatorDock({
         setRunStatus("approval");
         window.setTimeout(() => completeStep(approvalStep.stepId, "Approval card показана", "COMPLETED"), 250);
       } else if (d && d.ok && (d.text || d.draft)) {
-        const draftStep = beginStep({
-          tool: "telegram.prepare_reply",
-          uiAction: "ui.insert_draft",
-          visualTarget: "composer",
-          message: "Готовлю черновик ответа",
-          expectedResult: "Черновик появится в рабочем контексте оператора",
+        const isOperatorReply = Boolean(d.operatorOnly);
+        const responseStep = beginStep({
+          tool: isOperatorReply ? "operator.reply" : "telegram.prepare_reply",
+          uiAction: isOperatorReply ? "ui.show_operator_reply" : "ui.insert_draft",
+          visualTarget: isOperatorReply ? "operator-window" : "composer",
+          message: isOperatorReply ? "Показываю ответ оператора" : "Готовлю черновик ответа",
+          expectedResult: isOperatorReply
+            ? "Ответ появится в диалоге EPIC💀CLAW"
+            : "Черновик появится в рабочем контексте оператора",
         });
-        setMsgs((p) => [...p, { role: "op", text: String(d.text || d.draft || "").trim() || "Готово." }]);
-        completeStep(draftStep.stepId, "Черновик добавлен в историю оператора", "COMPLETED");
+        const resultText = String(d.text || d.draft || "").trim() || "Готово.";
+        setMsgs((p) => [...p, { role: "op", text: resultText, tool: executedTool || undefined }]);
+        if (selectedTelegramChatId && !isOperatorReply) onDraftGenerated(resultText);
+        completeStep(
+          responseStep.stepId,
+          isOperatorReply ? "Ответ добавлен в диалог оператора" : "Черновик добавлен в историю оператора",
+          "COMPLETED",
+        );
         setRunStatus("complete");
       } else {
         const reply = (d && (d.text || d.error)) || "⚠ EPIC💀CLAW AI не ответил";
@@ -1705,16 +2245,28 @@ function OperatorDock({
     <>
     <VisualExecutionLayer step={activeStep} paused={paused} skipped={visualSkipped} />
     <div
+      ref={operatorRootRef}
       data-ui-target="operator-window"
       className={`fixed z-[150] flex max-h-[calc(100vh-24px)] max-w-[calc(100vw-24px)] flex-col overflow-hidden border border-red-400/35 bg-tg-panel/98 shadow-[0_24px_90px_rgba(0,0,0,.6),0_0_42px_rgba(239,68,68,.18)] backdrop-blur ${windowState === "MAXIMIZED" ? "rounded-xl" : "rounded-2xl"}`}
       style={windowStyle}
     >
-      <div onPointerDown={startDrag} className="flex cursor-move items-center justify-between border-b border-tg-line px-3 py-2">
+      <div
+        onPointerDown={startDrag}
+        className={`flex items-center justify-between border-b border-tg-line px-3 py-2 ${windowState === "FLOATING" ? "cursor-move touch-none" : "cursor-default"}`}
+      >
         <div className="min-w-0 flex items-center gap-2 font-black uppercase tracking-wide text-white">
           <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${statusTone}`} />
           <Bot className="h-5 w-5 shrink-0 text-red-500" />
           <span className="truncate">EPIC💀CLAW AI</span>
           <span className="hidden rounded-full bg-black/30 px-2 py-0.5 text-[10px] text-white/70 sm:inline">{buttonLabel}</span>
+          <button
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={revealToolsPanel}
+            className="rounded-full border border-red-400/40 bg-red-500/10 px-2 py-0.5 text-[10px] font-black text-red-200 hover:bg-red-500/20"
+            title="Показать Operator Tools"
+          >
+            TOOLS
+          </button>
         </div>
         <div className="flex items-center gap-1">
           <button onClick={paused ? resumeRun : pauseRun} className="grid h-8 w-8 place-items-center rounded-lg bg-tg-bg text-tg-muted hover:text-white" title={paused ? "Продолжить" : "Пауза"}>
@@ -1762,6 +2314,43 @@ function OperatorDock({
           + Проект
         </button>
       </div>
+      <div ref={toolsPanelRef} className="border-b border-tg-line bg-black/10 px-3 py-2">
+        <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-red-300/80">
+          <span>Operator Tools</span>
+          <span className="truncate text-[9px] text-tg-muted">{selectedTelegramChatTitle || selectedTelegramChatId || "чат не выбран"}</span>
+        </div>
+        <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+          {[
+            ["system_audit", "Audit"],
+            ["inspect_state", "State"],
+            ["read_chat", "Read"],
+            ["summarize_chat", "Summary"],
+            ["prepare_draft", "Draft"],
+            ["create_approval", "Approval"],
+            ["n8n_draft_approval", "n8n Draft"],
+            ["n8n_workflows", "n8n"],
+            ["openclaw_status", "OpenClaw"],
+          ].map(([tool, label]) => (
+            <button
+              key={tool}
+              onClick={() => runToolButton(tool, label)}
+              disabled={busy || ((tool === "read_chat" || tool === "summarize_chat" || tool === "prepare_draft" || tool === "create_approval" || tool === "n8n_draft_approval") && !selectedTelegramChatId)}
+              className="shrink-0 rounded-lg border border-white/10 bg-tg-bg px-2.5 py-1.5 text-[11px] font-semibold text-tg-muted hover:border-red-400/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              title={label}
+            >
+              {label}
+            </button>
+          ))}
+          <button
+            onClick={allowlistSelectedChat}
+            disabled={busy || !selectedTelegramChatId}
+            className="shrink-0 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] font-bold text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+            title="Разрешить выбранный чат для approval/send gate"
+          >
+            Allowlist {selectedChatActionType === "publish_channel" ? "Channel" : "Chat"}
+          </button>
+        </div>
+      </div>
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
         <div className="rounded-xl border border-white/10 bg-black/25 p-2 text-[11px] text-tg-muted">
           <div className="flex items-center justify-between gap-2">
@@ -1784,7 +2373,24 @@ function OperatorDock({
             key={i}
             className={`max-w-[88%] rounded-2xl px-3 py-2 text-sm leading-snug ${m.role === "user" ? "ml-auto bg-tg-active text-white" : "bg-tg-bg text-tg-text"}`}
           >
-            {m.files && m.files.length ? <div className="mb-1 text-xs text-tg-muted">📎 {m.files.join(", ")}</div> : null}
+            {m.tool ? (
+              <div className="mb-1 truncate font-mono text-[10px] font-bold uppercase text-red-300/80">{m.tool}</div>
+            ) : null}
+            {m.attachments && m.attachments.length ? (
+              <div className="mb-2 grid grid-cols-2 gap-2">
+                {m.attachments.map((file, idx) => (
+                  <div key={`${file.name}-${idx}`} className="overflow-hidden rounded-xl border border-white/10 bg-black/25">
+                    {file.previewUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={file.previewUrl} alt={file.name} className="h-28 w-full object-cover" />
+                    ) : (
+                      <div className="grid h-20 place-items-center text-xs text-tg-muted">файл</div>
+                    )}
+                    <div className="truncate px-2 py-1 text-[11px] text-tg-muted">{file.name}</div>
+                  </div>
+                ))}
+              </div>
+            ) : m.files && m.files.length ? <div className="mb-1 text-xs text-tg-muted">📎 {m.files.join(", ")}</div> : null}
             <div className="whitespace-pre-wrap">{m.text}</div>
             {m.pending ? (
               <div data-ui-target="approval-card" className="mt-2 rounded-xl border-2 border-red-500 bg-red-950/25 p-3" style={{ animation: "epicApprovalPulse 1.6s ease-in-out infinite" }}>
@@ -1826,14 +2432,20 @@ function OperatorDock({
         )}
       </div>
       {files.length > 0 && (
-        <div className="flex flex-wrap gap-1 px-3 pb-1">
+        <div className="grid grid-cols-2 gap-2 px-3 pb-2">
           {files.map((f, i) => (
-            <span key={i} className="flex items-center gap-1 rounded-full bg-tg-bg px-2 py-1 text-xs text-tg-muted">
-              {f.name}
-              <button onClick={() => setFiles((p) => p.filter((_, j) => j !== i))}>
-                <X className="h-3 w-3" />
+            <div key={`${f.name}-${i}`} className="relative overflow-hidden rounded-xl border border-tg-line bg-tg-bg">
+              {filePreviews[fileKey(f)] ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={filePreviews[fileKey(f)]} alt={f.name} className="h-24 w-full object-cover" />
+              ) : (
+                <div className="grid h-16 place-items-center text-xs text-tg-muted">{f.type || "файл"}</div>
+              )}
+              <div className="truncate px-2 py-1 text-[11px] text-tg-muted">{f.name}</div>
+              <button onClick={() => removeOperatorFile(i)} className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-black/70 text-white">
+                <X className="h-3.5 w-3.5" />
               </button>
-            </span>
+            </div>
           ))}
         </div>
       )}
@@ -1851,11 +2463,12 @@ function OperatorDock({
           multiple
           accept="image/*,video/*,audio/*"
           className="hidden"
-          onChange={(e) => setFiles((p) => [...p, ...Array.from(e.target.files || [])])}
+          onChange={(e) => addOperatorFiles(Array.from(e.target.files || []))}
         />
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onPaste={onPaste}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -2256,12 +2869,17 @@ function SettingsWorkspace({
   onCreateAccount: () => void;
   onSelectAccount: (accountId: string) => void;
 }) {
+  const [userAgent, setUserAgent] = useState("—");
   const telegramReady = isTelegramReady(telegramStatus);
   const account = primaryTelegramAccount(telegramStatus);
   const privateCount = telegramChats.filter((chat) => chat.category === "private").length;
   const groupCount = telegramChats.filter((chat) => chat.category === "group").length;
   const channelCount = telegramChats.filter((chat) => chat.category === "channel" || chat.isChannel).length;
   const botCount = telegramChats.filter((chat) => chat.category === "bot" || chat.isBot).length;
+
+  useEffect(() => {
+    setUserAgent(window.navigator.userAgent);
+  }, []);
 
   return (
     <div className="relative mx-auto grid max-w-4xl gap-4 lg:grid-cols-2">
@@ -2345,7 +2963,7 @@ function SettingsWorkspace({
           <InfoRow label="Kill Switch" value="Agent OS → Production Gate (🔒 Emergency Lock)" />
           <InfoRow label="Права (матрица)" value="глобальные caps · per-object — план P1" />
           <InfoRow label="Audit Log" value="Agent OS → Audit Log" />
-          <InfoRow label="Устройство / User-Agent" value={typeof navigator !== "undefined" ? navigator.userAgent : "—"} />
+          <InfoRow label="Устройство / User-Agent" value={userAgent} />
         </div>
         <p className="mt-3 text-sm leading-6 text-tg-muted">
           Second Pilot и аварийная блокировка (SAFE MODE) управляются в разделе Agent OS → Production Gate. По умолчанию отправка идёт только после подтверждения человека.
@@ -2613,7 +3231,12 @@ function TelegramMenu({
         {routeItems.map((item) => {
           const Icon = item.icon;
           return (
-            <Link key={item.href} href={item.href} className="flex items-center gap-4 px-5 py-3 text-sm text-tg-text hover:bg-tg-hover">
+            <Link
+              key={item.href}
+              href={item.href}
+              data-ui-target={item.href === "/settings" ? "settings-button" : undefined}
+              className="flex items-center gap-4 px-5 py-3 text-sm text-tg-text hover:bg-tg-hover"
+            >
               <Icon className="h-5 w-5 text-tg-muted" />
               {item.label}
             </Link>

@@ -9,6 +9,7 @@
     "desktop:dev": "electron apps/desktop/main.cjs",
     "desktop": "electron apps/desktop/main.cjs",
     "operator:hash": "node scripts/create-operator-hash.mjs",
+    "epicgram:referrals:create": "node scripts/provision-referral-codes.mjs",
     "api:dev": "node services/api/src/server.mjs",
     "epicgram:bot-menu": "node scripts/setup-telegram-bot-menu.mjs",
     "epicgram:scheduler-worker": "node scripts/epicgram-scheduler-worker.mjs",

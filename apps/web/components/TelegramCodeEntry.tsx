@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type BindingStatus = {
   bound?: boolean;
@@ -18,6 +18,7 @@ type BindingStatus = {
 };
 
 type ActiveAuthStatus = {
+  activeAccountId?: string | null;
   waitingForCode?: boolean;
   waitingForPassword?: boolean;
   waitingForQr?: boolean;
@@ -31,10 +32,20 @@ export function TelegramCodeEntry() {
   const [activeStatus, setActiveStatus] = useState<ActiveAuthStatus | null>(null);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [message, setMessage] = useState("Проверяю состояние Telegram...");
   const [busy, setBusy] = useState(false);
   const [qrBusy, setQrBusy] = useState(false);
+  const redirectTimerRef = useRef<number | null>(null);
+  const redirectStartedRef = useRef(false);
+
+  function returnToClient() {
+    if (redirectStartedRef.current) return;
+    redirectStartedRef.current = true;
+    setMessage("Telegram авторизован. Возвращаю в клиент...");
+    redirectTimerRef.current = window.setTimeout(() => window.location.replace("/client"), 600);
+  }
 
   async function refresh() {
     const activeResponse = await fetch("/api/telegram/active-auth/status", { cache: "no-store" });
@@ -44,17 +55,34 @@ export function TelegramCodeEntry() {
     const data = (await response.json().catch(() => null)) as BindingStatus | null;
     setStatus(data);
     const state = data?.binding?.authState;
-    if (active?.waitingForCode || state === "waiting_code") setMessage("Код ожидается. Введите код из Telegram.");
-    else if (state === "waiting_password") setMessage("Код принят. Теперь нужен облачный пароль 2FA.");
-    else if (state === "ready") setMessage("Telegram авторизован.");
+    const activeIsPending = Boolean(active?.waitingForCode || active?.waitingForPassword || active?.waitingForQr);
+    if (active?.authorizationState === "authorizationStateReady") {
+      returnToClient();
+    } else if (!active?.activeAccountId && !activeIsPending && state === "ready") {
+      returnToClient();
+    } else if (active?.waitingForCode || state === "waiting_code") setMessage("Код ожидается. Введите код из Telegram.");
+    else if (active?.waitingForPassword || state === "waiting_password") setMessage("Код принят. Теперь нужен облачный пароль 2FA.");
     else if (active?.waitingForQr) setMessage("Сейчас Telegram ждёт подтверждение через QR/устройство. Запросите код по номеру ещё раз, затем вводите его здесь.");
     else setMessage(data?.binding?.authError || data?.authFlow?.message || "Активного ожидания кода не найдено.");
   }
 
   useEffect(() => {
-    refresh().catch(() => setMessage("Не удалось прочитать статус."));
-    const timer = window.setInterval(() => refresh().catch(() => undefined), 2500);
-    return () => window.clearInterval(timer);
+    let cancelled = false;
+    let timer: number | null = null;
+
+    async function poll() {
+      await refresh().catch(() => {
+        if (!cancelled) setMessage("Не удалось прочитать статус.");
+      });
+      if (!cancelled && !redirectStartedRef.current) timer = window.setTimeout(poll, 4000);
+    }
+
+    poll();
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+      if (redirectTimerRef.current !== null) window.clearTimeout(redirectTimerRef.current);
+    };
   }, []);
 
   async function submitCode() {
@@ -81,8 +109,7 @@ export function TelegramCodeEntry() {
       setStatus(data.status);
       const nextState = data.status?.binding?.authState ?? data.binding?.authState;
       if (nextState === "ready") {
-        setMessage("Telegram авторизован. Возвращаю в клиент...");
-        window.setTimeout(() => window.location.assign("/client"), 700);
+        returnToClient();
       } else if (nextState === "waiting_password") {
         setMessage("Код принят. Нужен облачный пароль 2FA.");
       } else {
@@ -120,6 +147,37 @@ export function TelegramCodeEntry() {
       await refresh();
     } catch {
       setMessage("Ошибка сети при запросе кода.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitPassword() {
+    if (!password) {
+      setMessage("Введите облачный пароль Telegram.");
+      return;
+    }
+    setBusy(true);
+    setMessage("Проверяю облачный пароль...");
+    try {
+      const endpoint = activeStatus?.waitingForPassword ? "/api/telegram/active-auth/password" : "/api/telegram/binding/2fa";
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password }),
+        cache: "no-store",
+      });
+      const data = await response.json().catch(() => null);
+      setPassword("");
+      if (!response.ok || !data?.ok) {
+        setMessage(data?.reason || "Облачный пароль не принят Telegram.");
+        return;
+      }
+      const nextState = data.status?.binding?.authState ?? data.binding?.authState;
+      if (nextState === "ready" || data.authorizationState === "authorizationStateReady") returnToClient();
+      else setMessage(data.status?.authFlow?.message || data.message || "Пароль отправлен, ожидаю ответ TDLib.");
+    } catch {
+      setMessage("Ошибка сети при проверке облачного пароля.");
     } finally {
       setBusy(false);
     }
@@ -209,6 +267,30 @@ export function TelegramCodeEntry() {
         >
           {busy ? "Проверяю..." : "Проверить код"}
         </button>
+
+        {(activeStatus?.waitingForPassword || status?.binding?.authState === "waiting_password") && (
+          <div className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
+            <label className="block text-sm font-semibold">Облачный пароль Telegram (2FA)</label>
+            <input
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") submitPassword();
+              }}
+              type="password"
+              autoComplete="current-password"
+              placeholder="Введите пароль 2FA"
+              className="mt-2 h-12 w-full rounded-xl bg-black/35 px-4 text-base outline-none ring-1 ring-white/10 focus:ring-amber-400"
+            />
+            <button
+              onClick={submitPassword}
+              disabled={busy}
+              className="mt-3 h-12 w-full rounded-xl bg-amber-500 px-4 text-sm font-bold text-black hover:bg-amber-400 disabled:cursor-wait disabled:opacity-60"
+            >
+              {busy ? "Проверяю..." : "Подтвердить 2FA"}
+            </button>
+          </div>
+        )}
 
         <button
           onClick={requestQr}
