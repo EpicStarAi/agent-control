@@ -412,6 +412,49 @@ export function GlobalAIOperatorSidebar() {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(input); }
   };
 
+  // ── Ctrl+V / paste handler ───────────────────────────────────────────────────
+  // Images (screenshots) → attachment; large text (>1500 chars) → .txt attachment
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = Array.from(e.clipboardData.items);
+
+    // 1. Image in clipboard (screenshot, copied image)
+    const imgItem = items.find(it => it.type.startsWith("image/"));
+    if (imgItem) {
+      e.preventDefault();
+      const file = imgItem.getAsFile();
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        setAttachments(prev => [...prev, {
+          name: `screenshot-${Date.now()}.png`,
+          type: file.type || "image/png",
+          dataUrl: reader.result as string,
+          size: file.size,
+        }]);
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    // 2. Large text → convert to .txt file attachment
+    const text = e.clipboardData.getData("text/plain");
+    if (text.length > 1500) {
+      e.preventDefault();
+      const blob = new Blob([text], { type: "text/plain" });
+      const reader = new FileReader();
+      reader.onload = () => {
+        setAttachments(prev => [...prev, {
+          name: `text-${Date.now()}.txt`,
+          type: "text/plain",
+          dataUrl: reader.result as string,
+          size: blob.size,
+        }]);
+      };
+      reader.readAsDataURL(blob);
+    }
+    // Short text → normal textarea paste (no interception)
+  };
+
   const clearChat = () => { setMessages([]); save(CHAT_KEY, []); };
 
   // ── approval card execution ──────────────────────────────────────────────────
@@ -920,6 +963,7 @@ export function GlobalAIOperatorSidebar() {
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKey}
+                onPaste={handlePaste}
                 disabled={loading || !!pendingApproval}
                 placeholder={pendingApproval ? "Ожидается подтверждение действия…" : "Сообщение… (Enter — отправить, Shift+Enter — строка)"}
                 rows={1}

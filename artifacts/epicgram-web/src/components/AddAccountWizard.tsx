@@ -5,7 +5,8 @@
 import { useState, useEffect, useRef } from "react";
 import { apiUrl } from "@/lib/api";
 
-type WizardStep = "phone" | "code" | "twofa" | "success" | "error";
+type WizardStep = "phone" | "code" | "twofa" | "qr" | "success" | "error";
+type AuthMode  = "phone" | "qr";
 
 interface Props {
   onSuccess: (slotId: string) => void;
@@ -150,7 +151,18 @@ const AUTH_STATE_LABELS: Record<string, string> = {
   backend_ready: "Backend готов",
 };
 
+function isWaitCode(state: string) {
+  return state === "authorizationStateWaitCode" || state.toLowerCase().includes("waitcode") || state === "wait_code";
+}
+function isWaitPassword(state: string) {
+  return state === "authorizationStateWaitPassword" || state.toLowerCase().includes("waitpassword") || state === "wait_password";
+}
+function isReady(state: string) {
+  return state === "authorizationStateReady";
+}
+
 export function AddAccountWizard({ onSuccess, onCancel }: Props) {
+  const [authMode, setAuthMode]   = useState<AuthMode>("phone");
   const [step, setStep]           = useState<WizardStep>("phone");
   const [countryIdx, setCountryIdx] = useState(0);
   const [countryOpen, setCountryOpen] = useState(false);
@@ -167,14 +179,25 @@ export function AddAccountWizard({ onSuccess, onCancel }: Props) {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [countryOpen]);
+
   const [phone, setPhone]         = useState("");
   const [code, setCode]           = useState("");
   const [password, setPassword]   = useState("");
   const [slotId, setSlotId]       = useState<string | null>(null);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState<string | null>(null);
-  const [authState, setAuthState] = useState<string>("");
   const [displayName, setDisplayName] = useState<string>("");
+
+  // QR state
+  const [qrSrc, setQrSrc]         = useState<string>("");
+  const qrPollRef                  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const qrRefreshRef               = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Clean up QR intervals on unmount
+  useEffect(() => () => {
+    if (qrPollRef.current)    clearInterval(qrPollRef.current);
+    if (qrRefreshRef.current) clearInterval(qrRefreshRef.current);
+  }, []);
 
   const post = async (path: string, body: object) => {
     const r = await fetch(apiUrl(path), {
@@ -187,32 +210,27 @@ export function AddAccountWizard({ onSuccess, onCancel }: Props) {
     return j;
   };
 
-  // Step 1 — send phone number
+  // ── Shared: create account slot ──────────────────────────────────────────────
+  const createSlot = async (): Promise<string> => {
+    const newSlot = await post("/telegram/accounts/new", {});
+    const id = newSlot.activeAccountId
+      || newSlot.accounts?.find((a: any) => a.status === "waiting_auth")?.slotId;
+    if (!id) throw new Error("Не удалось создать слот аккаунта.");
+    return id;
+  };
+
+  // ── Phone flow ───────────────────────────────────────────────────────────────
   const handlePhone = async () => {
     const fullPhone = country.code + phone.replace(/^\+|\s/g, "");
     if (phone.length < 6) { setError("Введи полный номер телефона."); return; }
     setLoading(true); setError(null);
     try {
-      // 1. Create new slot
-      const newSlot = await post("/telegram/accounts/new", {});
-      const id = newSlot.accounts?.find((a: any) => !a.displayName && a.status === "waiting_auth")?.slotId
-        || newSlot.activeAccountId;
-      if (!id) throw new Error("Не удалось создать слот аккаунта.");
+      const id = await createSlot();
       setSlotId(id);
-
-      // 2. Send phone
-      const result = await post("/telegram/auth/phone", { accountId: id, phoneNumber: fullPhone });
-      const state = result.authorizationState || result.state || "";
-      setAuthState(state);
-      if (state === "authorizationStateWaitCode" || state.includes("WaitCode")) {
-        setStep("code");
-      } else if (state === "authorizationStateReady") {
-        setDisplayName(result.displayName || result.account?.displayName || "");
-        setStep("success");
-        onSuccess(id);
-      } else {
-        throw new Error(`Неожиданный статус: ${AUTH_STATE_LABELS[state] || state}`);
-      }
+      await post("/telegram/auth/phone", { accountId: id, phoneNumber: fullPhone });
+      // If the POST succeeded without throwing, the code was sent — always move to code step.
+      // The backend manages TDLib state; we don't need to inspect the returned state name.
+      setStep("code");
     } catch (e: any) {
       setError(e.message || "Ошибка при отправке номера.");
     } finally {
@@ -228,15 +246,18 @@ export function AddAccountWizard({ onSuccess, onCancel }: Props) {
     try {
       const result = await post("/telegram/auth/code", { accountId: slotId, code });
       const state = result.authorizationState || result.state || "";
-      setAuthState(state);
-      if (state === "authorizationStateReady") {
+      if (isReady(state)) {
         setDisplayName(result.displayName || result.account?.displayName || "");
         setStep("success");
         setTimeout(() => onSuccess(slotId), 1200);
-      } else if (state === "authorizationStateWaitPassword" || state.includes("WaitPassword")) {
+      } else if (isWaitPassword(state)) {
         setStep("twofa");
+      } else if (isWaitCode(state)) {
+        // Telegram asked for the code again (e.g. wrong code entered)
+        setError("Неверный код. Проверь и попробуй снова.");
       } else {
-        throw new Error(`Неожиданный статус: ${AUTH_STATE_LABELS[state] || state}`);
+        // Unexpected state, but code was accepted — move to 2FA as safe fallback
+        setStep("twofa");
       }
     } catch (e: any) {
       setError(e.message || "Неверный или истёкший код.");
@@ -253,8 +274,7 @@ export function AddAccountWizard({ onSuccess, onCancel }: Props) {
     try {
       const result = await post("/telegram/auth/2fa", { accountId: slotId, password });
       const state = result.authorizationState || result.state || "";
-      setAuthState(state);
-      if (state === "authorizationStateReady") {
+      if (isReady(state)) {
         setDisplayName(result.displayName || result.account?.displayName || "");
         setStep("success");
         setTimeout(() => onSuccess(slotId), 1200);
@@ -265,13 +285,82 @@ export function AddAccountWizard({ onSuccess, onCancel }: Props) {
       setError(e.message || "Неверный пароль.");
     } finally {
       setLoading(false);
-      // Always clear password from state after attempt
       setPassword("");
     }
   };
 
+  // ── QR flow ──────────────────────────────────────────────────────────────────
+  const startQrPolling = (id: string) => {
+    // Stop any previous intervals
+    if (qrPollRef.current) clearInterval(qrPollRef.current);
+    if (qrRefreshRef.current) clearInterval(qrRefreshRef.current);
+
+    // Refresh QR image every 25s (tokens rotate ~every 30s)
+    qrRefreshRef.current = setInterval(() => {
+      setQrSrc(apiUrl(`/telegram/auth/qr-image?accountId=${id}&t=${Date.now()}`));
+    }, 25000);
+
+    // Poll auth state every 3s
+    qrPollRef.current = setInterval(async () => {
+      try {
+        const r = await fetch(apiUrl("/telegram/status"));
+        const data = await r.json();
+        // Check both top-level state and per-account state
+        const accState = (data.accounts as any[])?.find((a: any) => a.slotId === id)?.authorizationState;
+        const state: string = accState || data.authorizationState || "";
+        if (isReady(state)) {
+          clearInterval(qrPollRef.current!);
+          clearInterval(qrRefreshRef.current!);
+          const name = (data.accounts as any[])?.find((a: any) => a.slotId === id)?.displayName || "";
+          setDisplayName(name);
+          setStep("success");
+          setTimeout(() => onSuccess(id), 1200);
+        } else if (isWaitPassword(state)) {
+          clearInterval(qrPollRef.current!);
+          clearInterval(qrRefreshRef.current!);
+          setStep("twofa");
+        }
+      } catch { /* ignore poll errors */ }
+    }, 3000);
+  };
+
+  const handleQrStart = async () => {
+    setLoading(true); setError(null);
+    try {
+      const id = await createSlot();
+      setSlotId(id);
+      await post("/telegram/auth/qr", { accountId: id });
+      setQrSrc(apiUrl(`/telegram/auth/qr-image?accountId=${id}&t=${Date.now()}`));
+      setStep("qr");
+      startQrPolling(id);
+    } catch (e: any) {
+      setError(e.message || "Ошибка запуска QR авторизации.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const switchMode = (mode: AuthMode) => {
+    if (mode === authMode) return;
+    // Stop QR polling when switching away
+    if (qrPollRef.current)    clearInterval(qrPollRef.current);
+    if (qrRefreshRef.current) clearInterval(qrRefreshRef.current);
+    setAuthMode(mode);
+    setStep(mode === "phone" ? "phone" : "phone"); // reset to initial step
+    setError(null);
+    setSlotId(null);
+    setCode("");
+    setPhone("");
+    setPassword("");
+    setQrSrc("");
+  };
+
   const inputCls = "w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-sky-500/60 focus:bg-white/8 transition-all";
   const btnCls   = (disabled?: boolean) => `w-full rounded-xl py-2.5 text-sm font-semibold transition-all ${disabled ? "bg-white/10 text-white/30 cursor-not-allowed" : "bg-sky-500/80 hover:bg-sky-500 text-white"}`;
+
+  // Progress steps: phone & code & twofa are shared; qr doesn't use the same 3-step bar
+  const phoneSteps = ["phone", "code", "twofa"] as WizardStep[];
+  const showProgressBar = phoneSteps.includes(step) || step === "success";
 
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-tg-panel p-4"
@@ -282,33 +371,54 @@ export function AddAccountWizard({ onSuccess, onCancel }: Props) {
         <div>
           <p className="text-sm font-bold text-white">Добавить Telegram-аккаунт</p>
           <p className="mt-0.5 text-[11px] text-white/40">
-            {step === "phone"   && "Шаг 1 из 3 · Номер телефона"}
+            {step === "phone"   && authMode === "phone" && "Шаг 1 из 3 · Номер телефона"}
             {step === "code"    && "Шаг 2 из 3 · Код подтверждения"}
             {step === "twofa"   && "Шаг 3 из 3 · Облачный пароль"}
+            {step === "qr"      && "Отсканируй QR в Telegram"}
             {step === "success" && "Аккаунт подключён ✓"}
           </p>
         </div>
         <button onClick={onCancel} className="rounded-lg p-1.5 text-white/30 hover:bg-white/10 hover:text-white/60 transition-all">✕</button>
       </div>
 
-      {/* Steps indicator */}
-      <div className="flex gap-1.5">
-        {["phone", "code", "twofa"].map((s, i) => (
-          <div key={s} className={`h-1 flex-1 rounded-full transition-all ${
-            step === "success" ? "bg-emerald-500" :
-            s === step ? "bg-sky-500" :
-            ["phone","code","twofa"].indexOf(step) > i ? "bg-sky-500/40" : "bg-white/10"
-          }`} />
-        ))}
-      </div>
+      {/* Auth-mode tabs — only show on initial phone/qr step */}
+      {(step === "phone" || step === "qr") && (
+        <div className="flex gap-1 rounded-xl border border-white/8 bg-white/3 p-0.5">
+          {([["phone", "📱 По номеру"], ["qr", "🔲 QR-код"]] as const).map(([mode, label]) => (
+            <button
+              key={mode}
+              onClick={() => switchMode(mode)}
+              className={`flex-1 rounded-[10px] py-1.5 text-[11.5px] font-medium transition-all ${
+                authMode === mode
+                  ? "bg-sky-500/80 text-white shadow-sm"
+                  : "text-white/40 hover:text-white/70"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* Phone step */}
-      {step === "phone" && (
+      {/* Steps indicator — phone flow only */}
+      {showProgressBar && step !== "qr" && (
+        <div className="flex gap-1.5">
+          {phoneSteps.map((s, i) => (
+            <div key={s} className={`h-1 flex-1 rounded-full transition-all ${
+              step === "success" ? "bg-emerald-500" :
+              s === step ? "bg-sky-500" :
+              phoneSteps.indexOf(step) > i ? "bg-sky-500/40" : "bg-white/10"
+            }`} />
+          ))}
+        </div>
+      )}
+
+      {/* ── Phone step ── */}
+      {step === "phone" && authMode === "phone" && (
         <div className="flex flex-col gap-3">
           <div>
             <label className="mb-1.5 block text-[11px] font-medium text-white/50">Страна</label>
             <div ref={countryRef} className="relative">
-              {/* trigger button */}
               <button
                 type="button"
                 onClick={() => setCountryOpen(v => !v)}
@@ -321,8 +431,6 @@ export function AddAccountWizard({ onSuccess, onCancel }: Props) {
                 </span>
                 <span className="shrink-0 text-[10px] text-white/30">{countryOpen ? "▲" : "▼"}</span>
               </button>
-
-              {/* dropdown list */}
               {countryOpen && (
                 <div
                   className="absolute left-0 right-0 z-50 mt-1 overflow-y-auto rounded-xl border border-white/15 shadow-2xl"
@@ -369,7 +477,47 @@ export function AddAccountWizard({ onSuccess, onCancel }: Props) {
         </div>
       )}
 
-      {/* Code step */}
+      {/* ── QR start step ── */}
+      {step === "phone" && authMode === "qr" && (
+        <div className="flex flex-col items-center gap-4 py-1">
+          <div className="rounded-xl border border-sky-500/15 bg-sky-500/5 px-4 py-3 text-center text-[11px] text-sky-300/80 leading-relaxed">
+            Откроется QR-код — отсканируй его в <strong className="text-sky-300">Telegram → Настройки → Устройства → Подключить устройство</strong>
+          </div>
+          {error && <p className="w-full rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-[11px] text-red-300">{error}</p>}
+          <button onClick={handleQrStart} disabled={loading} className={btnCls(loading)}>
+            {loading ? "Генерация QR…" : "Показать QR-код →"}
+          </button>
+        </div>
+      )}
+
+      {/* ── QR display step (polling) ── */}
+      {step === "qr" && (
+        <div className="flex flex-col items-center gap-3">
+          <div className="rounded-xl border border-white/10 bg-white/5 p-2">
+            {qrSrc
+              ? <img src={qrSrc} alt="QR код авторизации" className="h-44 w-44 rounded-lg object-contain" />
+              : <div className="flex h-44 w-44 items-center justify-center">
+                  <span className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-sky-400" />
+                </div>
+            }
+          </div>
+          <p className="text-center text-[11px] text-white/50">
+            Отсканируй в Telegram → Настройки → Устройства
+          </p>
+          <div className="flex items-center gap-2 text-[10px] text-white/30">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sky-400" />
+            Ожидаем подтверждения…
+          </div>
+          <button
+            onClick={() => { switchMode("phone"); }}
+            className="text-center text-[11px] text-white/30 hover:text-white/60 transition-all"
+          >
+            ← Войти по номеру телефона
+          </button>
+        </div>
+      )}
+
+      {/* ── Code step ── */}
       {step === "code" && (
         <div className="flex flex-col gap-3">
           <div className="rounded-xl border border-sky-500/20 bg-sky-500/8 px-3 py-2.5 text-[11px] text-sky-300">
@@ -393,14 +541,16 @@ export function AddAccountWizard({ onSuccess, onCancel }: Props) {
           <button onClick={handleCode} disabled={loading || code.length < 4} className={btnCls(loading || code.length < 4)}>
             {loading ? "Проверка…" : "Подтвердить →"}
           </button>
-          <button onClick={() => { setStep("phone"); setCode(""); setError(null); setSlotId(null); }}
-            className="text-center text-[11px] text-white/30 hover:text-white/60 transition-all">
+          <button
+            onClick={() => { setStep("phone"); setCode(""); setError(null); setSlotId(null); }}
+            className="text-center text-[11px] text-white/30 hover:text-white/60 transition-all"
+          >
             ← Изменить номер
           </button>
         </div>
       )}
 
-      {/* 2FA step */}
+      {/* ── 2FA step ── */}
       {step === "twofa" && (
         <div className="flex flex-col gap-3">
           <div className="rounded-xl border border-amber-500/20 bg-amber-500/8 px-3 py-2.5 text-[11px] text-amber-300">
@@ -427,7 +577,7 @@ export function AddAccountWizard({ onSuccess, onCancel }: Props) {
         </div>
       )}
 
-      {/* Success */}
+      {/* ── Success ── */}
       {step === "success" && (
         <div className="flex flex-col items-center gap-3 py-2">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/15 text-3xl">✓</div>
