@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     return guardedJson({ ...safeEmptyState("no_binding"), ownerMatched: true, activeAccountId: r.accountId, messages: [], reason: "chat_id_required" }, 200);
   }
 
-  const res = await getMessages({ userId: auth.principal.userId, workspaceId: auth.principal.workspaceId }, chatId, limit);
+  const res = await getMessages({ userId: auth.principal.userId, workspaceId: auth.principal.workspaceId, role: auth.principal.role }, chatId, limit);
 
   return guardedJson(
     {
