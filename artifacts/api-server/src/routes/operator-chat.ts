@@ -493,6 +493,182 @@ const TOOLS: any[] = [
       },
     },
   },
+  // ── Contacts ──────────────────────────────────────────────────────────────
+  {
+    type: "function",
+    function: {
+      name: "list_contacts",
+      description: "List all Telegram contacts for an account",
+      parameters: {
+        type: "object",
+        properties: {
+          accountId: { type: "string", description: "Account slot ID. Use active if omitted." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_contacts",
+      description: "Search Telegram contacts by name or username",
+      parameters: {
+        type: "object",
+        required: ["query"],
+        properties: {
+          query:     { type: "string", description: "Search string" },
+          accountId: { type: "string", description: "Account slot ID. Use active if omitted." },
+          limit:     { type: "number", description: "Max results (default 20)" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_user_profile",
+      description: "Get full profile of a Telegram user: bio, username, common chats count",
+      parameters: {
+        type: "object",
+        required: ["userId"],
+        properties: {
+          userId:    { type: "string", description: "Telegram user ID" },
+          accountId: { type: "string", description: "Account slot ID. Use active if omitted." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "block_user",
+      description: "Block or unblock a Telegram user. READ action — returns current block state after toggle.",
+      parameters: {
+        type: "object",
+        required: ["userId"],
+        properties: {
+          userId:    { type: "string", description: "Telegram user ID to block/unblock" },
+          blocked:   { type: "boolean", description: "true to block, false to unblock (default true)" },
+          accountId: { type: "string", description: "Account slot ID. Use active if omitted." },
+        },
+      },
+    },
+  },
+  // ── Chat management ────────────────────────────────────────────────────────
+  {
+    type: "function",
+    function: {
+      name: "archive_chat",
+      description: "Move a chat to/from the archive",
+      parameters: {
+        type: "object",
+        required: ["chatId"],
+        properties: {
+          chatId:    { type: "string", description: "Chat ID" },
+          archived:  { type: "boolean", description: "true to archive, false to unarchive (default true)" },
+          accountId: { type: "string", description: "Account slot ID. Use active if omitted." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "mute_chat",
+      description: "Mute or unmute notifications for a chat",
+      parameters: {
+        type: "object",
+        required: ["chatId"],
+        properties: {
+          chatId:    { type: "string", description: "Chat ID" },
+          muted:     { type: "boolean", description: "true to mute, false to unmute (default true)" },
+          accountId: { type: "string", description: "Account slot ID. Use active if omitted." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "mark_chat_read",
+      description: "Mark all messages in a chat as read",
+      parameters: {
+        type: "object",
+        required: ["chatId"],
+        properties: {
+          chatId:    { type: "string", description: "Chat ID" },
+          accountId: { type: "string", description: "Account slot ID. Use active if omitted." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "pin_chat",
+      description: "Pin or unpin a chat in the chat list",
+      parameters: {
+        type: "object",
+        required: ["chatId"],
+        properties: {
+          chatId:    { type: "string", description: "Chat ID" },
+          pinned:    { type: "boolean", description: "true to pin, false to unpin (default true)" },
+          accountId: { type: "string", description: "Account slot ID. Use active if omitted." },
+        },
+      },
+    },
+  },
+  // ── Chat members ────────────────────────────────────────────────────────────
+  {
+    type: "function",
+    function: {
+      name: "get_chat_members",
+      description: "List members of a group or channel. filter: all | admins | banned | bots",
+      parameters: {
+        type: "object",
+        required: ["chatId"],
+        properties: {
+          chatId:    { type: "string", description: "Chat/group/channel ID" },
+          filter:    { type: "string", description: "all | admins | banned | bots (default all)" },
+          limit:     { type: "number", description: "Max members to return (default 50, max 200)" },
+          accountId: { type: "string", description: "Account slot ID. Use active if omitted." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_invite_link",
+      description: "Generate or retrieve an invite link for a group or channel",
+      parameters: {
+        type: "object",
+        required: ["chatId"],
+        properties: {
+          chatId:    { type: "string", description: "Chat/group/channel ID" },
+          accountId: { type: "string", description: "Account slot ID. Use active if omitted." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "propose_member_action",
+      description: "Propose a moderation action on a group/channel member. ALWAYS requires user approval. action: ban | kick | admin | member",
+      parameters: {
+        type: "object",
+        required: ["chatId", "userId", "action"],
+        properties: {
+          chatId:    { type: "string", description: "Group or channel ID" },
+          chatTitle: { type: "string", description: "Chat display name for confirmation" },
+          userId:    { type: "string", description: "Target user ID" },
+          action:    { type: "string", description: "ban | kick | admin | member" },
+          accountId: { type: "string", description: "Account slot ID. Use active if omitted." },
+        },
+      },
+    },
+  },
 ];
 
 // ── tool executor ─────────────────────────────────────────────────────────────
@@ -789,6 +965,125 @@ async function executeTool(name: string, args: Record<string, any>): Promise<Too
       } catch (err: any) {
         return { result: `Ошибка при регистрации бота: ${err?.message ?? "network error"}` };
       }
+    }
+
+    // ── Contacts ─────────────────────────────────────────────────────────────
+    case "list_contacts": {
+      const accountId = args.accountId || "";
+      const data = await get(`/telegram/contacts?accountId=${encodeURIComponent(accountId)}`);
+      const contacts = (data.contacts ?? []).slice(0, 100).map((c: any) => ({
+        id: c.id, name: c.displayName, username: c.username, phone: c.phoneMasked, isBot: c.isBot,
+      }));
+      return { result: JSON.stringify({ total: data.total ?? contacts.length, contacts }) };
+    }
+
+    case "search_contacts": {
+      const { query = "", accountId = "", limit = 20 } = args;
+      const data = await get(`/telegram/contacts/search?accountId=${encodeURIComponent(accountId)}&q=${encodeURIComponent(query)}&limit=${Math.min(limit, 50)}`);
+      const contacts = (data.contacts ?? []).map((c: any) => ({
+        id: c.id, name: c.displayName, username: c.username, phone: c.phoneMasked,
+      }));
+      return { result: JSON.stringify({ query, found: contacts.length, contacts }) };
+    }
+
+    case "get_user_profile": {
+      const { userId, accountId = "" } = args;
+      if (!userId) return { result: "userId is required" };
+      const data = await get(`/telegram/contacts/profile?accountId=${encodeURIComponent(accountId)}&userId=${encodeURIComponent(userId)}`);
+      return { result: JSON.stringify(data) };
+    }
+
+    case "block_user": {
+      const { userId, blocked = true, accountId = "" } = args;
+      if (!userId) return { result: "userId is required" };
+      const r = await fetch(`${API_BASE}/telegram/contacts/block`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, blocked, accountId }),
+      });
+      const data = await r.json() as any;
+      return { result: JSON.stringify(data) };
+    }
+
+    // ── Chat management ────────────────────────────────────────────────────────
+    case "archive_chat": {
+      const { chatId, archived = true, accountId = "" } = args;
+      if (!chatId) return { result: "chatId is required" };
+      const r = await fetch(`${API_BASE}/telegram/chats/archive`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId, archived, accountId }),
+      });
+      const data = await r.json() as any;
+      return { result: JSON.stringify(data) };
+    }
+
+    case "mute_chat": {
+      const { chatId, muted = true, accountId = "" } = args;
+      if (!chatId) return { result: "chatId is required" };
+      const r = await fetch(`${API_BASE}/telegram/chats/mute`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId, muted, accountId }),
+      });
+      const data = await r.json() as any;
+      return { result: JSON.stringify(data) };
+    }
+
+    case "mark_chat_read": {
+      const { chatId, accountId = "" } = args;
+      if (!chatId) return { result: "chatId is required" };
+      const r = await fetch(`${API_BASE}/telegram/chats/read`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId, accountId }),
+      });
+      const data = await r.json() as any;
+      return { result: JSON.stringify(data) };
+    }
+
+    case "pin_chat": {
+      const { chatId, pinned = true, accountId = "" } = args;
+      if (!chatId) return { result: "chatId is required" };
+      const r = await fetch(`${API_BASE}/telegram/chats/pin`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId, pinned, accountId }),
+      });
+      const data = await r.json() as any;
+      return { result: JSON.stringify(data) };
+    }
+
+    // ── Chat members ───────────────────────────────────────────────────────────
+    case "get_chat_members": {
+      const { chatId, filter = "all", limit = 50, accountId = "" } = args;
+      if (!chatId) return { result: "chatId is required" };
+      const data = await get(`/telegram/chat/members?chatId=${encodeURIComponent(chatId)}&filter=${filter}&limit=${Math.min(limit, 200)}&accountId=${encodeURIComponent(accountId)}`);
+      const members = (data.members ?? []).slice(0, 50).map((m: any) => ({
+        userId: m.member_id?.user_id ?? m.userId,
+        status: m.status?._ ?? m.status,
+      }));
+      return { result: JSON.stringify({ total: data.total ?? members.length, filter, members }) };
+    }
+
+    case "get_invite_link": {
+      const { chatId, accountId = "" } = args;
+      if (!chatId) return { result: "chatId is required" };
+      const data = await get(`/telegram/chat/invite-link?chatId=${encodeURIComponent(chatId)}&accountId=${encodeURIComponent(accountId)}`);
+      return { result: JSON.stringify(data) };
+    }
+
+    case "propose_member_action": {
+      const { chatId, chatTitle, userId, action, accountId } = args;
+      if (!chatId || !userId || !action) return { result: "chatId, userId, action are required" };
+      const validActions = ["ban", "kick", "admin", "member"];
+      if (!validActions.includes(action)) return { result: `action must be one of: ${validActions.join(", ")}` };
+      const card = {
+        kind: "member_action",
+        label: action === "ban" ? `Забанить пользователя в ${chatTitle ?? chatId}` :
+               action === "kick" ? `Кикнуть пользователя из ${chatTitle ?? chatId}` :
+               action === "admin" ? `Сделать администратором в ${chatTitle ?? chatId}` :
+               `Вернуть права участника в ${chatTitle ?? chatId}`,
+        description: `Действие: ${action} | Пользователь: ${userId} | Чат: ${chatTitle ?? chatId}`,
+        payload: { chatId, chatTitle, userId, action, accountId },
+        confirmUrl: "/telegram/chat/member-action",
+      };
+      return { result: `Запрос подтверждения: ${action} пользователя ${userId} в ${chatTitle ?? chatId}.`, approvalCard: card };
     }
 
     default:

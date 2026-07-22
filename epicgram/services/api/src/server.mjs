@@ -573,6 +573,134 @@ const server = http.createServer(async (request, response) => {
       return send(response, result.status, result.body);
     }
 
+    // ─── Contacts API ──────────────────────────────────────────────────────────
+    if (request.method === "GET" && url.pathname === "/telegram/contacts") {
+      try {
+        const { getTdlibContacts } = await import("./tdlib-adapter.mjs");
+        const result = await getTdlibContacts({ accountId: url.searchParams.get("accountId") });
+        return send(response, 200, result);
+      } catch (e) { return send(response, 500, { ok: false, message: e.message }); }
+    }
+    if (request.method === "GET" && url.pathname === "/telegram/contacts/search") {
+      try {
+        const { searchTdlibContacts } = await import("./tdlib-adapter.mjs");
+        const result = await searchTdlibContacts({
+          accountId: url.searchParams.get("accountId"),
+          query: url.searchParams.get("q") ?? "",
+          limit: Number(url.searchParams.get("limit") ?? 20),
+        });
+        return send(response, 200, result);
+      } catch (e) { return send(response, 500, { ok: false, message: e.message }); }
+    }
+    if (request.method === "GET" && url.pathname === "/telegram/contacts/profile") {
+      try {
+        const { getTdlibUserProfile } = await import("./tdlib-adapter.mjs");
+        const userId = url.searchParams.get("userId");
+        if (!userId) return send(response, 400, { ok: false, message: "userId required" });
+        const result = await getTdlibUserProfile({ accountId: url.searchParams.get("accountId"), userId });
+        return send(response, 200, result);
+      } catch (e) { return send(response, 500, { ok: false, message: e.message }); }
+    }
+    if (request.method === "POST" && url.pathname === "/telegram/contacts/block") {
+      try {
+        const { toggleTdlibUserBlock } = await import("./tdlib-adapter.mjs");
+        const body = await readJson(request);
+        const { userId, accountId, blocked = true } = body ?? {};
+        if (!userId) return send(response, 400, { ok: false, message: "userId required" });
+        const result = await toggleTdlibUserBlock({ accountId, userId, blocked });
+        return send(response, 200, result);
+      } catch (e) { return send(response, 500, { ok: false, message: e.message }); }
+    }
+    if (request.method === "GET" && url.pathname === "/telegram/contacts/common-chats") {
+      try {
+        const { getTdlibCommonChats } = await import("./tdlib-adapter.mjs");
+        const userId = url.searchParams.get("userId");
+        if (!userId) return send(response, 400, { ok: false, message: "userId required" });
+        const result = await getTdlibCommonChats({
+          accountId: url.searchParams.get("accountId"),
+          userId,
+          limit: Number(url.searchParams.get("limit") ?? 20),
+        });
+        return send(response, 200, result);
+      } catch (e) { return send(response, 500, { ok: false, message: e.message }); }
+    }
+
+    // ─── Chat management (archive / mute / read / pin) ─────────────────────────
+    if (request.method === "POST" && url.pathname === "/telegram/chats/archive") {
+      try {
+        const { toggleTdlibChatArchived } = await import("./tdlib-adapter.mjs");
+        const { chatId, archived = true, accountId } = await readJson(request) ?? {};
+        if (!chatId) return send(response, 400, { ok: false, message: "chatId required" });
+        return send(response, 200, await toggleTdlibChatArchived({ accountId, chatId, archived }));
+      } catch (e) { return send(response, 500, { ok: false, message: e.message }); }
+    }
+    if (request.method === "POST" && url.pathname === "/telegram/chats/mute") {
+      try {
+        const { toggleTdlibChatMuted } = await import("./tdlib-adapter.mjs");
+        const { chatId, muted = true, accountId } = await readJson(request) ?? {};
+        if (!chatId) return send(response, 400, { ok: false, message: "chatId required" });
+        return send(response, 200, await toggleTdlibChatMuted({ accountId, chatId, muted }));
+      } catch (e) { return send(response, 500, { ok: false, message: e.message }); }
+    }
+    if (request.method === "POST" && url.pathname === "/telegram/chats/read") {
+      try {
+        const { markTdlibChatRead } = await import("./tdlib-adapter.mjs");
+        const { chatId, accountId } = await readJson(request) ?? {};
+        if (!chatId) return send(response, 400, { ok: false, message: "chatId required" });
+        return send(response, 200, await markTdlibChatRead({ accountId, chatId }));
+      } catch (e) { return send(response, 500, { ok: false, message: e.message }); }
+    }
+    if (request.method === "POST" && url.pathname === "/telegram/chats/pin") {
+      try {
+        const { toggleTdlibChatPinned } = await import("./tdlib-adapter.mjs");
+        const { chatId, pinned = true, accountId } = await readJson(request) ?? {};
+        if (!chatId) return send(response, 400, { ok: false, message: "chatId required" });
+        return send(response, 200, await toggleTdlibChatPinned({ accountId, chatId, pinned }));
+      } catch (e) { return send(response, 500, { ok: false, message: e.message }); }
+    }
+
+    // ─── Chat members (list / ban / kick / promote / invite link) ──────────────
+    if (request.method === "GET" && url.pathname === "/telegram/chat/members") {
+      try {
+        const { getTdlibChatMembers } = await import("./tdlib-adapter.mjs");
+        const chatId = url.searchParams.get("chatId");
+        if (!chatId) return send(response, 400, { ok: false, message: "chatId required" });
+        const result = await getTdlibChatMembers({
+          accountId: url.searchParams.get("accountId"),
+          chatId,
+          limit: Number(url.searchParams.get("limit") ?? 50),
+          filter: url.searchParams.get("filter") ?? "all",
+        });
+        return send(response, 200, result);
+      } catch (e) { return send(response, 500, { ok: false, message: e.message }); }
+    }
+    if (request.method === "POST" && url.pathname === "/telegram/chat/member-action") {
+      try {
+        const { setChatTdlibMemberStatus } = await import("./tdlib-adapter.mjs");
+        const { chatId, chatTitle, userId, action, accountId } = await readJson(request) ?? {};
+        if (!chatId || !userId || !action) return send(response, 400, { ok: false, message: "chatId, userId, action required" });
+        const result = await setChatTdlibMemberStatus({ accountId, chatId, userId, action });
+        auditAppend({
+          status: result.ok ? "executed" : "rejected",
+          actor: "operator", source: "telegram_member_action", tool: "chat_member_action",
+          actionType: `chat_member_${action}`,
+          chatId: String(chatId), chatTitle: chatTitle ?? String(chatId),
+          preview: `${action} user ${userId} in ${chatTitle ?? chatId}`,
+          safety: { executedExternalAction: result.ok, approvalRequiredForSend: false },
+        });
+        return send(response, result.ok ? 200 : 400, result);
+      } catch (e) { return send(response, 500, { ok: false, message: e.message }); }
+    }
+    if (request.method === "GET" && url.pathname === "/telegram/chat/invite-link") {
+      try {
+        const { getTdlibChatInviteLink } = await import("./tdlib-adapter.mjs");
+        const chatId = url.searchParams.get("chatId");
+        if (!chatId) return send(response, 400, { ok: false, message: "chatId required" });
+        const result = await getTdlibChatInviteLink({ accountId: url.searchParams.get("accountId"), chatId });
+        return send(response, 200, result);
+      } catch (e) { return send(response, 500, { ok: false, message: e.message }); }
+    }
+
     if (request.method === "GET" && url.pathname === "/operator/status") {
       const { buildOperatorStatus } = await import("./operator-core.mjs");
       return send(response, 200, await buildOperatorStatus());

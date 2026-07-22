@@ -974,3 +974,258 @@ export async function getTdlibAccountDetail(accountId = "main") {
 
   return detail;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Contacts API
+// ─────────────────────────────────────────────────────────────────────────────
+
+function formatUserShort(user) {
+  if (!user) return null;
+  const firstName = user.first_name ?? "";
+  const lastName  = user.last_name  ?? "";
+  return {
+    id:          String(user.id),
+    displayName: `${firstName} ${lastName}`.trim() || user.username || "Unknown",
+    username:    user.username ? `@${user.username}` : null,
+    phoneMasked: user.phone_number ? `+${String(user.phone_number).slice(0, 4)}***${String(user.phone_number).slice(-2)}` : null,
+    type:        user.type?._ ?? "user",
+    isBot:       user.type?._ === "userTypeBot",
+    photoSmallFileId: user.profile_photo?.small?.id ? String(user.profile_photo.small.id) : null,
+  };
+}
+
+export async function getTdlibContacts({ accountId = "main" } = {}) {
+  const id = safeAccountId(accountId);
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
+  if (!READY_STATES.has(authorizationState?._)) return { contacts: [], message: "Not authorized" };
+
+  const result = await tdClient.invoke({ _: "getContacts" });
+  const userIds = result.user_ids ?? [];
+  const users = await Promise.allSettled(
+    userIds.slice(0, 300).map(uid => tdClient.invoke({ _: "getUser", user_id: uid }))
+  );
+  return {
+    contacts: users.filter(r => r.status === "fulfilled").map(r => formatUserShort(r.value)),
+    total: userIds.length,
+  };
+}
+
+export async function searchTdlibContacts({ accountId = "main", query = "", limit = 20 } = {}) {
+  const id = safeAccountId(accountId);
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
+  if (!READY_STATES.has(authorizationState?._)) return { contacts: [] };
+
+  const result = await tdClient.invoke({ _: "searchContacts", query: String(query), limit: Math.min(limit, 50) });
+  const users = await Promise.allSettled(
+    (result.user_ids ?? []).map(uid => tdClient.invoke({ _: "getUser", user_id: uid }))
+  );
+  return { contacts: users.filter(r => r.status === "fulfilled").map(r => formatUserShort(r.value)) };
+}
+
+export async function getTdlibUserProfile({ accountId = "main", userId } = {}) {
+  const id = safeAccountId(accountId);
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
+  if (!READY_STATES.has(authorizationState?._)) return { ok: false, message: "Not authorized" };
+
+  const uid = Number(userId);
+  const [user, fullInfo] = await Promise.all([
+    tdClient.invoke({ _: "getUser", user_id: uid }),
+    tdClient.invoke({ _: "getUserFullInfo", user_id: uid }).catch(() => null),
+  ]);
+  return {
+    ...formatUserShort(user),
+    bio:             fullInfo?.bio?.text ?? null,
+    commonChatCount: fullInfo?.group_in_common_count ?? 0,
+  };
+}
+
+export async function toggleTdlibUserBlock({ accountId = "main", userId, blocked = true } = {}) {
+  const id = safeAccountId(accountId);
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
+  if (!READY_STATES.has(authorizationState?._)) return { ok: false, message: "Not authorized" };
+
+  await tdClient.invoke({
+    _: "toggleMessageSenderIsBlocked",
+    sender_id: { _: "messageSenderUser", user_id: Number(userId) },
+    is_blocked: Boolean(blocked),
+  });
+  return { ok: true, userId, blocked };
+}
+
+export async function getTdlibCommonChats({ accountId = "main", userId, limit = 20 } = {}) {
+  const id = safeAccountId(accountId);
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
+  if (!READY_STATES.has(authorizationState?._)) return { chats: [] };
+
+  const result = await tdClient.invoke({ _: "getGroupsInCommon", user_id: Number(userId), offset_chat_id: 0, limit: Math.min(limit, 100) });
+  const chatIds = result.chat_ids ?? [];
+  const chats = await Promise.allSettled(chatIds.map(cid => tdClient.invoke({ _: "getChat", chat_id: cid })));
+  return { chats: chats.filter(r => r.status === "fulfilled").map(r => formatChat(r.value)) };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chat management (archive, mute, read, pin)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function toggleTdlibChatArchived({ accountId = "main", chatId, archived = true } = {}) {
+  const id = safeAccountId(accountId);
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
+  if (!READY_STATES.has(authorizationState?._)) return { ok: false, message: "Not authorized" };
+
+  await tdClient.invoke({
+    _: "addChatToList",
+    chat_id: Number(chatId),
+    chat_list: archived ? { _: "chatListArchive" } : { _: "chatListMain" },
+  });
+  return { ok: true, chatId, archived };
+}
+
+export async function toggleTdlibChatMuted({ accountId = "main", chatId, muted = true } = {}) {
+  const id = safeAccountId(accountId);
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
+  if (!READY_STATES.has(authorizationState?._)) return { ok: false, message: "Not authorized" };
+
+  await tdClient.invoke({
+    _: "setChatNotificationSettings",
+    chat_id: Number(chatId),
+    notification_settings: {
+      _: "chatNotificationSettings",
+      use_default_mute_for: false,
+      mute_for: muted ? 2147483647 : 0,
+      use_default_sound: true,
+      use_default_show_preview: true,
+      use_default_disable_pinned_message_notifications: true,
+      use_default_disable_mention_notifications: true,
+    },
+  });
+  return { ok: true, chatId, muted };
+}
+
+export async function markTdlibChatRead({ accountId = "main", chatId } = {}) {
+  const id = safeAccountId(accountId);
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
+  if (!READY_STATES.has(authorizationState?._)) return { ok: false, message: "Not authorized" };
+
+  const chat = await tdClient.invoke({ _: "getChat", chat_id: Number(chatId) });
+  if (chat.last_message?.id) {
+    await tdClient.invoke({ _: "readChatHistory", chat_id: Number(chatId), last_message_id: chat.last_message.id });
+  }
+  return { ok: true, chatId };
+}
+
+export async function toggleTdlibChatPinned({ accountId = "main", chatId, pinned = true } = {}) {
+  const id = safeAccountId(accountId);
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
+  if (!READY_STATES.has(authorizationState?._)) return { ok: false, message: "Not authorized" };
+
+  await tdClient.invoke({
+    _: "toggleChatIsPinned",
+    chat_list: { _: "chatListMain" },
+    chat_id: Number(chatId),
+    is_pinned: Boolean(pinned),
+  });
+  return { ok: true, chatId, pinned };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chat members (list, ban, kick, promote to admin)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function getTdlibChatMembers({ accountId = "main", chatId, limit = 50, filter = "all" } = {}) {
+  const id = safeAccountId(accountId);
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
+  if (!READY_STATES.has(authorizationState?._)) return { members: [], message: "Not authorized" };
+
+  const chat = await tdClient.invoke({ _: "getChat", chat_id: Number(chatId) });
+  const chatType = chat.type?._;
+
+  if (chatType === "chatTypeBasicGroup") {
+    const full = await tdClient.invoke({ _: "getBasicGroupFullInfo", basic_group_id: chat.type.basic_group_id });
+    return { members: full.members ?? [], total: (full.members ?? []).length };
+  }
+  if (chatType === "chatTypeSupergroup") {
+    const filterMap = {
+      all:    { _: "supergroupMembersFilterRecent" },
+      admins: { _: "supergroupMembersFilterAdministrators" },
+      banned: { _: "supergroupMembersFilterBanned", query: "" },
+      bots:   { _: "supergroupMembersFilterBots" },
+    };
+    const result = await tdClient.invoke({
+      _: "getSupergroupMembers",
+      supergroup_id: chat.type.supergroup_id,
+      filter: filterMap[filter] ?? filterMap.all,
+      offset: 0,
+      limit: Math.min(limit, 200),
+    });
+    return { members: result.members ?? [], total: result.total_count ?? 0 };
+  }
+  return { members: [], message: "Chat type does not support member listing" };
+}
+
+export async function setChatTdlibMemberStatus({ accountId = "main", chatId, userId, action } = {}) {
+  // action: "ban" | "kick" | "admin" | "member"
+  const id = safeAccountId(accountId);
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
+  if (!READY_STATES.has(authorizationState?._)) return { ok: false, message: "Not authorized" };
+
+  const chat = await tdClient.invoke({ _: "getChat", chat_id: Number(chatId) });
+  if (chat.type?._ !== "chatTypeSupergroup") return { ok: false, message: "Only supergroups/channels support this operation" };
+
+  const statusMap = {
+    ban:    { _: "chatMemberStatusBanned", banned_until_date: 0 },
+    kick:   { _: "chatMemberStatusLeft" },
+    member: { _: "chatMemberStatusMember" },
+    admin: {
+      _: "chatMemberStatusAdministrator",
+      custom_title: "",
+      can_be_edited: true,
+      rights: {
+        _: "chatAdministratorRights",
+        can_manage_chat: true, can_change_info: true, can_post_messages: true,
+        can_edit_messages: true, can_delete_messages: true, can_invite_users: true,
+        can_restrict_members: true, can_pin_messages: true, can_promote_members: false,
+        can_manage_video_chats: true, can_post_stories: false, can_edit_stories: false,
+        can_delete_stories: false, is_anonymous: false,
+      },
+    },
+  };
+
+  const status = statusMap[action];
+  if (!status) return { ok: false, message: `Unknown action: ${action}. Use ban|kick|admin|member` };
+
+  await tdClient.invoke({
+    _: "setChatMemberStatus",
+    chat_id: Number(chatId),
+    member_id: { _: "messageSenderUser", user_id: Number(userId) },
+    status,
+  });
+  return { ok: true, chatId, userId, action };
+}
+
+export async function getTdlibChatInviteLink({ accountId = "main", chatId } = {}) {
+  const id = safeAccountId(accountId);
+  const tdClient = await ensureClient(id);
+  const authorizationState = await getStableAuthorizationState(id, tdClient);
+  if (!READY_STATES.has(authorizationState?._)) return { ok: false, message: "Not authorized" };
+
+  const link = await tdClient.invoke({
+    _: "createChatInviteLink",
+    chat_id: Number(chatId),
+    name: "",
+    expire_date: 0,
+    member_limit: 0,
+    creates_join_request: false,
+  });
+  return { ok: true, chatId, inviteLink: link.invite_link };
+}
