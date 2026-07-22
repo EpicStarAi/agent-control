@@ -8,8 +8,9 @@ import { emitGlowState } from "@/hooks/useAIGlowSettings";
 
 // ── types ────────────────────────────────────────────────────────────────────
 type Role = "user" | "assistant" | "system" | "tool_call";
+type ActionStatus = "executing" | "completed" | "error";
 interface ApprovalCard { type: string; tool: string; payload: Record<string, any>; warning: string }
-interface Msg { role: Role; content: string; id: string; streaming?: boolean; toolName?: string; approvalCards?: ApprovalCard[] }
+interface Msg { role: Role; content: string; id: string; streaming?: boolean; toolName?: string; approvalCards?: ApprovalCard[]; status?: ActionStatus }
 type WinState = { x: number; y: number; w: number; h: number; minimized: boolean; maximized: boolean };
 interface Attachment { name: string; type: string; dataUrl: string; size: number }
 interface OperatorSettings { model: string; temperature: number; customSystemPrompt: string }
@@ -74,6 +75,9 @@ const TOOL_LABELS: Record<string, string> = {
   search_chats:               "🔍 Ищу чаты…",
   get_workspace_stats:        "📊 Собираю статистику…",
   find_unanswered_messages:   "📬 Ищу неотвеченные сообщения…",
+  analyse_chat:               "🔎 Анализирую переписку…",
+  extract_tasks:              "📋 Извлекаю задачи из чата…",
+  get_daily_summary:          "📅 Собираю ежедневный дайджест…",
   propose_send_message:       "📨 Формирую запрос на отправку…",
   propose_forward_message:    "↩️ Формирую запрос на пересылку…",
   propose_set_reaction:       "😊 Формирую запрос на реакцию…",
@@ -306,6 +310,12 @@ export function GlobalAIOperatorSidebar() {
               emitGlowState("tool_call");
             }
 
+            if (payload.status) {
+              setMessages(prev => prev.map(m =>
+                m.id === assistantId ? { ...m, status: payload.status as ActionStatus } : m
+              ));
+            }
+
             if (payload.content) {
               fullText += payload.content;
               setMessages(prev => prev.map(m =>
@@ -319,7 +329,9 @@ export function GlobalAIOperatorSidebar() {
               const { clean, action } = extractAction(fullText);
               const cards: any[] = payload.approvalCards ?? [];
               setMessages(prev => prev.map(m =>
-                m.id === assistantId ? { ...m, content: clean, streaming: false, approvalCards: cards } : m
+                m.id === assistantId
+                  ? { ...m, content: clean, streaming: false, approvalCards: cards }
+                  : m
               ));
               if (action) {
                 emitGlowState("tool_call");
@@ -333,7 +345,7 @@ export function GlobalAIOperatorSidebar() {
             }
             if (payload.error) {
               setMessages(prev => prev.map(m =>
-                m.id === assistantId ? { ...m, content: `⚠️ ${payload.error}`, streaming: false } : m
+                m.id === assistantId ? { ...m, content: `⚠️ ${payload.error}`, streaming: false, status: "error" } : m
               ));
               emitGlowState("error");
             }
@@ -594,6 +606,27 @@ export function GlobalAIOperatorSidebar() {
                         : { background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
                       <MessageContent content={msg.content} streaming={msg.streaming} />
                     </div>
+                    {/* Action status chip — only shown for multi-step operations */}
+                    {msg.role === "assistant" && msg.status && (
+                      <div className="flex items-center gap-1.5 pl-1">
+                        {msg.status === "executing" && (
+                          <span className="flex items-center gap-1 rounded-full border border-sky-500/25 bg-sky-500/10 px-2 py-0.5 text-[10px] text-sky-400">
+                            <span className="h-2 w-2 animate-spin rounded-full border border-sky-500/30 border-t-sky-400" />
+                            Выполняется…
+                          </span>
+                        )}
+                        {msg.status === "completed" && (
+                          <span className="flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-400">
+                            ✓ Завершено
+                          </span>
+                        )}
+                        {msg.status === "error" && (
+                          <span className="flex items-center gap-1 rounded-full border border-red-500/25 bg-red-500/10 px-2 py-0.5 text-[10px] text-red-400">
+                            ✗ Ошибка
+                          </span>
+                        )}
+                      </div>
+                    )}
                     {/* Approval cards */}
                     {msg.approvalCards?.map((card, i) => {
                       const cardKey = `${msg.id}_${i}`;

@@ -15,42 +15,81 @@ const MAX_TOKENS     = parseInt(process.env["OPENAI_MAX_OUTPUT_TOKENS"] ?? "2048
 const API_BASE       = process.env["EPICGRAM_API_BASE_URL"]  ?? "http://127.0.0.1:8788";
 
 // ── system prompt ──────────────────────────────────────────────────────────────
-const SYSTEM_PROMPT = `You are the EPICGRAM AI Operator — an intelligent execution engine embedded inside the EPICGRAM Telegram management platform.
+const SYSTEM_PROMPT = `You are the EPICGRAM AI Operator — an intelligent execution engine embedded inside the EPICGRAM Telegram management platform. You are not just an assistant; you are an active operator that reads, analyses, and acts on Telegram data.
 
-You have access to tools that let you read real Telegram workspace state AND propose write actions for user approval.
-Use read tools proactively to answer questions accurately instead of guessing.
+═══ EXECUTION MODEL ════════════════════════════════════════════
+Each operation follows this cycle:
+  Planned → Awaiting Confirmation → Executing → Completed / Failed
 
-READ TOOLS (execute automatically):
-- get_status, list_accounts, list_chats, get_chat_history, get_audit_log, search_chats, get_workspace_stats
-- find_unanswered_messages — finds chats where the last message is incoming (you haven't replied)
+For READ operations: execute immediately, report results.
+For WRITE operations: plan → propose (show confirmation card) → wait for user → report outcome.
+Always start complex tasks by reading real data first. Never guess or invent data.
 
-WRITE TOOLS (always surface an approval card — never auto-execute):
-- propose_send_message — draft a new message to a chat
-- propose_forward_message — forward a message to another chat
-- propose_set_reaction — add an emoji reaction to a message
-- propose_pin_message — pin a message in a chat
-- propose_edit_message — edit one of your own sent messages
-- propose_delete_message — delete one or more messages
+═══ READ TOOLS (auto-execute) ══════════════════════════════════
+• get_status            — Telegram runtime, TDLib readiness
+• list_accounts         — all account slots and their status
+• list_chats            — dialogs, groups, channels, bots
+• get_chat_history      — full message history for a chat
+• get_audit_log         — recent operator actions
+• search_chats          — find chats by name or keyword
+• get_workspace_stats   — unread count, chat categories, account summary
+• find_unanswered_messages — chats where the last message is incoming (you haven't replied)
+• analyse_chat          — get structured analysis: summary, key decisions, open questions
+• extract_tasks         — extract action items with owners and implied deadlines from a chat
+• get_daily_summary     — full daily digest: unread, top chats, unanswered, recent actions
 
-WORKFLOW for write actions:
-1. Use a read tool first to confirm the chat/message exists (e.g. get_chat_history to find the message ID)
-2. Call the propose_ tool with exact IDs — this surfaces a confirmation card to the user
-3. Wait for user to confirm; execution happens client-side after confirmation
-4. You NEVER execute writes yourself — only propose them
+═══ WRITE TOOLS (ALWAYS require approval card — NEVER auto-execute) ═══
+• propose_send_message     — draft a new message
+• propose_forward_message  — forward a message to another chat
+• propose_set_reaction     — add emoji reaction to a message
+• propose_pin_message      — pin a message
+• propose_edit_message     — edit your own message
+• propose_delete_message   — delete one or more messages
 
-SAFETY RULES (never violate):
-- NEVER expose secrets, API keys, session tokens, phone numbers, passwords, or TDLib database paths.
-- Always get exact chatId and messageId from tools before proposing a write action.
-- For find_unanswered_messages: report the count and chat names, then ask if user wants to act on them.
+═══ ANALYSIS PATTERNS ══════════════════════════════════════════
+When asked to "перескажи чат" / "summarise":
+  1. Call get_chat_history (or analyse_chat) with appropriate chatId
+  2. Produce Russian summary: key topics, decisions, open questions
 
-Navigation: when the user wants to open a section/chat, end your message with a single action tag:
-<action>{"kind":"navigate","target":"dialogs"}</action>  (targets: dialogs, groups, channels, private, contacts, bots, accounts, settings, analytics)
+When asked "извлеки задачи" / "extract tasks":
+  1. Call extract_tasks with the chatId
+  2. Present numbered list: [who] [what] [by when]
+
+When asked "кому я не ответил" / "who did I not reply to":
+  1. Call find_unanswered_messages
+  2. List each chat with last message preview
+  3. Offer to draft a reply for any of them
+
+When asked "ежедневный отчёт" / "daily report":
+  1. Call get_daily_summary
+  2. Structure: unread total → top urgent chats → unanswered → next steps
+
+═══ RULES MEMORY ════════════════════════════════════════════════
+When the user says something like "правило: …":
+  — Acknowledge the rule and confirm it is saved for future use.
+  — Apply any matching saved rules when drafting messages or suggesting responses.
+  — Rules examples: "Анне отвечай официально", "важные чаты открывать сразу", "всегда предлагать короткий ответ"
+
+═══ WRITE WORKFLOW ═════════════════════════════════════════════
+1. Read real data to get exact IDs (chatId, messageId).
+2. Call the appropriate propose_ tool — this surfaces a confirmation card.
+3. Execution happens client-side after user confirms.
+4. You NEVER call Telegram APIs directly.
+
+═══ SAFETY ══════════════════════════════════════════════════════
+- NEVER expose secrets, session tokens, phone numbers, passwords, or TDLib paths.
+- Only use IDs obtained from tools — never invent IDs.
+
+Navigation actions (use at the end of response when user wants to navigate):
+<action>{"kind":"navigate","target":"dialogs"}</action>  — targets: dialogs, groups, channels, private, contacts, bots, accounts, settings, analytics
 <action>{"kind":"open_chat","query":"CHAT NAME"}</action>
 
 Language: respond in Russian by default. Match user's language otherwise.
-Be concise, direct, and practical.`;
+Be concise, direct, and practical. Avoid unnecessary disclaimers.`;
 
 // ── memory helpers ─────────────────────────────────────────────────────────────
+const RULES_CONV_ID = "ai_operator_rules";
+
 async function fetchMemory(conversationId: string, limit = 10): Promise<string> {
   try {
     const r = await fetch(`${API_BASE}/ai/memory?conversationId=${encodeURIComponent(conversationId)}&limit=${limit}`);
@@ -60,6 +99,27 @@ async function fetchMemory(conversationId: string, limit = 10): Promise<string> 
     if (entries.length === 0) return "";
     return "\n\n--- Память из прошлых сессий ---\n" + entries.map((e: any) => `${e.role}: ${String(e.content).slice(0, 300)}`).join("\n");
   } catch { return ""; }
+}
+
+async function fetchRulesMemory(): Promise<string> {
+  try {
+    const r = await fetch(`${API_BASE}/ai/memory?conversationId=${encodeURIComponent(RULES_CONV_ID)}&limit=30`);
+    if (!r.ok) return "";
+    const data = await r.json() as any;
+    const rules: any[] = (data.entries ?? []).filter((e: any) => e.role === "rule");
+    if (rules.length === 0) return "";
+    return "\n\n--- Правила пользователя (применять всегда) ---\n" + rules.map((e: any) => `• ${String(e.content).slice(0, 200)}`).join("\n");
+  } catch { return ""; }
+}
+
+async function saveRule(ruleText: string): Promise<void> {
+  try {
+    await fetch(`${API_BASE}/ai/memory`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId: RULES_CONV_ID, role: "rule", content: ruleText.slice(0, 300) }),
+    });
+  } catch {}
 }
 
 async function saveMemoryTurn(conversationId: string, userText: string, assistantText: string): Promise<void> {
@@ -172,6 +232,53 @@ const TOOLS: any[] = [
         properties: {
           accountId: { type: "string", description: "Account slot ID. Use active if omitted." },
           limit:     { type: "number", description: "Max chats to scan (default 100)" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "analyse_chat",
+      description: "Fetch and structure a chat's recent messages for analysis. Returns messages with metadata so you can summarise key topics, decisions, and open questions. Use this when asked to 'перескажи чат', 'summarise', 'о чём переписывались'.",
+      parameters: {
+        type: "object",
+        required: ["chatId"],
+        properties: {
+          chatId:    { type: "string", description: "Telegram chat ID to analyse" },
+          chatTitle: { type: "string", description: "Chat display name (for context)" },
+          accountId: { type: "string", description: "Account slot ID. Use active if omitted." },
+          limit:     { type: "number", description: "Number of recent messages to analyse (default 50, max 100)" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "extract_tasks",
+      description: "Fetch messages from a chat and structure them for task extraction. Returns messages so you can extract action items with owners and implied deadlines. Use when asked to 'извлеки задачи', 'что нужно сделать', 'список задач из переписки'.",
+      parameters: {
+        type: "object",
+        required: ["chatId"],
+        properties: {
+          chatId:    { type: "string", description: "Telegram chat ID" },
+          chatTitle: { type: "string", description: "Chat display name" },
+          accountId: { type: "string", description: "Account slot ID. Use active if omitted." },
+          limit:     { type: "number", description: "Number of recent messages (default 50, max 100)" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_daily_summary",
+      description: "Collect a full daily digest: workspace stats, top unread chats, unanswered conversations, and recent audit log. Use when asked for 'ежедневный отчёт', 'дайджест', 'что происходит', 'сводка за день'.",
+      parameters: {
+        type: "object",
+        properties: {
+          accountId: { type: "string", description: "Account slot ID. Use active if omitted." },
         },
       },
     },
@@ -384,6 +491,80 @@ async function executeTool(name: string, args: Record<string, any>): Promise<{ r
       return { result: JSON.stringify({ unansweredCount: unanswered.length, chats: unanswered }) };
     }
 
+    case "analyse_chat": {
+      const { chatId, chatTitle = "", accountId = "", limit = 50 } = args;
+      const data = await get(`/telegram/messages?chatId=${encodeURIComponent(chatId)}&accountId=${encodeURIComponent(accountId)}&limit=${Math.min(limit, 100)}`);
+      const msgs = (data.messages ?? []).map((m: any) => ({
+        id: m.id,
+        from: m.senderId || m.from || "unknown",
+        isOutgoing: m.isOutgoing,
+        text: (m.content || m.text || "").slice(0, 300),
+        date: m.date,
+      }));
+      return { result: JSON.stringify({
+        chatId,
+        chatTitle,
+        messageCount: msgs.length,
+        messages: msgs,
+        _instruction: "Analyse this conversation in Russian. Structure your response as: 1) Краткое содержание (2-3 sentences), 2) Ключевые темы (bullet list), 3) Принятые решения (if any), 4) Открытые вопросы / что осталось нерешённым.",
+      }) };
+    }
+
+    case "extract_tasks": {
+      const { chatId, chatTitle = "", accountId = "", limit = 50 } = args;
+      const data = await get(`/telegram/messages?chatId=${encodeURIComponent(chatId)}&accountId=${encodeURIComponent(accountId)}&limit=${Math.min(limit, 100)}`);
+      const msgs = (data.messages ?? []).map((m: any) => ({
+        from: m.senderId || m.from || "unknown",
+        isOutgoing: m.isOutgoing,
+        text: (m.content || m.text || "").slice(0, 300),
+        date: m.date,
+      }));
+      return { result: JSON.stringify({
+        chatId,
+        chatTitle,
+        messageCount: msgs.length,
+        messages: msgs,
+        _instruction: "Extract all tasks and action items from this conversation in Russian. For each task: numbered list with format: [Кто] — [Что нужно сделать] — [Срок, если упомянут]. If no clear tasks found, say so briefly.",
+      }) };
+    }
+
+    case "get_daily_summary": {
+      const accountId = args.accountId || "";
+      const [statusData, chatsData, auditData] = await Promise.all([
+        get("/telegram/status"),
+        get(`/telegram/chats?accountId=${encodeURIComponent(accountId)}&limit=200`),
+        get("/ai/audit?n=10"),
+      ]);
+      const all = (chatsData.chats ?? chatsData.dialogs ?? []) as any[];
+      const totalUnread = all.reduce((s: number, c: any) => s + (c.unreadCount ?? 0), 0);
+      const topUnread = all
+        .filter((c: any) => (c.unreadCount ?? 0) > 0)
+        .sort((a: any, b: any) => (b.unreadCount ?? 0) - (a.unreadCount ?? 0))
+        .slice(0, 8)
+        .map((c: any) => ({ title: c.title, unread: c.unreadCount, lastMsg: (c.lastMessage?.content || "").slice(0, 60) }));
+      const unanswered = all.filter((c: any) => {
+        const lm = c.lastMessage;
+        return lm && lm.isOutgoing === false && lm.content;
+      }).slice(0, 10).map((c: any) => ({
+        id: c.id, title: c.title, category: c.category,
+        lastMsg: (c.lastMessage?.content || "").slice(0, 60),
+      }));
+      const accounts = (statusData.accounts ?? []).map((a: any) => ({
+        name: a.displayName || a.label, status: a.status, active: a.active,
+      }));
+      return { result: JSON.stringify({
+        date: new Date().toISOString().split("T")[0],
+        totalChats: all.length,
+        totalUnread,
+        accounts,
+        topUnreadChats: topUnread,
+        unansweredCount: unanswered.length,
+        unansweredChats: unanswered,
+        recentAuditLog: auditData,
+        _instruction: "Create a concise daily summary in Russian. Structure: 📊 Статистика (total chats/unread) → 🔥 Требуют внимания (top unread chats) → 📬 Ожидают ответа (unanswered) → ✅ Предлагаемые следующие шаги (2-3 concrete actions).",
+      }) };
+    }
+
     case "propose_send_message": {
       const card = {
         type: "APPROVAL_REQUIRED",
@@ -482,9 +663,21 @@ router.post("/operator/chat", async (req, res) => {
       ? Math.min(Math.max(settings.temperature, 0), 2)
       : 0.7;
 
-    // Fetch cross-session memory (if conversationId provided)
+    // Fetch cross-session memory + user rules in parallel
     const convId = (conversationId || "").trim();
-    const memoryBlock = convId ? await fetchMemory(convId, 12) : "";
+    const [memoryBlock, rulesBlock] = await Promise.all([
+      convId ? fetchMemory(convId, 12) : Promise.resolve(""),
+      fetchRulesMemory(),
+    ]);
+
+    // Detect and save user rules ("правило: ...")
+    const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
+    if (lastUserMsg) {
+      const ruleMatch = lastUserMsg.content.match(/^правило\s*:\s*(.+)/isu);
+      if (ruleMatch) {
+        saveRule(ruleMatch[1].trim()).catch(() => {});
+      }
+    }
 
     // Build context addendum
     const ctxLines: string[] = [];
@@ -497,10 +690,10 @@ router.post("/operator/chat", async (req, res) => {
       if (context.selectedChatId)  ctxLines.push(`Открытый чат: ${context.selectedChatTitle || context.selectedChatId}`);
     }
 
-    // Compose system prompt (custom prefix + base + memory)
+    // Compose system prompt (custom prefix + base + rules + memory)
     const systemContent = settings?.customSystemPrompt
-      ? `${settings.customSystemPrompt.trim()}\n\n${SYSTEM_PROMPT}${ctxLines.join("\n")}${memoryBlock}`
-      : SYSTEM_PROMPT + ctxLines.join("\n") + memoryBlock;
+      ? `${settings.customSystemPrompt.trim()}\n\n${SYSTEM_PROMPT}${ctxLines.join("\n")}${rulesBlock}${memoryBlock}`
+      : SYSTEM_PROMPT + ctxLines.join("\n") + rulesBlock + memoryBlock;
 
     // Build message list — last user message may carry image attachments (vision)
     const filteredHistory = messages.slice(-20).filter(m => m.role === "user" || m.role === "assistant");
@@ -532,6 +725,7 @@ router.post("/operator/chat", async (req, res) => {
     ];
 
     let approvalCards: object[] = [];
+    let toolsWereCalled = false;
 
     // ── agentic tool-call loop (max 4 iterations) ──────────────────────────────
     for (let iter = 0; iter < 4; iter++) {
@@ -583,6 +777,11 @@ router.post("/operator/chat", async (req, res) => {
           sse({ approvalCards });
         }
 
+        // Emit completed status only if tools were used (multi-step operation)
+        if (toolsWereCalled) {
+          sse({ status: "completed" });
+        }
+
         sse({ done: true, model: useModel });
         res.end();
 
@@ -597,6 +796,10 @@ router.post("/operator/chat", async (req, res) => {
 
       // Has tool calls → execute them
       chatMessages.push({ role: "assistant", content: msg.content ?? null, tool_calls: msg.tool_calls });
+
+      // Signal execution phase to frontend
+      toolsWereCalled = true;
+      sse({ status: "executing" });
 
       for (const tc of msg.tool_calls) {
         const toolName = tc.function.name;
@@ -620,11 +823,13 @@ router.post("/operator/chat", async (req, res) => {
 
     // Fallback if loop exhausted without a final text response
     sse({ content: "⚠️ Цикл выполнения завершён без итогового ответа. Попробуй снова." });
+    sse({ status: "error" });
     sse({ done: true });
     res.end();
 
   } catch (err: any) {
     const msg = err?.message ?? "Internal error";
+    sse({ status: "error" });
     sse({ error: msg, done: true });
     res.end();
   }
