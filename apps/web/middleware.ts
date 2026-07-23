@@ -87,6 +87,12 @@ export const config = {
     // dedicated route (command/confirm/schedule/qclaw) — must sit behind the
     // gate. Enforcement is still duplicated inside each handler (defence in
     // depth); this only guarantees the surface is covered at the edge too.
-    "/api/operator/:path*"
+    "/api/operator/:path*",
+    // P0: /api/ai/* proxied to the backend LLM anonymously and
+    // /api/operators/status published the operator roster. Both are gated in
+    // their handlers now; covering them here too keeps the edge and the
+    // handlers in agreement about what the protected surface is.
+    "/api/ai/:path*",
+    "/api/operators/:path*"
   ]
 };

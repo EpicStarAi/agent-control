@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
+import { requirePrincipal } from "@/lib/telegramGuard";
 
 const API_BASE_URL = process.env.EPICGRAM_API_BASE_URL ?? "http://127.0.0.1:8788";
+
+// P0: reported provider/model configuration anonymously. Gated.
+export const dynamic = "force-dynamic";
 
 // Fix [LOW]: /ai/status reports the legacy EPICGRAM_OPENAI_MODEL, but operator
 // drafts actually run the model-router "control" role (DEFAULT_ROLES.control =
 // anthropic/claude-sonnet-4). Merge the real control-role model in so the UI shows
 // what actually answers. Read-only; no secrets surfaced.
 export async function GET() {
+  const auth = await requirePrincipal("/api/ai/status", "GET");
+  if (!auth.ok) return auth.response;
+
   let status: Record<string, unknown> = {};
   try {
     const r = await fetch(`${API_BASE_URL}/ai/status`, { cache: "no-store", headers: { "content-type": "application/json" } });
