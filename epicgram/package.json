@@ -1,0 +1,56 @@
+{
+  "name": "agent-control",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev apps/web",
+    "dev:host": "next dev apps/web --hostname 0.0.0.0 --port 3015",
+    "desktop:dev": "electron apps/desktop/main.cjs",
+    "desktop": "electron apps/desktop/main.cjs",
+    "operator:hash": "node scripts/create-operator-hash.mjs",
+    "api:dev": "node services/api/src/server.mjs",
+    "build": "next build apps/web",
+    "start": "next start apps/web",
+    "start:host": "next start apps/web --hostname 0.0.0.0 --port 3015",
+    "lint": "next lint apps/web",
+    "vite:dev": "vite",
+    "vite:build": "vite build",
+    "vite:preview": "vite preview",
+    "test": "node --test services/api/src/dev-tools-guard.test.mjs"
+  },
+  "dependencies": {
+    "@twa-dev/sdk": "^6.9.0",
+    "@types/qrcode": "^1.5.6",
+    "lucide-react": "^0.468.0",
+    "next": "^14.2.23",
+    "pg": "^8.22.0",
+    "prebuilt-tdlib": "^0.1008064.0",
+    "qrcode": "^1.5.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tdl": "^8.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^18.2.67",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.19",
+    "dotenv": "^17.4.2",
+    "electron": "^42.4.0",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^14.2.23",
+    "playwright": "^1.61.1",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.4.2",
+    "vite": "^5.4.11"
+  },
+  "optionalDependencies": {
+    "@prebuilt-tdlib/darwin-arm64": "^0.1008064.0",
+    "@prebuilt-tdlib/linux-x64-glibc": "^0.1008064.0",
+    "@prebuilt-tdlib/win32-x64": "^0.1008064.0"
+  }
+}

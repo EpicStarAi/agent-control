@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "instagram": {
+      "command": "node",
+      "args": ["node_modules/@mcpware/instagram-mcp/dist/index.js"],
+      "env": {
+        "INSTAGRAM_ACCESS_TOKEN": "${INSTAGRAM_ACCESS_TOKEN}",
+        "INSTAGRAM_ACCOUNT_ID": "${INSTAGRAM_ACCOUNT_ID}",
+        "INSTAGRAM_API_VERSION": "v21.0"
+      }
+    }
+  }
+}

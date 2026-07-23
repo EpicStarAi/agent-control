@@ -1,0 +1,523 @@
+P-EPICGRAM-UNIGRAM-BASE-1 — Довести Telegram client UX до уровня Unigram/Telegram Desktop + EPICGRAM AI надстройки.
+
+Отвечай мне только на русском языке.
+Работай в текущем Replit project.
+Не создавай новый проект.
+Не делай fake demo.
+Не используй Publish/static deployment.
+Не включай live Telegram send.
+Не трогай production VPS.
+Не используй secrets.
+Не трогай TDLib sessions.
+Live-send остаётся locked / approval-gated.
+
+Контекст:
+Сейчас EPICGRAM online-dev уже открывается в Replit Preview.
+Но текущий Telegram client ещё слишком простой. Минимальный UX должен быть как в Unigram / Telegram Desktop:
+
+- левый список чатов
+- фильтры чатов
+- аккаунты
+- настройки
+- профиль
+- устройства/сессии
+- оформление
+- приватность
+- уведомления
+- данные и память
+- папки с чатами
+- язык
+- продвинутые настройки
+- Telegram Business
+- Premium/Stars/платежи placeholders
+- bot/mini-app keyboard rendering
+- rich chat background
+- нормальная карточка бота/канала/чата
+- нормальная работа медиа/сообщений/кнопок
+
+А сверху EPICGRAM должен добавить:
+- AI Operator
+- Channel OS
+- автопостинг
+- ассеты
+- задачи
+- стратегии каналов
+- планы публикаций
+- конкуренты
+- аналитика
+- approval-gate
+- Telegram WebApp / Mini App
+- Desktop/Mobile/App hub
+
+Задача:
+Сделать EPICGRAM Telegram Client минимум уровня Unigram/Telegram Desktop по структуре интерфейса, но с EPICGRAM AI-функциями.
+
+==================================================
+PHASE 1 — Client shell / базовый Telegram UX
+==================================================
+
+В /client реализовать или улучшить:
+
+1. Account rail:
+- список аккаунтов слева
+- аватары аккаунтов
+- выбранный аккаунт
+- кнопка добавить аккаунт
+- быстрый доступ к настройкам
+- online-dev статус
+- mock accounts допускаются, если TDLib недоступен
+
+2. Chat list:
+- поиск
+- фильтры:
+  - Все
+  - Личные
+  - Боты
+  - Каналы
+  - Группы
+  - EPICSTAR / рабочие
+- unread counters
+- last message preview
+- pinned indicator
+- draft indicator
+- selected chat highlight
+- refresh button
+- папки/категории чатов
+- empty/loading states
+
+3. Chat header:
+- avatar
+- chat/channel/bot name
+- type: личный / бот / канал / группа
+- username/link
+- members/subscribers placeholder
+- search in chat
+- menu “...”
+- open Channel OS
+- open chat profile/card
+
+4. Chat body:
+- Telegram-like background pattern
+- date separators
+- incoming/outgoing messages
+- media grid
+- image messages
+- file placeholders
+- voice/audio placeholders
+- video placeholders
+- reply blocks
+- forwarded blocks
+- reactions
+- bot inline keyboard buttons
+- mini-app buttons
+- scroll to bottom
+- message loading states
+
+5. Composer:
+- attachment button
+- text input
+- emoji/sticker placeholder
+- schedule button
+- draft indicator
+- send button
+- live-send locked state
+- approval-gate note
+- on send in online-dev: create draft/proposal only, never real Telegram send
+
+Visible send text:
+“Отправка в Telegram доступна только после подтверждения оператора.”
+
+==================================================
+PHASE 2 — Settings center like Unigram/Telegram Desktop
+==================================================
+
+Добавить полноценный /settings и settings panel внутри клиента.
+
+Разделы настроек:
+
+1. Аккаунт:
+- avatar
+- имя
+- фамилия
+- username
+- phone placeholder masked
+- bio/about
+- birthday placeholder
+- personal channel placeholder
+- business fields placeholder
+- save button disabled/mock in online-dev
+
+2. Оформление:
+- темы EPICGRAM:
+  - Cyber Purple
+  - Operator Red
+  - Toxic Lime
+  - Ice Blue
+  - Amber
+- dark mode
+- chat background
+- accent color
+- message bubble style
+- compact/dense mode
+
+3. Конфиденциальность:
+- phone visibility placeholder
+- last seen placeholder
+- profile photo placeholder
+- forwards placeholder
+- groups/channels permissions placeholder
+- blocked users placeholder
+
+4. Уведомления и звуки:
+- global notifications
+- chat notifications
+- sound placeholder
+- mute mode
+- desktop notifications placeholder
+
+5. Данные и память:
+- cache size placeholder
+- media auto-download placeholder
+- storage usage placeholder
+- clear cache mock button
+
+6. Папки с чатами:
+- folders list
+- add folder
+- edit folder
+- include/exclude chats placeholder
+
+7. Устройства:
+- current session
+- active sessions
+- device name
+- platform
+- last active
+- location placeholder
+- terminate session button must be disabled in online-dev
+- never call real logout/session terminate in Replit
+
+8. Язык:
+- RU
+- EN
+- UA placeholder
+- language switcher if existing i18n supports it
+
+9. Продвинутые настройки:
+- connection type placeholder
+- proxy placeholder
+- debug mode
+- diagnostics
+- API source: mock / bridge / TDLib
+- live-send lock status
+
+10. Telegram Business:
+- business profile placeholder
+- opening hours
+- location
+- quick replies
+- greeting/away messages
+- chat automation placeholder
+
+11. Premium / Stars:
+- premium status placeholder
+- stars balance placeholder
+- payments disabled in online-dev
+
+12. Помощь:
+- FAQ
+- support
+- report issue
+- version/build info
+
+==================================================
+PHASE 3 — Chat / bot / channel profiles
+==================================================
+
+Добавить профильную карточку справа или modal для выбранного чата.
+
+Для бота:
+- bot name
+- username
+- description
+- commands
+- mini app buttons
+- inline keyboard preview
+- connected app status
+- automation capabilities
+- safety status
+
+Для канала:
+- name
+- username/link
+- subscribers placeholder
+- topic
+- target audience
+- admins/roles/bots
+- publication plan
+- assets
+- competitors
+- Channel OS button
+
+Для группы:
+- members placeholder
+- admins
+- bots
+- permissions
+- pinned messages
+- moderation notes
+
+Для личного чата:
+- user card
+- notes
+- history
+- tasks
+- privacy indicators
+
+==================================================
+PHASE 4 — Channel OS как центральная надстройка
+==================================================
+
+Channel OS должен быть не отдельной игрушкой, а частью Telegram-клиента.
+
+В /client:
+- кнопка “Channel OS”
+- tab/panel рядом с чатом
+- карточка текущего канала/чата
+
+Поля Channel OS:
+- ID
+- name
+- type
+- account
+- username/link
+- topic
+- target audience
+- tone of voice
+- content pillars
+- publication plan
+- scheduled posts
+- drafts
+- approval queue
+- assets: photo/video/links/files/templates
+- competitors
+- funnels
+- analytics placeholders
+- autoposting status
+- operator notes
+- tasks
+- diagnostics
+- growth strategy
+
+Команда оператора:
+“создай карточку канала”
+
+должна:
+- создать/обновить Channel OS card
+- открыть/подсветить Channel OS
+- показать structured action report
+
+==================================================
+PHASE 5 — AI Operator product behavior
+==================================================
+
+AI Operator должен быть не автоответчиком, а рабочим оператором.
+
+Первое сообщение:
+“На связи EPICSTAR Operator. Online-dev режим активен. Я могу разобрать чат, создать карточку канала, подготовить пост, план публикаций, ассеты и задачи. Реальная отправка в Telegram заблокирована до подключения production backend и approval gate.”
+
+Поддержать команды:
+- открой чат
+- зайди в канал
+- выбери чат
+- проанализируй этот чат
+- покажи контекст чата
+- создай карточку канала
+- покажи карточку канала
+- подготовь пост
+- добавь в план публикаций
+- добавь ассет
+- добавь конкурента
+- добавь заметку канала
+- проверь статус отправки
+- открой настройки
+- открой устройства
+- открой аккаунт
+- открой Channel OS
+- открой TMA
+- открой downloads/apps/desktop/mobile
+
+Для каждого действия:
+- action
+- status: done / blocked / needs_backend / needs_confirmation / error
+- что проверено
+- что изменено
+- следующий шаг
+
+Casual input типа “тук тук”, “ты тут?”, “rfr”:
+- короткий ответ
+- без fake execution
+- без спама карточками
+
+==================================================
+PHASE 6 — Telegram Mini App / Desktop / Mobile
+==================================================
+
+/tma:
+- Telegram WebApp entrypoint
+- detect Telegram WebApp if available
+- outside Telegram show preview mode
+- buttons:
+  - Open Web Client
+  - Open Workspace
+  - Open AI Operator
+  - Open Settings
+  - Open Channel OS
+
+/desktop:
+- Windows planned/dev
+- macOS planned/dev
+- Linux planned/dev
+- Electron/Tauri candidate
+- reuse web shell
+
+/mobile:
+- Telegram WebApp first
+- PWA first
+- Android/iOS planned
+- Capacitor/React Native candidate
+
+/downloads:
+- Web Client
+- Telegram WebApp
+- Desktop App
+- Android App
+- iOS App
+- AI Operator
+- Channel OS
+
+/apps:
+- EPICGRAM AI Telegram Client
+- AI Operator
+- Channel OS
+- Editorial Hub
+- Autoposting
+- Assets
+- Analytics
+
+No fake download links.
+Use disabled/planned buttons when needed.
+
+==================================================
+PHASE 7 — Online-dev safety
+==================================================
+
+Hard safety:
+- no production secrets
+- no TDLib sessions
+- no production VPS access
+- no real Telegram send
+- no logout
+- no terminate real sessions
+- no destructive actions
+- no auto-send
+
+Mutations:
+- POST /api/telegram/send must remain blocked or approval-gated
+- auth/logout/accounts mutations must be safe-fallback only in Replit
+- live-send locked visible in UI
+
+Visible badge:
+Use only:
+“ONLINE DEV / LIVE SEND LOCKED”
+
+Remove all visible:
+“REPLIT SANDBOX / NO LIVE TELEGRAM SEND”
+
+==================================================
+PHASE 8 — Implementation rules
+==================================================
+
+Do not rewrite everything from scratch.
+Reuse existing:
+- TelegramWorkspace
+- GlobalAIOperatorSidebar
+- OnlineDevBadge
+- i18n
+- operatorIntents
+- operatorPlanner
+- telegram mock/data adapters
+
+If needed, add components:
+- SettingsCenter
+- AccountSettings
+- DevicesSettings
+- AppearanceSettings
+- PrivacySettings
+- NotificationsSettings
+- DataStorageSettings
+- ChatFoldersSettings
+- AdvancedSettings
+- BusinessSettings
+- ChatProfilePanel
+- BotProfilePanel
+- ChannelProfilePanel
+- ChannelOSPanel
+- TelegramMessageRenderer
+- TelegramInlineKeyboard
+- TelegramComposer
+- TelegramMockAdapter
+
+Keep code modular.
+No huge single-file rewrite if avoidable.
+
+==================================================
+PHASE 9 — Build and test
+==================================================
+
+Run:
+- npm install if needed
+- typecheck
+- build
+
+Test routes:
+- /
+- /login
+- /client
+- /workspace
+- /settings
+- /downloads
+- /apps
+- /desktop
+- /mobile
+- /tma
+- /channel-os
+
+Manual UI checks:
+- left account rail works
+- chat list works
+- filters work
+- settings opens
+- account page opens
+- devices page opens
+- chat profile opens
+- Channel OS opens
+- AI Operator opens/closes/minimizes
+- send remains locked
+- no visible sandbox wording
+- badge says ONLINE DEV / LIVE SEND LOCKED
+
+Return report in Russian:
+
+P-EPICGRAM-UNIGRAM-BASE-1 RESULT
+
+Include:
+1. Что добавлено
+2. Что изменено
+3. Какие файлы изменены
+4. Какие маршруты работают
+5. Что теперь есть из Unigram/Telegram Desktop baseline
+6. Что теперь есть из EPICGRAM AI features
+7. Build/typecheck result
+8. Safety confirmation
+9. Что осталось на следующий этап

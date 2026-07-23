@@ -1,31 +1,19 @@
 {
-  "compilerOptions": {
-    "target": "es5",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "plugins": [{ "name": "next" }],
-    "paths": {
-      "@/*": ["./apps/web/*"],
-      "@data/*": ["./apps/web/data/*"],
-      "@ui/*": ["./packages/ui/*"]
+  "extends": "./tsconfig.base.json",
+  "compileOnSave": false,
+  "files": [],
+  "references": [
+    {
+      "path": "./lib/db"
+    },
+    {
+      "path": "./lib/api-client-react"
+    },
+    {
+      "path": "./lib/api-zod"
+    },
+    {
+      "path": "./lib/integrations-openai-ai-server"
     }
-  },
-  "include": ["next-env.d.ts", "apps/web/**/*.ts", "apps/web/**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": [
-    "node_modules",
-    "apps/web/EPICGRAM-AUTOMEDIA-BACKEND/**/*",
-    "apps/web/GROK-AUTOMEDIA-CONTENT-FACTORY/**/*",
-    "apps/web/**/v2-backend-pack/**/*",
-    "_incoming-backend-packs/**/*"
   ]
 }

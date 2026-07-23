@@ -1,0 +1,313 @@
+P-TELEGRAM-CLIENT-AUDIT-REPLIT-1 — Telegram Client / Auth / Multiaccount Code Audit
+
+Отвечай мне только на русском языке.
+
+You are inside the EPICGRAM Replit project.
+
+This is a Replit code audit.
+Do not use VPS paths.
+Do not use /opt/epicgram-releases.
+Do not use /opt/epicgram.
+Do not use pm2.
+Do not access production VPS.
+Do not require TDLib live sessions.
+Do not send Telegram messages.
+Do not create real .env.local secrets.
+Do not build a fake replacement app.
+
+Goal:
+Audit the current EPICGRAM codebase in Replit for Telegram client readiness:
+- auth
+- admin/team separation
+- Telegram WebApp / TMA
+- multiaccount architecture
+- account adding flow
+- QR / phone / code / password login readiness
+- selected account slot
+- per-account chats/messages/media
+- AI Operator integration
+- approval-gated sending
+- Channel OS readiness
+- desktop/mobile/web unification
+
+This phase is AUDIT ONLY unless a small diagnostic script/report file is needed.
+Do not modify product code.
+Do not commit automatically.
+
+Step 1 — Detect project structure:
+Run:
+pwd
+ls -la
+find . -maxdepth 6 -name package.json -print
+find . -maxdepth 6 -type f | grep -E "middleware|accessControl|EpicGramShell|telegram|operator|tma|login|workspace|settings|client" | head -200
+
+Report:
+- is this full EPICGRAM repo or partial import?
+- app framework: Next.js / Vite / other
+- web app folder
+- available routes
+
+Step 2 — Auth / access audit:
+Inspect if present:
+- middleware.ts
+- accessControl.ts
+- login page
+- admin login route
+- workspace page
+- client page
+- settings shell
+- EpicGramShell
+
+Check:
+- admin login flow
+- team login flow
+- /client access
+- /workspace access
+- /api/telegram access
+- /api/operator access
+- whether team users are isolated from Telegram live client
+- whether auth state is localStorage/cookie/session based
+- whether logout and role switching are safe
+
+Expected model:
+admin -> /client, Telegram APIs, operator APIs, audit/logs
+team -> /workspace only, no Telegram live client, no sends, no raw logs
+unauth -> /login only
+
+Step 3 — Multiaccount audit:
+Search and inspect code related to:
+- accounts
+- accountId
+- selectedAccount
+- telegram/accounts
+- phone
+- code
+- password
+- qr
+- resend
+- chats
+- messages
+- media
+- send
+
+Check:
+- account list
+- selected account slot
+- add account UI/API
+- phone login
+- code login
+- password login
+- QR login
+- resend code
+- per-account chat list
+- per-account messages
+- per-account media
+- per-account send
+- account isolation
+- NOVIKOVA preservation assumptions
+
+Important:
+Since Replit has no live TDLib, judge by code structure only.
+Clearly mark:
+implemented / partial / placeholder / missing.
+
+Step 4 — Telegram client UI audit:
+Inspect:
+- EpicGramShell
+- telegram components
+- message list
+- message bubble
+- media renderer
+- media viewer
+- file card
+- voice card
+- chat identity
+
+Check:
+- selected chat identity
+- chat list search/filter
+- group/channel/private classification
+- message rendering
+- media rendering
+- fullscreen viewer
+- scroll behavior
+- context block placement
+- whether huge context block covers chat
+- where Channel OS should be inserted
+
+Step 5 — AI Operator audit:
+Inspect:
+- operator API routes
+- operator command route
+- operator agent route
+- action runtime
+- agent UI
+- operator sidebar/shell
+
+Check:
+- operator is action-first, not autoresponder
+- commands supported:
+  открыть чат
+  зайди в канал
+  проанализируй этот чат
+  покажи контекст чата
+  проверь статус отправки
+  создай карточку канала
+  покажи карточку канала
+  добавь в план публикаций
+  добавь ассет
+  добавь конкурента
+  добавь заметку канала
+- unsupported commands return structured command_not_recognized
+- no accidental Telegram send
+- approval-gate is respected
+
+Step 6 — Send / approval / schedule audit:
+Search and inspect:
+- send route
+- approval card
+- schedule route
+- reject route
+- send button
+- env flags
+
+Check:
+- direct send disabled/locked in Replit
+- manual send requires approval
+- scheduled send cannot bypass approval
+- EPICGRAM_AI_SEND_MODE behavior
+- risk of accidental live send if env is later connected
+
+Step 7 — TMA / WebApp audit:
+Inspect:
+- /tma route
+- Telegram WebApp detection
+- app buttons/routes
+- mobile/PWA hints
+
+Check:
+- /tma loads outside Telegram
+- Telegram WebApp mode degrades cleanly
+- buttons to /client /workspace /settings
+- no live send from TMA
+
+Step 8 — Unified platform readiness:
+Check or propose route status:
+- /
+- /login
+- /client
+- /workspace
+- /tma
+- /settings
+- /downloads
+- /apps
+- /desktop
+- /mobile
+- /channel-os
+- /operator
+
+For missing routes, mark as missing.
+Do not create them yet unless explicitly asked later.
+
+Step 9 — Safe local route checks:
+If dev server can run in Replit, run safe checks only:
+curl -I http://127.0.0.1:${PORT:-3000}/
+curl -I http://127.0.0.1:${PORT:-3000}/login
+curl -I http://127.0.0.1:${PORT:-3000}/client
+curl -I http://127.0.0.1:${PORT:-3000}/workspace
+curl -I http://127.0.0.1:${PORT:-3000}/tma
+curl -I http://127.0.0.1:${PORT:-3000}/settings
+
+Do not POST login/send/code/password.
+
+Return exactly:
+
+P-TELEGRAM-CLIENT-AUDIT-REPLIT-1 RESULT
+
+Sections:
+
+A. Executive verdict
+- ready / partially ready / not ready
+- biggest blocker
+- safest next implementation phase
+
+B. Project structure
+- root
+- web app folder
+- framework
+- routes found
+- routes missing
+
+C. Auth/access matrix
+Table:
+route/api | admin expected | team expected | unauth expected | actual in code | risk
+
+D. Multiaccount status
+Table:
+feature | implemented | frontend | backend/API route | risk | notes
+
+Features:
+- account list
+- selected account slot
+- add account
+- phone login
+- code login
+- password login
+- QR login
+- resend code
+- per-account chat list
+- per-account messages
+- per-account media
+- per-account send
+- account isolation
+- NOVIKOVA preservation
+
+E. Telegram client status
+- what works
+- what is placeholder
+- what is broken
+- what should move to Channel OS
+
+F. AI Operator status
+- supported actions
+- unsafe/broken behavior
+- whether it behaves like autoresponder
+- required fixes
+
+G. Send/schedule safety
+- direct send status
+- approval status
+- schedule status
+- live-send risk
+
+H. TMA/WebApp status
+- what works
+- what is missing
+- safe next step
+
+I. Security findings
+Rank:
+P0 critical
+P1 high
+P2 medium
+P3 polish
+
+J. Recommended roadmap
+Phases:
+- P-AUTH-HARDEN-2
+- P-ACCOUNTS-MULTI-1
+- P-CLIENT-ACCOUNT-SWITCH-1
+- P-TELEGRAM-AUTH-WIZARD-1
+- P-CHANNEL-OS-1
+- P-OPERATOR-ACTION-FIRST-2
+- P-TMA-LAUNCH-1
+- P-PLATFORM-UNIFIED-1
+
+For each phase include:
+goal, files likely touched, risk, test checklist.
+
+K. Exact next implementation prompt
+Write the next safest Replit implementation prompt, but do not implement it now.
+
+Important:
+Audit only. Do not modify product code unless you need a tiny temporary diagnostic check. If you change anything, list it clearly.

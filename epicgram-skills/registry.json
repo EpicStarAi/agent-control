@@ -1,0 +1,686 @@
+{
+  "$schema": "https://agentskills.io/registry-schema/v1",
+  "catalog": "epicgram-skills",
+  "version": "1.5.0",
+  "updated_at": "2026-07-22",
+  "skills": [
+
+    // ─── CORE PRODUCT ─────────────────────────────────────────────────────────
+
+    {
+      "name": "epicgram-safe-mode",
+      "layer": "product", "wave": 1, "status": "active",
+      "path": "epicgram-skills/product/epicgram-safe-mode/SKILL.md",
+      "description": "Global safety gate — GREEN/YELLOW/ORANGE/RED classification before any write action.",
+      "depends_on": [],
+      "used_by": ["epicgram-review-and-approval","epicgram-multiposting-scheduler","epicgram-n8n-orchestrator","epicgram-telegram-client-ops","epicgram-instagram-graph","epicgram-instagram-safe-mode","epicgram-tiktok-safe-mode","epicgram-tiktok-publisher"]
+    },
+    {
+      "name": "epicgram-review-and-approval",
+      "layer": "product", "wave": 1, "status": "active",
+      "path": "epicgram-skills/product/epicgram-review-and-approval/SKILL.md",
+      "description": "Human-in-the-loop approval loop — AI proposes, operator decides via structured cards.",
+      "depends_on": ["epicgram-safe-mode"],
+      "used_by": ["epicgram-multiposting-scheduler","epicgram-n8n-orchestrator","epicgram-telegram-client-ops","epicgram-instagram-graph","epicgram-instagram-safe-mode","epicgram-instagram-comments-engager","epicgram-tiktok-publisher","epicgram-tiktok-video-assembly"]
+    },
+    {
+      "name": "epicgram-content-brief",
+      "layer": "product", "wave": 1, "status": "active",
+      "path": "epicgram-skills/product/epicgram-content-brief/SKILL.md",
+      "description": "Generic content brief — raw idea → structured JSON brief for any platform.",
+      "depends_on": [],
+      "used_by": ["epicgram-script-writer","epicgram-caption-hashtags"]
+    },
+    {
+      "name": "epicgram-script-writer",
+      "layer": "product", "wave": 1, "status": "active",
+      "path": "epicgram-skills/product/epicgram-script-writer/SKILL.md",
+      "description": "Generic video script writer — brief → hook/scenes/voiceover/CTA.",
+      "depends_on": ["epicgram-content-brief"],
+      "used_by": ["epicgram-caption-hashtags","epicgram-video-assembly"]
+    },
+    {
+      "name": "epicgram-caption-hashtags",
+      "layer": "product", "wave": 1, "status": "active",
+      "path": "epicgram-skills/product/epicgram-caption-hashtags/SKILL.md",
+      "description": "Cross-platform captions and hashtags from a brief or script.",
+      "depends_on": ["epicgram-content-brief"],
+      "used_by": ["epicgram-multiposting-scheduler","epicgram-telegram-client-ops","epicgram-instagram-graph"]
+    },
+    {
+      "name": "epicgram-multiposting-scheduler",
+      "layer": "product", "wave": 1, "status": "active",
+      "path": "epicgram-skills/product/epicgram-multiposting-scheduler/SKILL.md",
+      "description": "Cross-platform publishing queue, scheduling, and retry logic.",
+      "depends_on": ["epicgram-safe-mode","epicgram-review-and-approval","epicgram-caption-hashtags"],
+      "used_by": []
+    },
+
+    // ─── PLATFORM BRIDGES ─────────────────────────────────────────────────────
+
+    {
+      "name": "epicgram-n8n-orchestrator",
+      "layer": "platform", "wave": 1, "status": "active",
+      "path": "epicgram-skills/platform/epicgram-n8n-orchestrator/SKILL.md",
+      "description": "Trigger and monitor n8n workflows with safety gate.",
+      "depends_on": ["epicgram-safe-mode","epicgram-review-and-approval"],
+      "used_by": ["epicgram-multiposting-scheduler"]
+    },
+    {
+      "name": "epicgram-instagram-graph",
+      "layer": "platform", "wave": 1, "status": "active",
+      "path": "epicgram-skills/platform/epicgram-instagram-graph/SKILL.md",
+      "description": "Instagram Graph API publish — container create, wait, publish, insights.",
+      "depends_on": ["epicgram-safe-mode","epicgram-review-and-approval","epicgram-caption-hashtags","epicgram-instagram-safe-mode"],
+      "used_by": ["epicgram-multiposting-scheduler"]
+    },
+    {
+      "name": "epicgram-telegram-client-ops",
+      "layer": "platform", "wave": 1, "status": "active",
+      "path": "epicgram-skills/platform/epicgram-telegram-client-ops/SKILL.md",
+      "description": "Telegram messages, channels, bots, edits via TDLib backend.",
+      "depends_on": ["epicgram-safe-mode","epicgram-review-and-approval","epicgram-caption-hashtags"],
+      "used_by": ["epicgram-multiposting-scheduler"]
+    },
+    {
+      "name": "epicgram-tiktok-publisher",
+      "layer": "platform", "wave": 2, "status": "active",
+      "path": "epicgram-skills/platform/epicgram-tiktok-publisher/SKILL.md",
+      "description": "TikTok Content Posting API — init upload, poll status, publish or schedule.",
+      "depends_on": ["epicgram-tiktok-safe-mode","epicgram-review-and-approval","epicgram-tiktok-caption-hashtags"],
+      "used_by": ["epicgram-multiposting-scheduler"]
+    },
+
+    // ─── INSTAGRAM PRODUCT PIPELINE ───────────────────────────────────────────
+
+    {
+      "name": "epicgram-instagram-brief",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-instagram-brief/SKILL.md",
+      "description": "Instagram-specific brief: format, hook direction, tone, CTA per Reel/Feed/Carousel/Story.",
+      "depends_on": [],
+      "used_by": ["epicgram-instagram-reels-script","epicgram-instagram-feed-caption","epicgram-instagram-carousel-designer","epicgram-instagram-stories-flow"]
+    },
+    {
+      "name": "epicgram-instagram-reels-script",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-instagram-reels-script/SKILL.md",
+      "description": "Scene-by-scene Reels script with hook, voiceover, overlay text, and CTA.",
+      "depends_on": ["epicgram-instagram-brief"],
+      "used_by": ["epicgram-instagram-feed-caption","epicgram-instagram-post-scheduler"]
+    },
+    {
+      "name": "epicgram-instagram-feed-caption",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-instagram-feed-caption/SKILL.md",
+      "description": "Instagram feed captions with storytelling, CTA, emoji, and hashtag packs.",
+      "depends_on": ["epicgram-instagram-brief"],
+      "used_by": ["epicgram-instagram-post-scheduler","epicgram-instagram-graph"]
+    },
+    {
+      "name": "epicgram-instagram-carousel-designer",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-instagram-carousel-designer/SKILL.md",
+      "description": "Slide-by-slide carousel narrative with copy blocks, visual cues, and CTA.",
+      "depends_on": ["epicgram-instagram-brief"],
+      "used_by": ["epicgram-instagram-feed-caption","epicgram-instagram-graph"]
+    },
+    {
+      "name": "epicgram-instagram-stories-flow",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-instagram-stories-flow/SKILL.md",
+      "description": "Multi-story sequence with polls, stickers, interaction prompts, and CTA path.",
+      "depends_on": ["epicgram-instagram-brief"],
+      "used_by": ["epicgram-instagram-post-scheduler"]
+    },
+    {
+      "name": "epicgram-instagram-post-scheduler",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-instagram-post-scheduler/SKILL.md",
+      "description": "Instagram scheduling plan with timing recommendations and conflict detection.",
+      "depends_on": ["epicgram-review-and-approval","epicgram-instagram-safe-mode"],
+      "used_by": ["epicgram-instagram-graph"]
+    },
+    {
+      "name": "epicgram-instagram-comments-engager",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-instagram-comments-engager/SKILL.md",
+      "description": "Reply suggestions, moderation flags, and follow-up content ideas for comment threads.",
+      "depends_on": ["epicgram-review-and-approval","epicgram-instagram-safe-mode"],
+      "used_by": ["epicgram-instagram-analytics"]
+    },
+    {
+      "name": "epicgram-instagram-analytics",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-instagram-analytics/SKILL.md",
+      "description": "Graph API metrics — reach, impressions, saves, shares, engagement patterns.",
+      "depends_on": [],
+      "used_by": ["epicgram-instagram-growth-strategist"]
+    },
+    {
+      "name": "epicgram-instagram-growth-strategist",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-instagram-growth-strategist/SKILL.md",
+      "description": "Growth hypotheses, format strategy, and A/B experiment plans from analytics.",
+      "depends_on": ["epicgram-instagram-analytics"],
+      "used_by": []
+    },
+    {
+      "name": "epicgram-instagram-safe-mode",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-instagram-safe-mode/SKILL.md",
+      "description": "Instagram-specific safety gate — policy flags, rate limits, permission checks.",
+      "depends_on": ["epicgram-safe-mode"],
+      "used_by": ["epicgram-instagram-graph","epicgram-instagram-post-scheduler","epicgram-instagram-comments-engager"]
+    },
+
+    // ─── TIKTOK PRODUCT PIPELINE ──────────────────────────────────────────────
+
+    {
+      "name": "epicgram-tiktok-brief",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-tiktok-brief/SKILL.md",
+      "description": "TikTok-specific brief: video format archetype, hook direction, duration, audience.",
+      "depends_on": [],
+      "used_by": ["epicgram-tiktok-script-writer","epicgram-tiktok-caption-hashtags","epicgram-tiktok-music-selector"]
+    },
+    {
+      "name": "epicgram-tiktok-script-writer",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-tiktok-script-writer/SKILL.md",
+      "description": "TikTok script with scene timing, hooks, transitions, overlays, and CTA.",
+      "depends_on": ["epicgram-tiktok-brief"],
+      "used_by": ["epicgram-tiktok-hook-optimizer","epicgram-tiktok-caption-hashtags","epicgram-tiktok-video-assembly"]
+    },
+    {
+      "name": "epicgram-tiktok-hook-optimizer",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-tiktok-hook-optimizer/SKILL.md",
+      "description": "Optimize the first 2–3 seconds: hook line, opening frame, overlay text, hook score.",
+      "depends_on": ["epicgram-tiktok-script-writer"],
+      "used_by": ["epicgram-tiktok-video-assembly","epicgram-tiktok-caption-hashtags"]
+    },
+    {
+      "name": "epicgram-tiktok-caption-hashtags",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-tiktok-caption-hashtags/SKILL.md",
+      "description": "TikTok captions with first-100-char hook, hashtag packs, comment hooks, cross-promo.",
+      "depends_on": ["epicgram-tiktok-brief","epicgram-tiktok-script-writer"],
+      "used_by": ["epicgram-tiktok-publisher"]
+    },
+    {
+      "name": "epicgram-tiktok-music-selector",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-tiktok-music-selector/SKILL.md",
+      "description": "Music direction and TikTok-licensed track candidates by mood, region, and content type.",
+      "depends_on": ["epicgram-tiktok-brief"],
+      "used_by": ["epicgram-tiktok-video-assembly"]
+    },
+    {
+      "name": "epicgram-tiktok-video-assembly",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-tiktok-video-assembly/SKILL.md",
+      "description": "Render plan: timeline blocks, subtitle plan, effects, audio cues, asset requirements.",
+      "depends_on": ["epicgram-tiktok-script-writer","epicgram-tiktok-hook-optimizer","epicgram-tiktok-music-selector"],
+      "used_by": ["epicgram-tiktok-publisher"]
+    },
+    {
+      "name": "epicgram-tiktok-analytics",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-tiktok-analytics/SKILL.md",
+      "description": "TikTok metrics — views, completion rate, shares, retention drop-off, growth signals.",
+      "depends_on": [],
+      "used_by": ["epicgram-tiktok-growth-strategist"]
+    },
+    {
+      "name": "epicgram-tiktok-growth-strategist",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-tiktok-growth-strategist/SKILL.md",
+      "description": "Growth hypotheses, posting strategy, format mix, and A/B experiment plan from analytics.",
+      "depends_on": ["epicgram-tiktok-analytics"],
+      "used_by": []
+    },
+    {
+      "name": "epicgram-tiktok-safe-mode",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-tiktok-safe-mode/SKILL.md",
+      "description": "TikTok-specific safety gate — policy flags, rate limits, approval, bulk controls.",
+      "depends_on": ["epicgram-safe-mode"],
+      "used_by": ["epicgram-tiktok-publisher"]
+    },
+
+    // ─── YOUTUBE PRODUCT PIPELINE ─────────────────────────────────────────────
+
+    {
+      "name": "epicgram-youtube-brief",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-youtube-brief/SKILL.md",
+      "description": "YouTube-specific brief: Shorts vs longform, hook direction, SEO angle, CTA.",
+      "depends_on": [],
+      "used_by": ["epicgram-youtube-shorts-script","epicgram-youtube-longform-outline","epicgram-youtube-title-optimizer"]
+    },
+    {
+      "name": "epicgram-youtube-shorts-script",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-youtube-shorts-script/SKILL.md",
+      "description": "YouTube Shorts script with hook, scenes, overlay text, and subscribe CTA.",
+      "depends_on": ["epicgram-youtube-brief"],
+      "used_by": ["epicgram-youtube-title-optimizer","epicgram-youtube-thumbnail-concepts","epicgram-youtube-shorts-publisher"]
+    },
+    {
+      "name": "epicgram-youtube-longform-outline",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-youtube-longform-outline/SKILL.md",
+      "description": "Chaptered outline for long-form video with narrative arc, timestamps, and talking points.",
+      "depends_on": ["epicgram-youtube-brief"],
+      "used_by": ["epicgram-youtube-title-optimizer","epicgram-youtube-thumbnail-concepts","epicgram-youtube-video-publisher"]
+    },
+    {
+      "name": "epicgram-youtube-title-optimizer",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-youtube-title-optimizer/SKILL.md",
+      "description": "YouTube title variants scored for CTR, keyword coverage, and emotional pull.",
+      "depends_on": ["epicgram-youtube-brief"],
+      "used_by": ["epicgram-youtube-thumbnail-concepts","epicgram-youtube-shorts-publisher","epicgram-youtube-video-publisher"]
+    },
+    {
+      "name": "epicgram-youtube-thumbnail-concepts",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-youtube-thumbnail-concepts/SKILL.md",
+      "description": "Thumbnail concept descriptions: composition, overlay text, color, expression cues.",
+      "depends_on": ["epicgram-youtube-brief","epicgram-youtube-title-optimizer"],
+      "used_by": ["epicgram-youtube-shorts-publisher","epicgram-youtube-video-publisher"]
+    },
+    {
+      "name": "epicgram-youtube-comments-engager",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-youtube-comments-engager/SKILL.md",
+      "description": "Reply suggestions, pin candidates, moderation flags for YouTube comment threads.",
+      "depends_on": ["epicgram-review-and-approval","epicgram-youtube-safe-mode"],
+      "used_by": ["epicgram-youtube-analytics"]
+    },
+    {
+      "name": "epicgram-youtube-analytics",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-youtube-analytics/SKILL.md",
+      "description": "YouTube Analytics API — watch time, CTR, retention curve, RPM, subscriber delta.",
+      "depends_on": [],
+      "used_by": ["epicgram-youtube-growth-strategist"]
+    },
+    {
+      "name": "epicgram-youtube-growth-strategist",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-youtube-growth-strategist/SKILL.md",
+      "description": "Topic authority, Shorts-to-longform funnel, serialization, and CTR experiment plans.",
+      "depends_on": ["epicgram-youtube-analytics"],
+      "used_by": []
+    },
+    {
+      "name": "epicgram-youtube-safe-mode",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-youtube-safe-mode/SKILL.md",
+      "description": "YouTube safety gate — copyright, COPPA/made-for-kids, ad suitability, bulk controls.",
+      "depends_on": ["epicgram-safe-mode"],
+      "used_by": ["epicgram-youtube-shorts-publisher","epicgram-youtube-video-publisher","epicgram-youtube-comments-engager"]
+    },
+
+    // ─── YOUTUBE PLATFORM BRIDGES ─────────────────────────────────────────────
+
+    {
+      "name": "epicgram-youtube-shorts-publisher",
+      "layer": "platform", "wave": 2, "status": "active",
+      "path": "epicgram-skills/platform/epicgram-youtube-shorts-publisher/SKILL.md",
+      "description": "YouTube Data API v3 — resumable upload, Shorts classification, thumbnail set.",
+      "depends_on": ["epicgram-youtube-safe-mode","epicgram-review-and-approval","epicgram-youtube-title-optimizer"],
+      "used_by": ["epicgram-multiposting-scheduler"]
+    },
+    {
+      "name": "epicgram-youtube-video-publisher",
+      "layer": "platform", "wave": 2, "status": "active",
+      "path": "epicgram-skills/platform/epicgram-youtube-video-publisher/SKILL.md",
+      "description": "YouTube Data API v3 — long-form upload, playlist assignment, chapter timestamps.",
+      "depends_on": ["epicgram-youtube-safe-mode","epicgram-review-and-approval","epicgram-youtube-title-optimizer"],
+      "used_by": ["epicgram-multiposting-scheduler"]
+    },
+
+    // ─── FACEBOOK PRODUCT PIPELINE ────────────────────────────────────────────
+
+    {
+      "name": "epicgram-facebook-brief",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-facebook-brief/SKILL.md",
+      "description": "Facebook brief: text_post/link_post/event/announcement/video_post, engagement bait pre-check.",
+      "depends_on": [],
+      "used_by": ["epicgram-facebook-post-writer","epicgram-facebook-link-optimizer","epicgram-facebook-group-broadcaster"]
+    },
+    {
+      "name": "epicgram-facebook-post-writer",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-facebook-post-writer/SKILL.md",
+      "description": "Facebook post copy: short/storytelling/news/poll styles with engagement bait detection.",
+      "depends_on": ["epicgram-facebook-brief"],
+      "used_by": ["epicgram-facebook-safe-mode","epicgram-facebook-page-publisher"]
+    },
+    {
+      "name": "epicgram-facebook-link-optimizer",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-facebook-link-optimizer/SKILL.md",
+      "description": "Link preview title/description overrides, UTM construction, OG tag warnings.",
+      "depends_on": ["epicgram-facebook-brief"],
+      "used_by": ["epicgram-facebook-page-publisher"]
+    },
+    {
+      "name": "epicgram-facebook-page-publisher",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-facebook-page-publisher/SKILL.md",
+      "description": "Graph API Pages — text/link/video/event publish or schedule, cross-post to Instagram.",
+      "depends_on": ["epicgram-facebook-safe-mode","epicgram-review-and-approval"],
+      "used_by": ["epicgram-multiposting-scheduler"]
+    },
+    {
+      "name": "epicgram-facebook-comments-engager",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-facebook-comments-engager/SKILL.md",
+      "description": "Reply suggestions, moderation triage, legal-risk escalation for Facebook Page comments.",
+      "depends_on": ["epicgram-review-and-approval","epicgram-facebook-safe-mode"],
+      "used_by": ["epicgram-facebook-analytics"]
+    },
+    {
+      "name": "epicgram-facebook-group-broadcaster",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-facebook-group-broadcaster/SKILL.md",
+      "description": "Group post/poll drafts with group-rules compliance and cross-group spam prevention.",
+      "depends_on": ["epicgram-facebook-brief","epicgram-review-and-approval"],
+      "used_by": []
+    },
+    {
+      "name": "epicgram-facebook-analytics",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-facebook-analytics/SKILL.md",
+      "description": "Facebook Page Insights — reach, engagement rate, link CTR, top posts, audience breakdown.",
+      "depends_on": [],
+      "used_by": ["epicgram-facebook-growth-strategist"]
+    },
+    {
+      "name": "epicgram-facebook-growth-strategist",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-facebook-growth-strategist/SKILL.md",
+      "description": "Facebook 2025 growth: Reels lever, Groups amplification, link-in-comments strategy.",
+      "depends_on": ["epicgram-facebook-analytics"],
+      "used_by": []
+    },
+    {
+      "name": "epicgram-facebook-safe-mode",
+      "layer": "product", "wave": 2, "status": "active",
+      "path": "epicgram-skills/product/epicgram-facebook-safe-mode/SKILL.md",
+      "description": "Facebook safety gate — engagement bait, political content, bulk limits (25/day), Group spam.",
+      "depends_on": ["epicgram-safe-mode"],
+      "used_by": ["epicgram-facebook-page-publisher","epicgram-facebook-group-broadcaster","epicgram-facebook-comments-engager"]
+    },
+
+    // ─── MCP / CONNECTOR LAYER ────────────────────────────────────────────────
+
+    {
+      "name": "epicgram-instagram-mcp",
+      "layer": "connectors", "wave": 2, "status": "active",
+      "path": "epicgram-skills/connectors/epicgram-instagram-mcp/SKILL.md",
+      "description": "MCP bridge to ig-mcp / Instagram MCP Server — 24 tools for publish, comments, insights via Graph API.",
+      "mcp_server": "https://github.com/aleemhaider/instagram-mcp",
+      "mcp_alt": "https://github.com/jlbadano/ig-mcp",
+      "default_port": 3100,
+      "depends_on": ["epicgram-instagram-safe-mode","epicgram-review-and-approval"],
+      "used_by": ["epicgram-instagram-graph","epicgram-instagram-post-scheduler","epicgram-instagram-analytics","epicgram-instagram-comments-engager"]
+    },
+    {
+      "name": "epicgram-youtube-mcp",
+      "layer": "connectors", "wave": 2, "status": "active",
+      "path": "epicgram-skills/connectors/epicgram-youtube-mcp/SKILL.md",
+      "description": "MCP bridge to youtube-mcp-server — Shorts upload, longform video, analytics, comments via Data API v3.",
+      "mcp_server": "https://github.com/ZubeidHendricks/youtube-mcp-server",
+      "mcp_alt": "https://github.com/dannySubsense/youtube-mcp-server",
+      "default_port": 3101,
+      "depends_on": ["epicgram-youtube-safe-mode","epicgram-review-and-approval"],
+      "used_by": ["epicgram-youtube-shorts-publisher","epicgram-youtube-video-publisher","epicgram-youtube-analytics","epicgram-youtube-comments-engager"]
+    },
+    {
+      "name": "epicgram-tiktok-connector",
+      "layer": "connectors", "wave": 2, "status": "active",
+      "path": "epicgram-skills/connectors/epicgram-tiktok-connector/SKILL.md",
+      "description": "Custom backend connector for TikTok organic posting (Content Posting API) + TikTok Ads MCP for analytics.",
+      "mcp_server": null,
+      "mcp_note": "No public MCP for organic TikTok posting — custom backend required. Ads analytics: adsmcp/tiktok-ads-mcp-server",
+      "mcp_ads": "https://mcpservers.org/servers/adsmcp/tiktok-ads-mcp-server",
+      "mcp_research": "https://github.com/terrylinhaochen/tiktok_mcp",
+      "depends_on": ["epicgram-tiktok-safe-mode","epicgram-review-and-approval"],
+      "used_by": ["epicgram-tiktok-publisher","epicgram-tiktok-analytics"]
+    },
+    {
+      "name": "epicgram-facebook-connector",
+      "layer": "connectors", "wave": 2, "status": "active",
+      "path": "epicgram-skills/connectors/epicgram-facebook-connector/SKILL.md",
+      "description": "Hybrid: Meta Marketing API MCP for ads, custom Graph API backend for organic Facebook Pages posting.",
+      "mcp_server": "https://mcpservers.org/servers/brijr/meta-ads-mcp",
+      "mcp_note": "Organic posting: no public MCP — custom backend via Graph API Pages endpoints",
+      "depends_on": ["epicgram-safe-mode","epicgram-review-and-approval"],
+      "used_by": ["epicgram-facebook-pages"]
+    },
+
+    // ─── CLIENT ADAPTERS ──────────────────────────────────────────────────────
+
+    {
+      "name": "epicgram-cursor-workflow",
+      "layer": "clients", "wave": 3, "status": "active",
+      "path": "epicgram-skills/clients/epicgram-cursor-workflow/SKILL.md",
+      "description": "How Cursor IDE agents discover, load, and chain EPICGRAM skills.",
+      "depends_on": [], "used_by": []
+    },
+    {
+      "name": "epicgram-claude-code-workflow",
+      "layer": "clients", "wave": 3, "status": "active",
+      "path": "epicgram-skills/clients/epicgram-claude-code-workflow/SKILL.md",
+      "description": "How Claude Code chains EPICGRAM skills with correct tool-use and memory patterns.",
+      "depends_on": [], "used_by": []
+    },
+    {
+      "name": "epicgram-gemini-cli-workflow",
+      "layer": "clients", "wave": 3, "status": "active",
+      "path": "epicgram-skills/clients/epicgram-gemini-cli-workflow/SKILL.md",
+      "description": "How Gemini CLI loads EPICGRAM skills using @file syntax and shell aliases.",
+      "depends_on": [], "used_by": []
+    },
+    {
+      "name": "epicgram-nanobot-assistant",
+      "layer": "clients", "wave": 3, "status": "active",
+      "path": "epicgram-skills/clients/epicgram-nanobot-assistant/SKILL.md",
+      "description": "Configures nanobot as a persistent EPICGRAM background content assistant.",
+      "depends_on": [], "used_by": []
+    },
+
+    // ─── META / DEV ───────────────────────────────────────────────────────────
+
+    {
+      "name": "epicgram-skill-scaffolder",
+      "layer": "meta", "wave": 1, "status": "active",
+      "path": "epicgram-skills/meta/epicgram-skill-scaffolder/SKILL.md",
+      "description": "Generate a new skill directory with correct structure and registry entry.",
+      "depends_on": [], "used_by": ["epicgram-skill-linter"]
+    },
+    {
+      "name": "epicgram-skill-linter",
+      "layer": "meta", "wave": 1, "status": "active",
+      "path": "epicgram-skills/meta/epicgram-skill-linter/SKILL.md",
+      "description": "Validate skill structure, SKILL.md completeness, and registry consistency.",
+      "depends_on": [], "used_by": []
+    },
+
+    // ─── PLANNED (Wave 2–3 stubs) ─────────────────────────────────────────────
+
+    {
+      "name": "epicgram-account-identity",
+      "layer": "product", "wave": 2, "status": "planned",
+      "path": "epicgram-skills/product/epicgram-account-identity/SKILL.md",
+      "description": "Persona, tone, niche, constraints, and goals per EPICGRAM account.",
+      "depends_on": [], "used_by": ["epicgram-content-brief","epicgram-caption-hashtags","epicgram-instagram-brief","epicgram-tiktok-brief"]
+    },
+    {
+      "name": "epicgram-workspace-memory",
+      "layer": "product", "wave": 2, "status": "planned",
+      "path": "epicgram-skills/product/epicgram-workspace-memory/SKILL.md",
+      "description": "Persistent memory across projects, campaigns, channels, and previous actions.",
+      "depends_on": [], "used_by": []
+    },
+    {
+      "name": "epicgram-core-routing",
+      "layer": "product", "wave": 2, "status": "planned",
+      "path": "epicgram-skills/product/epicgram-core-routing/SKILL.md",
+      "description": "Routes operator tasks to the correct skill chain — content, publishing, analytics, moderation.",
+      "depends_on": [], "used_by": []
+    },
+    {
+      "name": "epicgram-moderation-and-abuse",
+      "layer": "product", "wave": 2, "status": "planned",
+      "path": "epicgram-skills/product/epicgram-moderation-and-abuse/SKILL.md",
+      "description": "Policy, abuse, privacy, and unsafe automation checks before publishing.",
+      "depends_on": ["epicgram-safe-mode"], "used_by": ["epicgram-multiposting-scheduler"]
+    },
+    {
+      "name": "epicgram-video-assembly",
+      "layer": "product", "wave": 2, "status": "planned",
+      "path": "epicgram-skills/product/epicgram-video-assembly/SKILL.md",
+      "description": "Generic video assembly pipeline from scripts (non-TikTok-specific).",
+      "depends_on": ["epicgram-script-writer"], "used_by": ["epicgram-multiposting-scheduler"]
+    },
+    {
+      "name": "epicgram-facebook-pages",
+      "layer": "platform", "wave": 2, "status": "planned",
+      "path": "epicgram-skills/platform/epicgram-facebook-pages/SKILL.md",
+      "description": "Facebook Pages publishing, comments, and cross-post adaptations.",
+      "depends_on": ["epicgram-safe-mode","epicgram-review-and-approval"], "used_by": ["epicgram-multiposting-scheduler"]
+    },
+    {
+      "name": "epicgram-youtube-shorts-publisher",
+      "layer": "platform", "wave": 2, "status": "planned",
+      "path": "epicgram-skills/platform/epicgram-youtube-shorts-publisher/SKILL.md",
+      "description": "YouTube Shorts upload with title, description, and playlist/series logic.",
+      "depends_on": ["epicgram-safe-mode","epicgram-review-and-approval"], "used_by": ["epicgram-multiposting-scheduler"]
+    },
+    {
+      "name": "epicgram-content-analytics",
+      "layer": "product", "wave": 2, "status": "planned",
+      "path": "epicgram-skills/product/epicgram-content-analytics/SKILL.md",
+      "description": "Cross-platform metrics aggregator feeding next-content recommendations.",
+      "depends_on": ["epicgram-instagram-analytics","epicgram-tiktok-analytics"], "used_by": []
+    },
+    {
+      "name": "epicgram-skill-registry",
+      "layer": "meta", "wave": 3, "status": "planned",
+      "path": "epicgram-skills/meta/epicgram-skill-registry/SKILL.md",
+      "description": "Single index of all skills with versions, tags, and client compatibility info.",
+      "depends_on": [], "used_by": []
+    },
+    {
+      "name": "epicgram-skill-audit",
+      "layer": "meta", "wave": 3, "status": "planned",
+      "path": "epicgram-skills/meta/epicgram-skill-audit/SKILL.md",
+      "description": "Audits skill invocation frequency, error rates, and approval checkpoint gaps.",
+      "depends_on": [], "used_by": []
+    }
+  ],
+
+  "pipelines": {
+    "instagram_reel": [
+      "epicgram-instagram-brief",
+      "epicgram-instagram-reels-script",
+      "epicgram-instagram-feed-caption",
+      "epicgram-instagram-post-scheduler",
+      "epicgram-instagram-safe-mode",
+      "epicgram-review-and-approval",
+      "epicgram-instagram-graph",
+      "epicgram-instagram-analytics",
+      "epicgram-instagram-growth-strategist"
+    ],
+    "instagram_carousel": [
+      "epicgram-instagram-brief",
+      "epicgram-instagram-carousel-designer",
+      "epicgram-instagram-feed-caption",
+      "epicgram-instagram-post-scheduler",
+      "epicgram-instagram-safe-mode",
+      "epicgram-review-and-approval",
+      "epicgram-instagram-graph"
+    ],
+    "instagram_stories": [
+      "epicgram-instagram-brief",
+      "epicgram-instagram-stories-flow",
+      "epicgram-instagram-post-scheduler",
+      "epicgram-instagram-safe-mode",
+      "epicgram-review-and-approval",
+      "epicgram-instagram-graph"
+    ],
+    "tiktok_video": [
+      "epicgram-tiktok-brief",
+      "epicgram-tiktok-script-writer",
+      "epicgram-tiktok-hook-optimizer",
+      "epicgram-tiktok-caption-hashtags",
+      "epicgram-tiktok-music-selector",
+      "epicgram-tiktok-video-assembly",
+      "epicgram-tiktok-safe-mode",
+      "epicgram-review-and-approval",
+      "epicgram-tiktok-publisher",
+      "epicgram-tiktok-analytics",
+      "epicgram-tiktok-growth-strategist"
+    ],
+    "youtube_shorts": [
+      "epicgram-youtube-brief",
+      "epicgram-youtube-shorts-script",
+      "epicgram-youtube-title-optimizer",
+      "epicgram-youtube-thumbnail-concepts",
+      "epicgram-youtube-safe-mode",
+      "epicgram-review-and-approval",
+      "epicgram-youtube-shorts-publisher",
+      "epicgram-youtube-analytics",
+      "epicgram-youtube-growth-strategist"
+    ],
+    "youtube_longform": [
+      "epicgram-youtube-brief",
+      "epicgram-youtube-longform-outline",
+      "epicgram-youtube-title-optimizer",
+      "epicgram-youtube-thumbnail-concepts",
+      "epicgram-youtube-safe-mode",
+      "epicgram-review-and-approval",
+      "epicgram-youtube-video-publisher",
+      "epicgram-youtube-analytics",
+      "epicgram-youtube-growth-strategist"
+    ],
+    "facebook_page_post": [
+      "epicgram-facebook-brief",
+      "epicgram-facebook-post-writer",
+      "epicgram-facebook-link-optimizer",
+      "epicgram-facebook-safe-mode",
+      "epicgram-review-and-approval",
+      "epicgram-facebook-page-publisher",
+      "epicgram-facebook-analytics",
+      "epicgram-facebook-growth-strategist"
+    ],
+    "facebook_group": [
+      "epicgram-facebook-brief",
+      "epicgram-facebook-group-broadcaster",
+      "epicgram-facebook-safe-mode",
+      "epicgram-review-and-approval"
+    ],
+    "telegram_post": [
+      "epicgram-content-brief",
+      "epicgram-script-writer",
+      "epicgram-caption-hashtags",
+      "epicgram-safe-mode",
+      "epicgram-review-and-approval",
+      "epicgram-telegram-client-ops"
+    ],
+    "cross_platform": [
+      "epicgram-content-brief",
+      "epicgram-caption-hashtags",
+      "epicgram-safe-mode",
+      "epicgram-review-and-approval",
+      "epicgram-multiposting-scheduler"
+    ]
+  }
+}

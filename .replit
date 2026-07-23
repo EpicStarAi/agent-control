@@ -1,0 +1,64 @@
+modules = ["nodejs-24"]
+
+[deployment]
+router = "application"
+deploymentTarget = "autoscale"
+
+[deployment.postBuild]
+args = ["pnpm", "store", "prune"]
+env = { "CI" = "true" }
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "EPICGRAM API"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "epicgram-dev-tools-guard"
+
+[[workflows.workflow]]
+name = "EPICGRAM API"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd epicgram && EPICGRAM_API_HOST=0.0.0.0 node services/api/src/server.mjs"
+waitForPort = 8788
+
+[[workflows.workflow]]
+name = "epicgram-dev-tools-guard"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd epicgram && node --test services/api/src/dev-tools-guard.test.mjs"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[agent]
+stack = "PNPM_WORKSPACE"
+expertMode = true
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000
+
+[userenv]
+
+[userenv.shared]
+EPICGRAM_TDLIB_ENABLED = "true"
+OPENAI_FALLBACK_MODEL = "gpt-5.4-mini"
+OPENAI_MAX_OUTPUT_TOKENS = "2048"
+OPENAI_MODEL = "gpt-5.4-mini"
