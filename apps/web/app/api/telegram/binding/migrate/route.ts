@@ -1,7 +1,14 @@
 // POST /api/telegram/binding/migrate — runs the telegram_bindings migration
-// Protected by operator password. For setup use only.
-// After migration, delete this route.
+// For setup use only. DELETE THIS ROUTE once the migration has been applied to
+// every environment.
+//
+// P0 consolidation: this used to be reachable anonymously — an unauthenticated
+// caller could POST a password guess at a DDL endpoint, with no session, no
+// rate limit and no audit trail. It is now gated exactly like the rest of the
+// canonical binding/* family: an authenticated owner principal FIRST, then the
+// operator password as a second factor.
 import { NextRequest, NextResponse } from "next/server";
+import { requirePrincipal, recordDenial } from "@/lib/telegramGuard";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -26,7 +33,19 @@ CREATE INDEX IF NOT EXISTS telegram_bindings_user_idx ON telegram_bindings (user
 `;
 
 export async function POST(req: NextRequest) {
-  // Simple operator password check (use EPICGRAM_OPERATOR_PASSWORD_SCRYPT env var)
+  const auth = await requirePrincipal("/api/telegram/binding/migrate", "POST");
+  if (!auth.ok) return auth.response;
+  if (auth.principal.role !== "owner") {
+    recordDenial({
+      reason: "migrate_requires_owner",
+      route: "/api/telegram/binding/migrate",
+      method: "POST",
+      principal: auth.principal,
+    });
+    return NextResponse.json({ ok: false, reason: "owner_required" }, { status: 403 });
+  }
+
+  // Second factor: operator password (EPICGRAM_OPERATOR_PASSWORD_SCRYPT).
   const stored = process.env.EPICGRAM_OPERATOR_PASSWORD_SCRYPT ?? "";
   if (!stored || stored.startsWith("replace-with")) {
     return NextResponse.json({ ok: false, reason: "migration not configured" }, { status: 503 });

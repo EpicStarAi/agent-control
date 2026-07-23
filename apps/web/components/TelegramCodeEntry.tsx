@@ -2,6 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 
+// P0 consolidation: this screen used to straddle two Telegram auth families,
+// probing /api/telegram/active-auth/status on every poll and then picking
+// active-auth/* or binding/* per action. That is the duplicate architecture the
+// consolidation removes: active-auth/* drives the shared legacy singleton,
+// binding/* drives this user's own owner-scoped slot. Mixing them meant the
+// same screen could authorise either one depending on backend timing.
+//
+// It now speaks ONLY the canonical /api/telegram/binding/* family, so the
+// account is always resolved server-side from this principal's binding.
+
 type BindingStatus = {
   bound?: boolean;
   binding?: {
@@ -14,22 +24,12 @@ type BindingStatus = {
   authFlow?: {
     phoneMasked?: string | null;
     message?: string | null;
+    qrLink?: string | null;
   } | null;
-};
-
-type ActiveAuthStatus = {
-  activeAccountId?: string | null;
-  waitingForCode?: boolean;
-  waitingForPassword?: boolean;
-  waitingForQr?: boolean;
-  authorizationState?: string;
-  phoneMasked?: string | null;
-  account?: { phoneMasked?: string | null } | null;
 };
 
 export function TelegramCodeEntry() {
   const [status, setStatus] = useState<BindingStatus | null>(null);
-  const [activeStatus, setActiveStatus] = useState<ActiveAuthStatus | null>(null);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
@@ -48,21 +48,15 @@ export function TelegramCodeEntry() {
   }
 
   async function refresh() {
-    const activeResponse = await fetch("/api/telegram/active-auth/status", { cache: "no-store" });
-    const active = (await activeResponse.json().catch(() => null)) as ActiveAuthStatus | null;
-    setActiveStatus(active);
     const response = await fetch("/api/telegram/binding/status", { cache: "no-store" });
     const data = (await response.json().catch(() => null)) as BindingStatus | null;
     setStatus(data);
     const state = data?.binding?.authState;
-    const activeIsPending = Boolean(active?.waitingForCode || active?.waitingForPassword || active?.waitingForQr);
-    if (active?.authorizationState === "authorizationStateReady") {
-      returnToClient();
-    } else if (!active?.activeAccountId && !activeIsPending && state === "ready") {
-      returnToClient();
-    } else if (active?.waitingForCode || state === "waiting_code") setMessage("Код ожидается. Введите код из Telegram.");
-    else if (active?.waitingForPassword || state === "waiting_password") setMessage("Код принят. Теперь нужен облачный пароль 2FA.");
-    else if (active?.waitingForQr) setMessage("Сейчас Telegram ждёт подтверждение через QR/устройство. Запросите код по номеру ещё раз, затем вводите его здесь.");
+    if (state === "ready") returnToClient();
+    else if (state === "waiting_code") setMessage("Код ожидается. Введите код из Telegram.");
+    else if (state === "waiting_password") setMessage("Код принят. Теперь нужен облачный пароль 2FA.");
+    else if (state === "waiting_qr")
+      setMessage("Telegram ждёт подтверждение через QR. Отсканируйте QR или запросите код по номеру.");
     else setMessage(data?.binding?.authError || data?.authFlow?.message || "Активного ожидания кода не найдено.");
   }
 
@@ -94,8 +88,7 @@ export function TelegramCodeEntry() {
     setBusy(true);
     setMessage("Проверяю код...");
     try {
-      const endpoint = activeStatus?.waitingForCode ? "/api/telegram/active-auth/code" : "/api/telegram/binding/code";
-      const response = await fetch(endpoint, {
+      const response = await fetch("/api/telegram/binding/code", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ code: normalized }),
@@ -131,10 +124,10 @@ export function TelegramCodeEntry() {
     setBusy(true);
     setMessage("Запрашиваю код Telegram...");
     try {
-      const response = await fetch("/api/telegram/active-auth/phone", {
+      const response = await fetch("/api/telegram/binding/phone", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ phoneNumber: normalized }),
+        body: JSON.stringify({ phone: normalized }),
         cache: "no-store",
       });
       const data = await response.json().catch(() => null);
@@ -143,7 +136,8 @@ export function TelegramCodeEntry() {
         return;
       }
       setQrDataUrl(null);
-      setMessage(data.message || "Код запрошен. Проверьте Telegram и введите код ниже.");
+      setStatus(data.status ?? null);
+      setMessage(data.status?.authFlow?.message || "Код запрошен. Проверьте Telegram и введите код ниже.");
       await refresh();
     } catch {
       setMessage("Ошибка сети при запросе кода.");
@@ -160,8 +154,7 @@ export function TelegramCodeEntry() {
     setBusy(true);
     setMessage("Проверяю облачный пароль...");
     try {
-      const endpoint = activeStatus?.waitingForPassword ? "/api/telegram/active-auth/password" : "/api/telegram/binding/2fa";
-      const response = await fetch(endpoint, {
+      const response = await fetch("/api/telegram/binding/2fa", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ password }),
@@ -173,9 +166,10 @@ export function TelegramCodeEntry() {
         setMessage(data?.reason || "Облачный пароль не принят Telegram.");
         return;
       }
-      const nextState = data.status?.binding?.authState ?? data.binding?.authState;
-      if (nextState === "ready" || data.authorizationState === "authorizationStateReady") returnToClient();
-      else setMessage(data.status?.authFlow?.message || data.message || "Пароль отправлен, ожидаю ответ TDLib.");
+      setStatus(data.status ?? null);
+      const nextState = data.status?.binding?.authState;
+      if (nextState === "ready") returnToClient();
+      else setMessage(data.status?.authFlow?.message || "Пароль отправлен, ожидаю ответ TDLib.");
     } catch {
       setMessage("Ошибка сети при проверке облачного пароля.");
     } finally {
@@ -187,21 +181,23 @@ export function TelegramCodeEntry() {
     setQrBusy(true);
     setMessage("Запрашиваю новый QR у TDLib...");
     try {
-      const response = await fetch("/api/telegram/active-auth/qr", {
+      const response = await fetch("/api/telegram/binding/qr", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: "{}",
         cache: "no-store",
       });
       const data = await response.json().catch(() => null);
-      if (!response.ok || !data?.ok || !data?.qrLink) {
+      const qrLink: string | null = data?.status?.authFlow?.qrLink ?? null;
+      if (!response.ok || !data?.ok || !qrLink) {
         setMessage(data?.reason || "QR не получен. Попробуйте вход по номеру.");
         setQrDataUrl(null);
         return;
       }
+      setStatus(data.status ?? null);
       const qrcode = await import("qrcode");
       const toDataUrl = qrcode.toDataURL ?? qrcode.default.toDataURL;
-      setQrDataUrl(await toDataUrl(data.qrLink, { margin: 1, width: 260 }));
+      setQrDataUrl(await toDataUrl(qrLink, { margin: 1, width: 260 }));
       setMessage("Свежий QR готов. Сканируйте его через Telegram: Настройки → Устройства → Подключить устройство.");
       await refresh();
     } catch {
@@ -212,8 +208,8 @@ export function TelegramCodeEntry() {
     }
   }
 
-  const phone = activeStatus?.phoneMasked ?? activeStatus?.account?.phoneMasked ?? status?.binding?.phoneMasked ?? status?.authFlow?.phoneMasked ?? null;
-  const state = activeStatus?.authorizationState ?? status?.binding?.authState ?? "unknown";
+  const phone = status?.binding?.phoneMasked ?? status?.authFlow?.phoneMasked ?? null;
+  const state = status?.binding?.authState ?? "unknown";
 
   return (
     <main className="min-h-screen bg-[#07060c] px-4 py-8 text-white">
@@ -268,7 +264,7 @@ export function TelegramCodeEntry() {
           {busy ? "Проверяю..." : "Проверить код"}
         </button>
 
-        {(activeStatus?.waitingForPassword || status?.binding?.authState === "waiting_password") && (
+        {status?.binding?.authState === "waiting_password" && (
           <div className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
             <label className="block text-sm font-semibold">Облачный пароль Telegram (2FA)</label>
             <input

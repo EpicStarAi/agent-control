@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { denyMutation, requirePrincipal, telegramMutationsEnabled } from "@/lib/telegramGuard";
+import { requireLegacyOwnerSurface } from "@/lib/telegramGuard";
 import * as bindingsDb from "@/lib/telegramBindingsDb";
 import type { TelegramBindingAuthState } from "@/lib/telegramBindings";
 import { isForbiddenAccountId } from "@/lib/telegramBindings";
@@ -43,11 +43,8 @@ async function backend(path: string, body?: unknown) {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requirePrincipal("/api/telegram/active-auth/password", "POST");
+  const auth = await requireLegacyOwnerSurface("/api/telegram/active-auth/password", "POST", "active_auth_password");
   if (!auth.ok) return auth.response;
-  if (!telegramMutationsEnabled() || auth.principal.role !== "owner") {
-    return denyMutation("/api/telegram/active-auth/password", "POST", auth.principal, "active_auth_password");
-  }
 
   let password = "";
   try {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { denyMutation, requirePrincipal, telegramMutationsEnabled } from "@/lib/telegramGuard";
+import { requireLegacyOwnerSurface } from "@/lib/telegramGuard";
 import { isForbiddenAccountId } from "@/lib/telegramBindings";
 import { backendRequestHeaders } from "@/lib/backendRequest";
 
@@ -21,11 +21,8 @@ function rawAuthState(value: unknown): string {
 }
 
 export async function GET() {
-  const auth = await requirePrincipal("/api/telegram/active-auth/status", "GET");
+  const auth = await requireLegacyOwnerSurface("/api/telegram/active-auth/status", "GET", "active_auth_status");
   if (!auth.ok) return auth.response;
-  if (!telegramMutationsEnabled() || auth.principal.role !== "owner") {
-    return denyMutation("/api/telegram/active-auth/status", "GET", auth.principal, "active_auth_status");
-  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), BACKEND_TIMEOUT_MS);

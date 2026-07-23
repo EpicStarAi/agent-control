@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { denyMutation, requirePrincipal, telegramMutationsEnabled } from "@/lib/telegramGuard";
+import { requireLegacyOwnerSurface } from "@/lib/telegramGuard";
 import { isForbiddenAccountId } from "@/lib/telegramBindings";
 import { backendRequestHeaders } from "@/lib/backendRequest";
 
@@ -48,11 +48,8 @@ async function resolveOrCreateActiveAccount() {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requirePrincipal("/api/telegram/active-auth/phone", "POST");
+  const auth = await requireLegacyOwnerSurface("/api/telegram/active-auth/phone", "POST", "active_auth_phone");
   if (!auth.ok) return auth.response;
-  if (!telegramMutationsEnabled() || auth.principal.role !== "owner") {
-    return denyMutation("/api/telegram/active-auth/phone", "POST", auth.principal, "active_auth_phone");
-  }
 
   let phoneNumber = "";
   try {

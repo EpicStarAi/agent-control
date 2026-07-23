@@ -141,6 +141,49 @@ export async function requirePrincipal(
 }
 
 // ---------------------------------------------------------------------------
+// Canonical surface (P0 consolidation)
+// ---------------------------------------------------------------------------
+//
+// There are three Telegram route families in this app. As of the P0
+// consolidation exactly ONE of them is canonical:
+//
+//   * /api/telegram/binding/*   -- CANONICAL. Per-user, owner-scoped. The
+//     account id is resolved server-side from telegram_bindings (keyed by
+//     workspace) and every backend call runs against an isolated, registered
+//     TDLib slot. Never touches the legacy shared singleton.
+//
+//   * /api/telegram/active-auth/*  -- LEGACY. Drives the shared singleton
+//     session through the backend directly.
+//   * /api/telegram/auth/*         -- LEGACY. Thin staging-gateway wrappers.
+//
+// Both legacy families are kept for compatibility (an operator still needs a
+// break-glass path while a slot is being provisioned) but they are gated to
+// owner + TELEGRAM_MUTATION=true by requireLegacyOwnerSurface below. With the
+// production default TELEGRAM_MUTATION=false they are inert.
+//
+// New UI code MUST call /api/telegram/binding/* only.
+
+export type LegacyGateResult =
+  | { ok: true; principal: Principal }
+  | { ok: false; response: NextResponse };
+
+// Single gate for every legacy (non-canonical) Telegram route. Previously this
+// three-part check was copy-pasted into eleven handlers, which is exactly how a
+// family drifts out of sync. Deny reasons stay per-route for the audit trail.
+export async function requireLegacyOwnerSurface(
+  route: string,
+  method: string,
+  kind: string
+): Promise<LegacyGateResult> {
+  const auth = await requirePrincipal(route, method);
+  if (!auth.ok) return auth;
+  if (!telegramMutationsEnabled() || auth.principal.role !== "owner") {
+    return { ok: false, response: denyMutation(route, method, auth.principal, kind) };
+  }
+  return { ok: true, principal: auth.principal };
+}
+
+// ---------------------------------------------------------------------------
 // Account binding
 // ---------------------------------------------------------------------------
 //

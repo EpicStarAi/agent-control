@@ -1,13 +1,12 @@
 import { NextRequest } from "next/server";
-import { requirePrincipal, denyMutation, guardedJson, telegramMutationsEnabled } from "@/lib/telegramGuard";
+import { requireLegacyOwnerSurface, denyMutation, guardedJson } from "@/lib/telegramGuard";
 import { mutateStagingRuntime } from "@/lib/telegramBindingService";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  const auth = await requirePrincipal("/api/telegram/auth/phone", "POST");
+  const auth = await requireLegacyOwnerSurface("/api/telegram/auth/phone", "POST", "auth_phone");
   if (!auth.ok) return auth.response;
-  if (!telegramMutationsEnabled() || auth.principal.role !== "owner") return denyMutation("/api/telegram/auth/phone", "POST", auth.principal, "auth_phone");
   const body = await request.json().catch(() => ({}));
   const phoneNumber = String(body?.phoneNumber ?? body?.phone ?? "").trim();
   if (!/^\+[1-9]\d{6,14}$/.test(phoneNumber)) return guardedJson({ ok: false, message: "Введите номер в международном формате." }, 400);
