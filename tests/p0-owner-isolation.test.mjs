@@ -86,6 +86,25 @@ test("owner isolation: safeEmptyState is authenticated-but-empty, never connecte
   assert.match(body, /chats: \[\]/);
 });
 
+test("slot registry: the account lookup chain includes the route every backend serves", () => {
+  const svc = fs.readFileSync(path.join(WEB, "lib", "telegramBindingService.ts"), "utf8");
+  const start = svc.indexOf("async function listBackendAccounts");
+  assert.ok(start > -1);
+  const body = svc.slice(start, svc.indexOf("\n}", start));
+
+  // An empty registry is not a soft failure: backendHasAccount() feeds
+  // assertRegisteredSlot(), so it makes every bound user's chats fail with
+  // slot_not_registered. The chain must reach /telegram/accounts, which the
+  // deployed backend (server-snapshot-2026-06-18) actually serves — querying
+  // only the newer /v1/accounts facade returned 404 and stranded the caller.
+  assert.match(body, /\/telegram\/accounts/, "must query the always-available slot registry");
+  assert.match(body, /\/v1\/accounts/, "the newer identity facade stays first");
+
+  const order = ["/v1/accounts", "/telegram/accounts", "/telegram/status"].map((p) => body.indexOf(p));
+  assert.ok(order.every((i) => i > -1), "all three aliases must be in the chain");
+  assert.deepEqual([...order].sort((a, b) => a - b), order, "legacy singleton /telegram/status must be tried last");
+});
+
 test("consolidation: legacy families share one gate and the UI drives binding/* only", () => {
   assert.match(
     guardSrc,

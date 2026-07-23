@@ -68,14 +68,38 @@ async function backendFetch(
 
 // --- Slot registration + safety gate (Blocker A) ---------------------------
 
+// Slot registry lookup. The chain matters, because a miss here is not a soft
+// failure: backendHasAccount() feeds assertRegisteredSlot(), so an empty list
+// makes every bound user's chats and messages fail with slot_not_registered.
+//
+//   1. /v1/accounts      — the P19.2 identity facade. Only exists on backends
+//                          built from this repo; older deployed snapshots 404.
+//   2. /telegram/accounts — the slot registry the backend has always exposed.
+//                          Both routes alias the same listAccounts(), so the
+//                          payload shape is identical.
+//   3. /telegram/status   — LAST and effectively a no-op for this purpose: it
+//                          reports the legacy singleton and returns accounts:[]
+//                          on a multi-account backend. Kept only so a very old
+//                          single-session backend still resolves.
+//
+// Regression this fixes: the chain went 1 -> 3, skipping 2. Against the
+// deployed backend (server-snapshot-2026-06-18) that is 404 -> [], so the
+// registry always came back empty and no bound account could load anything.
 async function listBackendAccounts(): Promise<Array<Record<string, unknown>>> {
-  const res = await backendFetch(`/v1/accounts`);
-  const body = (res?.body ?? res) as Record<string, unknown>;
-  if (Array.isArray(body?.accounts)) return body.accounts as Array<Record<string, unknown>>;
-
-  const fallback = await backendFetch(`/telegram/status`);
-  const fallbackBody = (fallback?.body ?? fallback) as Record<string, unknown>;
-  return (fallbackBody?.accounts as Array<Record<string, unknown>>) ?? [];
+  for (const path of ["/v1/accounts", "/telegram/accounts", "/telegram/status"]) {
+    try {
+      const res = await backendFetch(path);
+      const body = (res?.body ?? res) as Record<string, unknown>;
+      const accounts = body?.accounts;
+      if (Array.isArray(accounts) && accounts.length > 0) {
+        return accounts as Array<Record<string, unknown>>;
+      }
+    } catch {
+      // Try the next route; a transport error on one alias must not strand the
+      // caller on an empty registry while another alias would have answered.
+    }
+  }
+  return [];
 }
 
 // Backend-contract robustness: a slot is keyed as `id` (live :8788 accounts.mjs)
