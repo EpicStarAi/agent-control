@@ -1,9 +1,26 @@
 "use client";
 
-import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import VisualExecutorCursor from "@/components/tma/VisualExecutorCursor";
+import {
+  clampToViewport,
+  initialContext,
+  isActive,
+  phaseColor,
+  reduce,
+  resolveTargetSelector,
+  saveAudit,
+  telegramMutation,
+  EXECUTION_MODE,
+  DEMO_OLD_BIO,
+  DEMO_NEW_BIO,
+  type AuditEvent,
+  type ExecContext,
+  type ExecutionPhase,
+  type Point,
+} from "@/lib/visualExecutor";
 
 type OperatorPanelState = "closed" | "compact" | "expanded";
-type ActionState = "pending" | "cancelled" | "approved";
 type OperatorMessage = { id: string; role: "assistant" | "user"; title?: string; text: string };
 type TelegramWebAppUser = { id?: number; first_name?: string; last_name?: string; username?: string; photo_url?: string };
 
@@ -22,14 +39,28 @@ const initialMessages: OperatorMessage[] = [
   },
 ];
 
+type Overlay = { rect: DOMRect; point: Point; label: string; phase: ExecutionPhase };
+
+const nowISO = () => new Date().toISOString();
+
+function prefersReducedMotion() {
+  return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+}
+
 export default function TelegramNativeProfile() {
   const [panel, setPanel] = useState<OperatorPanelState>("compact");
-  const [actionState, setActionState] = useState<ActionState>("pending");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<OperatorMessage[]>(initialMessages);
   const [telegramUser, setTelegramUser] = useState<TelegramWebAppUser | null>(null);
+  const [showAudit, setShowAudit] = useState(false);
+  const [overlay, setOverlay] = useState<Overlay | null>(null);
   const historyRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLElement>(null);
   const profileScrollRef = useRef(0);
+
+  // The approval-gated visual executor. initialContext() starts in
+  // "pending_approval" so the existing action card renders as before.
+  const [ctx, dispatch] = useReducer(reduce, undefined, () => initialContext());
 
   useEffect(() => {
     const webApp = window.Telegram?.WebApp;
@@ -41,7 +72,77 @@ export default function TelegramNativeProfile() {
   useEffect(() => {
     if (panel === "closed") return;
     requestAnimationFrame(() => historyRef.current?.scrollTo({ top: historyRef.current.scrollHeight, behavior: "smooth" }));
-  }, [messages, panel, actionState]);
+  }, [messages, panel, ctx.state, ctx.currentStepIndex]);
+
+  // Persist the audit trail (structured for a future server audit API).
+  useEffect(() => {
+    saveAudit(ctx.audit);
+  }, [ctx.audit]);
+
+  // --- Executor driver -----------------------------------------------------
+  // approved → executing (kick off the plan after the approval is recorded).
+  useEffect(() => {
+    if (ctx.state !== "approved") return;
+    const timer = window.setTimeout(() => dispatch({ type: "START", at: nowISO() }), 480);
+    return () => window.clearTimeout(timer);
+  }, [ctx.state]);
+
+  // executing → advance one step per tick. Pausing flips state away from
+  // "executing", which tears down this timer; resuming re-arms it.
+  useEffect(() => {
+    if (ctx.state !== "executing") return;
+    const delay = prefersReducedMotion() ? 360 : 1050;
+    const timer = window.setTimeout(() => dispatch({ type: "ADVANCE", at: nowISO() }), delay);
+    return () => window.clearTimeout(timer);
+  }, [ctx.state, ctx.currentStepIndex]);
+
+  // --- Cursor / highlight targeting ---------------------------------------
+  // While the executor is active, continuously track the active step's target.
+  // Resolution goes ONLY through the allowlisted attribute selector, scoped to
+  // this component's root — no text search, no arbitrary CSS. We poll on a short
+  // interval rather than requestAnimationFrame so tracking keeps working even
+  // when the page is backgrounded (rAF is paused for hidden tabs); the cursor's
+  // CSS transition keeps motion smooth between samples. reduced-motion disables
+  // that transition in the cursor component itself.
+  const currentStep = ctx.steps[ctx.currentStepIndex];
+  const targetId = isActive(ctx) && ctx.state !== "approved" ? currentStep?.targetId : undefined;
+  const stepLabel = currentStep?.label ?? "";
+  const stepPhase: ExecutionPhase = currentStep?.phase ?? "analysis";
+
+  useEffect(() => {
+    if (!targetId) {
+      setOverlay(null);
+      return;
+    }
+    const selector = resolveTargetSelector(targetId);
+    if (!selector) {
+      setOverlay(null);
+      return;
+    }
+    let lastKey = "";
+    const measure = () => {
+      const el = rootRef.current?.querySelector(selector) as HTMLElement | null;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const key = `${Math.round(rect.left)}:${Math.round(rect.top)}:${Math.round(rect.width)}:${Math.round(rect.height)}`;
+      if (key === lastKey) return;
+      lastKey = key;
+      const raw = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      const point = clampToViewport(raw, {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        safeTop: 16,
+        safeBottom: 16,
+        safeLeft: 8,
+        safeRight: 8,
+        margin: 18,
+      });
+      setOverlay({ rect, point, label: stepLabel, phase: stepPhase });
+    };
+    measure();
+    const interval = window.setInterval(measure, 120);
+    return () => window.clearInterval(interval);
+  }, [targetId, stepLabel, stepPhase]);
 
   const displayName = useMemo(() => {
     const name = [telegramUser?.first_name, telegramUser?.last_name].filter(Boolean).join(" ").trim();
@@ -51,12 +152,22 @@ export default function TelegramNativeProfile() {
   const username = telegramUser?.username ? `@${telegramUser.username}` : "@EpicStarAi";
   const telegramId = telegramUser?.id ? String(telegramUser.id) : "—";
 
+  // Show the staged draft while the (simulated) form is open, otherwise the
+  // committed local-demo bio. Only COMMIT_SAVE moves draftBio → bio.
+  const showingDraft =
+    ctx.formOpen &&
+    ctx.draftBio !== ctx.bio &&
+    (ctx.state === "executing" || ctx.state === "paused" || ctx.state === "awaiting_final_confirmation");
+  const bioValue = showingDraft ? ctx.draftBio : ctx.bio;
+
   function openPanel(next: OperatorPanelState) {
     profileScrollRef.current = window.scrollY;
     setPanel(next);
   }
 
-  function closePanel() {
+  // "Скрыть окно" / close — hides the operator WITHOUT cancelling: execution
+  // context is preserved and can be resumed via "Вернуть оператора".
+  function hidePanel() {
     setPanel("closed");
     requestAnimationFrame(() => window.scrollTo({ top: profileScrollRef.current }));
   }
@@ -65,6 +176,8 @@ export default function TelegramNativeProfile() {
     event.preventDefault();
     const value = input.trim();
     if (!value) return;
+    // Read-only path: appends chat only. It must NOT start or mutate the executor.
+    dispatch({ type: "READ_ONLY_MESSAGE" });
     setMessages((current) => [
       ...current,
       { id: crypto.randomUUID(), role: "user", text: value },
@@ -78,8 +191,10 @@ export default function TelegramNativeProfile() {
     setInput("");
   }
 
+  const executorRunning = isActive(ctx) || ctx.state === "completed" || ctx.state === "cancelled" || ctx.state === "failed";
+
   return (
-    <main className="min-h-[100dvh] overflow-x-hidden bg-[#05050a] text-white selection:bg-fuchsia-500/30">
+    <main ref={rootRef} className="min-h-[100dvh] overflow-x-hidden bg-[#05050a] text-white selection:bg-fuchsia-500/30">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_50%_8%,rgba(217,70,239,0.12),transparent_25%),radial-gradient(circle_at_85%_70%,rgba(6,182,212,0.08),transparent_25%)]" />
 
       <section className="relative mx-auto min-h-[100dvh] w-full max-w-md pb-[calc(86px+env(safe-area-inset-bottom))]">
@@ -109,17 +224,25 @@ export default function TelegramNativeProfile() {
 
           <div className="mt-6 grid grid-cols-3 gap-3">
             <ActionButton icon={<CameraIcon />} label="Выбрать фото" />
-            <ActionButton icon={<EditIcon />} label="Изменить" />
+            <ActionButton icon={<EditIcon />} label="Изменить" targetId="profile-edit-button" />
             <ActionButton icon={<SettingsIcon />} label="Настройки" />
           </div>
 
-          <section className="mt-5 rounded-[24px] border border-white/10 bg-white/[0.045] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+          <section
+            data-epic-target="profile-card"
+            className="mt-5 rounded-[24px] border border-white/10 bg-white/[0.045] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+          >
             <div className="flex items-start justify-between gap-3">
               <p className="text-xl font-medium">id: {telegramId}</p>
               <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-amber-400/60 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-200"><EyeIcon />God&apos;s Eye</span>
             </div>
             <InfoField label="Телефон" value="Скрыт Telegram" />
-            <InfoField label="О себе" value="TOP SECRET" />
+            <InfoField
+              label="О себе"
+              value={bioValue}
+              targetId="profile-bio-field"
+              badge={showingDraft ? "черновик" : undefined}
+            />
             <InfoField label="Имя пользователя" value={username} />
           </section>
 
@@ -138,11 +261,52 @@ export default function TelegramNativeProfile() {
         </nav>
       </section>
 
+      {/* Action highlight overlay — a separate element that never mutates the
+          target's own styles and is removed when the step changes. */}
+      {overlay ? (
+        <div
+          aria-hidden="true"
+          data-epic-highlight="1"
+          style={{
+            position: "fixed",
+            left: overlay.rect.left - 6,
+            top: overlay.rect.top - 6,
+            width: overlay.rect.width + 12,
+            height: overlay.rect.height + 12,
+            borderRadius: 18,
+            border: `2px solid ${phaseColor(overlay.phase)}`,
+            boxShadow: `0 0 0 3px ${phaseColor(overlay.phase)}33, 0 0 26px ${phaseColor(overlay.phase)}88 inset`,
+            pointerEvents: "none",
+            zIndex: 200,
+            // Animate only geometry, never colour — phase colour should switch
+            // instantly (a colour transition can also stall on hidden tabs).
+            transition: prefersReducedMotion()
+              ? "none"
+              : "left 300ms cubic-bezier(0.22,1,0.36,1), top 300ms cubic-bezier(0.22,1,0.36,1), width 300ms cubic-bezier(0.22,1,0.36,1), height 300ms cubic-bezier(0.22,1,0.36,1)",
+          }}
+        />
+      ) : null}
+
+      {/* AI cursor — pointer-events:none, cannot click anything. */}
+      <VisualExecutorCursor
+        visible={!!overlay && panel !== "closed"}
+        position={overlay?.point ?? { x: -100, y: -100 }}
+        label={overlay?.label ?? ""}
+        phase={overlay?.phase ?? "analysis"}
+      />
+
       {panel === "closed" ? (
-        <button onClick={() => openPanel("compact")} className="fixed bottom-[calc(92px+env(safe-area-inset-bottom))] right-5 z-40 grid h-16 w-16 place-items-center rounded-full border border-fuchsia-300/50 bg-[radial-gradient(circle,#ec4899_0%,#7e22ce_45%,#111827_75%)] shadow-[0_0_36px_rgba(236,72,153,0.5)]" aria-label="Открыть AI Operator"><SkullIcon /></button>
+        <button
+          onClick={() => openPanel("compact")}
+          className="fixed bottom-[calc(92px+env(safe-area-inset-bottom))] right-5 z-40 flex items-center gap-2 rounded-full border border-fuchsia-300/50 bg-[radial-gradient(circle,#ec4899_0%,#7e22ce_45%,#111827_75%)] px-3 py-2 shadow-[0_0_36px_rgba(236,72,153,0.5)]"
+          aria-label={executorRunning ? "Вернуть оператора" : "Открыть AI Operator"}
+        >
+          <SkullIcon />
+          {executorRunning ? <span className="pr-1 text-xs font-semibold">Вернуть оператора</span> : null}
+        </button>
       ) : (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/35 backdrop-blur-[2px]" onMouseDown={(event) => event.target === event.currentTarget && closePanel()}>
-          <section className={`relative mx-auto grid w-full max-w-md grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden border border-cyan-300/30 bg-[linear-gradient(180deg,rgba(9,18,40,0.98),rgba(8,9,22,0.99))] shadow-[0_-20px_70px_rgba(8,145,178,0.18)] ${panel === "compact" ? "h-[62dvh] rounded-t-[28px]" : "h-[100dvh]"}`}>
+        <div className="fixed inset-0 z-50 flex items-end bg-black/35 backdrop-blur-[2px]" onMouseDown={(event) => event.target === event.currentTarget && hidePanel()}>
+          <section className={`relative mx-auto grid w-full max-w-md grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden border border-cyan-300/30 bg-[linear-gradient(180deg,rgba(9,18,40,0.98),rgba(8,9,22,0.99))] shadow-[0_-20px_70px_rgba(8,145,178,0.18)] ${panel === "compact" ? "h-[58dvh] rounded-t-[28px]" : "h-[100dvh]"}`}>
             <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#a21caf,#ec4899,#06b6d4)]" />
             <div className="mx-auto mt-2 h-1.5 w-20 rounded-full bg-white/70" />
 
@@ -156,7 +320,7 @@ export default function TelegramNativeProfile() {
               </div>
               <div className="ml-3 flex gap-1">
                 <IconButton label="Изменить размер" onClick={() => setPanel(panel === "compact" ? "expanded" : "compact")}><ExpandIcon /></IconButton>
-                <IconButton label="Закрыть" onClick={closePanel}><CloseIcon /></IconButton>
+                <IconButton label="Скрыть окно" onClick={hidePanel}><CloseIcon /></IconButton>
               </div>
             </header>
 
@@ -179,20 +343,75 @@ export default function TelegramNativeProfile() {
                 </div>
               ))}
 
-              <div className="rounded-2xl border border-fuchsia-400/60 bg-fuchsia-950/10 p-4">
-                <p className="text-sm font-semibold text-fuchsia-300">✣ Действие {actionState === "pending" ? "(ожидает подтверждения)" : actionState === "cancelled" ? "— отменено" : "— разрешено"}</p>
-                <p className="mt-2 text-sm text-white/90">Изменить bio на: TOP SECRET // AI MODE</p>
-                {actionState === "pending" ? (
+              {ctx.state === "pending_approval" ? (
+                <div className="rounded-2xl border border-fuchsia-400/60 bg-fuchsia-950/10 p-4">
+                  <p className="text-sm font-semibold text-fuchsia-300">✣ Действие (ожидает подтверждения)</p>
+                  <p className="mt-2 text-sm text-white/90">Изменить bio на: {DEMO_NEW_BIO}</p>
+                  <p className="mt-1 text-xs text-white/45">Первое подтверждение разрешает только подготовительный план. Сохранение потребует отдельного подтверждения.</p>
                   <div className="mt-4 grid grid-cols-2 gap-3">
-                    <button onClick={() => setActionState("cancelled")} className="min-h-12 rounded-xl border border-red-500/70 bg-red-500/10 font-semibold text-red-400 transition active:scale-95">Deny</button>
-                    <button onClick={() => setActionState("approved")} className="min-h-12 rounded-xl border border-emerald-400/60 bg-emerald-400/10 font-semibold text-emerald-300 transition active:scale-95">Allow</button>
+                    <button onClick={() => dispatch({ type: "DENY", at: nowISO() })} className="min-h-12 rounded-xl border border-red-500/70 bg-red-500/10 font-semibold text-red-400 transition active:scale-95">Отмена</button>
+                    <button onClick={() => dispatch({ type: "APPROVE", at: nowISO() })} className="min-h-12 rounded-xl border border-emerald-400/60 bg-emerald-400/10 font-semibold text-emerald-300 transition active:scale-95">Разрешить</button>
                   </div>
-                ) : (
-                  <div className={`mt-4 rounded-xl px-4 py-3 text-center text-sm font-semibold ${actionState === "cancelled" ? "bg-red-500/10 text-red-300" : "bg-emerald-400/10 text-emerald-300"}`}>
-                    {actionState === "cancelled" ? "Отменено · TELEGRAM_MUTATION=false" : "Разрешено · executor не подключён"}
+                </div>
+              ) : null}
+
+              {executorRunning ? (
+                <ProgressPanel
+                  ctx={ctx}
+                  onPause={() => dispatch({ type: "PAUSE", at: nowISO() })}
+                  onResume={() => dispatch({ type: "RESUME", at: nowISO() })}
+                  onCancel={() => dispatch({ type: "CANCEL", at: nowISO() })}
+                  onHide={hidePanel}
+                />
+              ) : null}
+
+              {ctx.state === "awaiting_final_confirmation" ? (
+                <div className="rounded-2xl border border-amber-400/70 bg-amber-500/[0.08] p-4">
+                  <p className="text-sm font-semibold text-amber-200">⚠ Сохранить изменения профиля?</p>
+                  <div className="mt-3 space-y-1 text-sm">
+                    <p className="text-white/70">Старое: <span className="text-white/90">{DEMO_OLD_BIO}</span></p>
+                    <p className="text-white/70">Новое: <span className="font-semibold text-amber-100">{DEMO_NEW_BIO}</span></p>
                   </div>
-                )}
-              </div>
+                  <p className="mt-2 text-xs text-white/45">EXECUTION_MODE={EXECUTION_MODE} · TELEGRAM_MUTATION={String(telegramMutation(ctx))}</p>
+                  <div className="mt-4 grid grid-cols-3 gap-2">
+                    <button onClick={() => dispatch({ type: "BACK", at: nowISO() })} className="min-h-12 rounded-xl border border-white/20 bg-white/[0.05] text-sm font-semibold text-white/80 transition active:scale-95">Назад</button>
+                    <button onClick={() => dispatch({ type: "CANCEL", at: nowISO() })} className="min-h-12 rounded-xl border border-red-500/70 bg-red-500/10 text-sm font-semibold text-red-400 transition active:scale-95">Отмена</button>
+                    <button
+                      data-epic-target="profile-save-button"
+                      onClick={() => dispatch({ type: "COMMIT_SAVE", at: nowISO() })}
+                      className="min-h-12 rounded-xl border border-emerald-400/60 bg-emerald-400/15 text-sm font-semibold text-emerald-200 transition active:scale-95"
+                    >
+                      Сохранить
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {ctx.audit.length ? (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                  <button
+                    onClick={() => setShowAudit((value) => !value)}
+                    className="flex w-full items-center justify-between text-left text-sm font-semibold text-cyan-200"
+                  >
+                    <span>⌗ Журнал аудита · {ctx.audit.length}</span>
+                    <span className="text-white/40">{showAudit ? "▾" : "▸"}</span>
+                  </button>
+                  {showAudit ? (
+                    <ol className="mt-3 space-y-1.5 text-xs">
+                      {ctx.audit.map((entry: AuditEvent) => (
+                        <li key={entry.id} className="flex items-start justify-between gap-3 border-l-2 border-cyan-400/30 pl-2">
+                          <span className="text-white/80">
+                            <span className="font-mono text-cyan-300">{entry.event}</span>
+                            {entry.stepId ? <span className="text-white/45"> · {entry.stepId}</span> : null}
+                            {entry.result ? <span className="text-white/45"> · {entry.result}</span> : null}
+                          </span>
+                          <span className="shrink-0 font-mono text-[10px] text-white/30">{entry.timestamp ? entry.timestamp.slice(11, 19) : ""}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             <form onSubmit={submitOperatorMessage} className="border-t border-white/10 bg-[#090b18] px-3 pb-[calc(10px+env(safe-area-inset-bottom))] pt-3">
@@ -208,20 +427,106 @@ export default function TelegramNativeProfile() {
   );
 }
 
+function ProgressPanel({
+  ctx,
+  onPause,
+  onResume,
+  onCancel,
+  onHide,
+}: {
+  ctx: ExecContext;
+  onPause: () => void;
+  onResume: () => void;
+  onCancel: () => void;
+  onHide: () => void;
+}) {
+  const finished = ctx.state === "completed" || ctx.state === "cancelled" || ctx.state === "failed";
+  const headline =
+    ctx.state === "completed"
+      ? "Задача выполнена (local demo)"
+      : ctx.state === "cancelled"
+        ? "Задача отменена"
+        : ctx.state === "failed"
+          ? "Задача прервана"
+          : "Выполнение задачи";
+
+  return (
+    <div className="rounded-2xl border border-cyan-300/40 bg-cyan-950/10 p-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-cyan-200">▤ {headline}</p>
+        <span className="rounded-full border border-white/15 bg-white/[0.05] px-2 py-0.5 font-mono text-[10px] text-white/60">{ctx.state}</span>
+      </div>
+
+      <ol className="mt-3 space-y-2">
+        {ctx.steps.map((step, index) => {
+          const color = phaseColor(step.phase);
+          const symbol =
+            step.status === "completed" ? "✓" : step.status === "active" ? "◔" : step.status === "cancelled" ? "✕" : step.status === "failed" ? "!" : index + 1;
+          return (
+            <li key={step.id} className="flex items-center gap-3 text-sm">
+              <span
+                className="grid h-6 w-6 shrink-0 place-items-center rounded-full border text-[11px] font-bold"
+                style={{
+                  borderColor: step.status === "pending" ? "rgba(255,255,255,0.2)" : color,
+                  color: step.status === "pending" ? "rgba(255,255,255,0.5)" : color,
+                  background: step.status === "active" ? `${color}22` : "transparent",
+                }}
+              >
+                {symbol}
+              </span>
+              <span className={step.status === "pending" ? "text-white/45" : "text-white/90"}>{step.label}</span>
+            </li>
+          );
+        })}
+      </ol>
+
+      <p className="mt-3 font-mono text-[10px] text-white/40">
+        ACTION_STATE={ctx.state} · TELEGRAM_MUTATION={String(telegramMutation(ctx))} · EXECUTION_MODE={EXECUTION_MODE}
+      </p>
+
+      {!finished ? (
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          {ctx.state === "paused" ? (
+            <button onClick={onResume} className="min-h-11 rounded-xl border border-emerald-400/50 bg-emerald-400/10 text-sm font-semibold text-emerald-200 transition active:scale-95">Продолжить</button>
+          ) : (
+            <button
+              onClick={onPause}
+              disabled={ctx.state !== "executing"}
+              className="min-h-11 rounded-xl border border-cyan-300/50 bg-cyan-400/10 text-sm font-semibold text-cyan-200 transition active:scale-95 disabled:opacity-40"
+            >
+              Пауза
+            </button>
+          )}
+          <button onClick={onCancel} className="min-h-11 rounded-xl border border-red-500/60 bg-red-500/10 text-sm font-semibold text-red-400 transition active:scale-95">Отмена</button>
+          <button onClick={onHide} className="min-h-11 rounded-xl border border-white/20 bg-white/[0.05] text-sm font-semibold text-white/80 transition active:scale-95">Скрыть окно</button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function IconButton({ label, onClick, children }: { label: string; onClick?: () => void; children: ReactNode }) {
   return <button type="button" onClick={onClick} className="grid h-11 w-11 place-items-center rounded-full text-white/80 transition hover:bg-white/5 active:scale-95" aria-label={label}>{children}</button>;
 }
 
-function ActionButton({ icon, label }: { icon: ReactNode; label: string }) {
-  return <button className="min-h-24 rounded-[22px] border border-white/10 bg-white/[0.055] px-2 text-sm font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition active:scale-[0.97]"><span className="mx-auto mb-2 grid h-8 w-8 place-items-center text-fuchsia-400">{icon}</span>{label}</button>;
+function ActionButton({ icon, label, targetId }: { icon: ReactNode; label: string; targetId?: string }) {
+  return <button data-epic-target={targetId} className="min-h-24 rounded-[22px] border border-white/10 bg-white/[0.055] px-2 text-sm font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition active:scale-[0.97]"><span className="mx-auto mb-2 grid h-8 w-8 place-items-center text-fuchsia-400">{icon}</span>{label}</button>;
 }
 
 function NavItem({ icon, label, badge, active = false, onClick }: { icon: ReactNode; label: string; badge?: string; active?: boolean; onClick?: () => void }) {
   return <button onClick={onClick} className={`relative min-h-14 rounded-2xl text-[11px] transition active:scale-95 ${active ? "bg-fuchsia-500/10 text-fuchsia-300" : "text-white/70"}`}>{badge ? <span className="absolute right-2 top-0 rounded-full bg-fuchsia-600 px-1.5 py-0.5 text-[10px] text-white">{badge}</span> : null}<span className="mx-auto mb-0.5 grid h-6 w-6 place-items-center">{icon}</span>{label}</button>;
 }
 
-function InfoField({ label, value }: { label: string; value: string }) {
-  return <div className="mt-5"><p className="text-sm text-white/40">{label}</p><p className="mt-1 text-lg text-white/95">{value}</p></div>;
+function InfoField({ label, value, targetId, badge }: { label: string; value: string; targetId?: string; badge?: string }) {
+  return (
+    <div className="mt-5" data-epic-target={targetId}>
+      <div className="flex items-center gap-2">
+        <p className="text-sm text-white/40">{label}</p>
+        {badge ? <span className="rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200">{badge}</span> : null}
+      </div>
+      <p className="mt-1 text-lg text-white/95">{value}</p>
+    </div>
+  );
 }
 
 const Svg = ({ children, className = "h-6 w-6" }: { children: ReactNode; className?: string }) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>;
