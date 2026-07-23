@@ -1,0 +1,55 @@
+import { Route, Switch, Router as WouterRouter } from 'wouter';
+import NotFound from '@/pages/not-found';
+import OnlineDevBadge from '@/components/OnlineDevBadge';
+import TelegramSessionAlertBanner from '@/components/TelegramSessionAlertBanner';
+import DevSessionPanel from '@/components/DevSessionPanel';
+import { Toaster } from '@/components/ui/sonner';
+import { useTelegramSessionWatchdogEffect } from '@/hooks/useTelegramSessionWatchdog';
+import Landing from '@/pages/Landing';
+import Login from '@/pages/Login';
+import Client from '@/pages/Client';
+import Settings from '@/pages/Settings';
+import Downloads from '@/pages/Downloads';
+import Apps from '@/pages/Apps';
+import Tma from '@/pages/Tma';
+import Desktop from '@/pages/Desktop';
+import Mobile from '@/pages/Mobile';
+import ChannelOs from '@/pages/ChannelOs';
+import Diagnostics from '@/pages/Diagnostics';
+import { Redirect } from 'wouter';
+
+function Router() {
+  return (
+    <Switch>
+      <Route path="/" component={Landing} />
+      <Route path="/login" component={Login} />
+      <Route path="/client" component={Client} />
+      <Route path="/workspace">{() => <Redirect to="/client" />}</Route>
+      <Route path="/operator">{() => <Redirect to="/client" />}</Route>
+      <Route path="/settings" component={Settings} />
+      <Route path="/downloads" component={Downloads} />
+      <Route path="/apps" component={Apps} />
+      <Route path="/tma" component={Tma} />
+      <Route path="/desktop" component={Desktop} />
+      <Route path="/mobile" component={Mobile} />
+      <Route path="/channel-os" component={ChannelOs} />
+      <Route path="/diagnostics" component={Diagnostics} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
+function App() {
+  useTelegramSessionWatchdogEffect();
+  return (
+    <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+      <TelegramSessionAlertBanner />
+      <OnlineDevBadge />
+      {import.meta.env.DEV && <DevSessionPanel />}
+      <Router />
+      <Toaster richColors position="top-right" />
+    </WouterRouter>
+  );
+}
+
+export default App;

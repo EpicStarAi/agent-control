@@ -1,0 +1,155 @@
+## GitHub repo
+
+Основная ссылка, которую мы используем для EPIC💀GRAM:
+
+```text
+https://github.com/EpicStarAi/agent-control
+```
+
+Чтобы проверить точную remote-ссылку на VPS:
+
+```bash
+cd /opt/epicgram-releases/main-29c094e || exit 1
+git remote -v
+git branch --show-current
+git log -1 --oneline
+```
+
+Последний checkpoint у нас:
+
+```text
+a1385b checkpoint: harden operator intent router and sidebar shell
+```
+
+---
+
+## Prompt для Replit
+
+Вставь в Replit Agent:
+
+```text
+EPICGRAM REPLIT SANDBOX SETUP — Import and run as separate online dev project.
+
+GitHub repo:
+https://github.com/EpicStarAi/agent-control
+
+Current production checkpoint:
+a1385b checkpoint: harden operator intent router and sidebar shell
+
+Goal:
+Create a separate Replit online development project for EPICGRAM so we can tune UI/UX, operator shell, Channel OS, login/team workspace, and frontend behavior in online mode without touching production VPS.
+
+Important:
+This is a sandbox/dev Replit project, not production.
+
+Hard constraints:
+- Do not use production .env.local.
+- Do not copy Telegram TDLib sessions.
+- Do not send Telegram messages.
+- Do not logout NOVIKOVA.
+- Do not touch production VPS.
+- Do not use real Telegram send by default.
+- Do not expose secrets.
+- Do not commit directly to main without explicit approval.
+- Create/use a separate branch if changes are needed.
+
+Project context:
+EPICGRAM is a Telegram AI workspace with:
+- /client Telegram-like client UI
+- AI Operator dock/sidebar
+- login/team/admin access
+- /workspace safe team area
+- /tma Telegram Mini App preview
+- operator intent router
+- future Channel OS cards for each Telegram channel
+
+Current accepted features:
+- AI Operator has internal ChatGPT-like sidebar
+- operator no longer auto-replies status to every message
+- commands like “зайди в NoViKoVA NEWS” route to runtime action
+- commands like “rfr” return command_not_recognized
+- /client works on VPS
+- epicgram-api is separate and must not be required for frontend-only Replit preview
+
+First task:
+1. Inspect package.json and apps/web package structure.
+2. Identify the correct Next.js app entrypoint.
+3. Configure Replit to run the web app only.
+4. Use a safe dev command that binds to 0.0.0.0 and Replit PORT.
+5. If backend APIs are unavailable, add safe mock/fallback behavior for Replit preview only.
+6. Do not remove production API code.
+7. Do not break existing routes.
+
+Expected Replit run behavior:
+- Replit Preview opens the EPICGRAM web app.
+- /login loads.
+- /workspace loads or redirects safely.
+- /client loads in dev/sandbox mode.
+- /tma loads as Mini App preview.
+- AI Operator UI is visible.
+- No real Telegram messages are sent.
+- No real TDLib session is accessed.
+
+Preferred implementation:
+- Add Replit-safe environment mode:
+  EPICGRAM_REPLIT_SANDBOX=true
+  EPICGRAM_ENABLE_LIVE_TELEGRAM=false
+  EPICGRAM_DISABLE_SEND=true
+- In sandbox mode, block or mock Telegram send/status routes.
+- Display clear badge:
+  REPLIT SANDBOX / NO LIVE TELEGRAM SEND
+
+If needed, create:
+- .replit
+- replit.nix
+- .env.example
+- docs/REPLIT_SANDBOX.md
+
+Do not create:
+- .env.local with secrets
+- production TDLib files
+- real Telegram credentials
+- real API keys
+
+After setup, run:
+npm install
+npm run build
+npm run dev or the correct Replit start command
+
+Return:
+REPLIT SANDBOX SETUP RESULT
+
+Include:
+- repo imported
+- branch used
+- run command
+- routes tested
+- whether build passes
+- files changed
+- how to open /client, /login, /workspace, /tma
+- confirmation that Telegram send is disabled
+- confirmation that no production secrets are used
+```
+
+---
+
+## Как импортировать в Replit
+
+1. Replit → **Create Repl**
+2. Выбери **Import from GitHub**
+3. Вставь:
+
+```text
+https://github.com/EpicStarAi/agent-control
+```
+
+4. Если repo private — подключи GitHub аккаунт, где есть доступ.
+5. Название Repl:
+
+```text
+epicgram-sandbox
+```
+
+6. После импорта вставь prompt выше в Replit Agent.
+
+Главное: **Replit используем как онлайн-песочницу UI/оператора**, а не как production Telegram runtime. Production остаётся на VPS `194.163.140.26`.

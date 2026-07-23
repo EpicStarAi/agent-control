@@ -1,0 +1,9 @@
+- [Shared proxy only routes registered artifacts](artifact-router-scope.md) — legacy non-artifact workflows (e.g. plain Next.js on a fixed port) are never reachable via the root domain/Preview iframe, even with correct binding and `[[ports]]`.
+- [EPICGRAM proxy artifact pattern](epicgram-proxy-pattern.md) — porting a Next.js app to a react-vite artifact while keeping the real backend service untouched: proxy through the api-server artifact, GET-only allowlist for safety.
+- [EPICGRAM Next.js app is VPS-only, kept intentionally](epicgram-nextjs-vps-only.md) — user chose to keep apps/web for external VPS deploy, not retire it; don't propose removing it as dead code.
+- [EPICGRAM TDLib live enablement](epicgram-tdlib-live-enablement.md) — real Telegram login is a 4-env-var flip (owner secrets, not .env.local); send-approval gate is separate and already server-side.
+- [EPICGRAM session drop alerting](epicgram-session-drop-alerting.md) — unexpected auth-state drops reuse the existing SSE event bus; frontend owns one watchdog subscription, not per-component.
+- [EPICGRAM Add Account Wizard](epicgram-add-account-wizard.md) — phone/code/2FA auth flow: POST /accounts/new → /auth/phone → /auth/code → /auth/2fa; bump refreshTick to force re-poll after success.
+- [EPICGRAM AI Operator Glow System](epicgram-ai-glow-system.md) — neon border effect tied to real AI states via CustomEvent bus; fixed overlay + CSS keyframes; no layout impact.
+- [EPICGRAM TDLib enabled](epicgram-tdlib-enabled.md) — EPICGRAM_TDLIB_ENABLED=true now set in shared env; EPICGRAM API must be restarted after any env change to pick it up.
+- [EPICGRAM workspace improvements batch](epicgram-workspace-improvements.md) — real message history, direct send, AI memory, new tools, audit viewer: key decisions and constraints.
