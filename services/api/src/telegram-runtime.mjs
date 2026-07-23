@@ -466,10 +466,14 @@ export async function removeAccountSlot(payload) {
   }
   const wasActive = normalized.activeAccountId === accountId;
   const nextActive = wasActive ? remaining[0].slotId : normalized.activeAccountId;
+  const nextActiveSlot = remaining.find((slot) => slot.slotId === nextActive) ?? remaining[0];
   const saved = await saveState({
     ...normalized,
     accounts: remaining,
     activeAccountId: nextActive,
+    account: nextActiveSlot?.displayName ? nextActiveSlot : null,
+    runtime: nextActiveSlot?.status === "ready" ? "ready" : "waiting_auth",
+    authorizationState: nextActiveSlot?.authorizationState ?? "backend_ready",
     qrLink: null,
     phoneMasked: null,
     message: "Слот Telegram-аккаунта удалён."
@@ -510,6 +514,20 @@ export async function getConfig() {
     message: tdlibConfigured()
       ? "Local TDLib config is present. Native TDLib adapter is the next required layer."
       : notConfiguredMessage()
+  };
+}
+
+export async function getLocalRuntimeState() {
+  const state = normalizeState(await readState());
+  const accountId = safeAccountId(state.activeAccountId);
+  return {
+    status: 200,
+    body: {
+      ...state,
+      method: "state",
+      ...configDiagnostics(accountId),
+      message: state.message ?? "Локальное состояние Telegram runtime прочитано без TDLib sync."
+    }
   };
 }
 
@@ -950,6 +968,7 @@ export async function resetAuth(payload = {}) {
 
   const state = await saveState(upsertAccountSlot({
     ...currentState,
+    account: null,
     runtime: tdlibConfigured() ? "waiting_auth" : "not_configured",
     authorizationState: tdlibConfigured() ? "backend_ready" : "not_configured",
     qrLink: null,

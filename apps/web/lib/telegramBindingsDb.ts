@@ -182,6 +182,88 @@ export async function create(input: {
   return store.create(input);
 }
 
+export async function bindWorkspaceToAccount(input: {
+  workspaceId: string;
+  userId: string;
+  tdlibAccountId: string;
+  displayName?: string | null;
+  phoneMasked?: string | null;
+  username?: string | null;
+  authState: TelegramBindingAuthState;
+  authError?: string | null;
+}): Promise<TelegramBinding> {
+  if (enabled()) {
+    try {
+      const p = await db();
+      const id = newBindingId();
+      const now = new Date().toISOString();
+      const r = await p.query(
+        `INSERT INTO telegram_bindings
+           (id, workspace_id, user_id, tdlib_account_id, display_name, phone_masked, username, auth_state, auth_error, bound_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)
+         ON CONFLICT (workspace_id) DO UPDATE SET
+           user_id=EXCLUDED.user_id,
+           tdlib_account_id=EXCLUDED.tdlib_account_id,
+           display_name=EXCLUDED.display_name,
+           phone_masked=EXCLUDED.phone_masked,
+           username=EXCLUDED.username,
+           auth_state=EXCLUDED.auth_state,
+           auth_error=EXCLUDED.auth_error,
+           updated_at=EXCLUDED.updated_at
+         RETURNING *`,
+        [
+          id,
+          input.workspaceId,
+          input.userId,
+          input.tdlibAccountId,
+          input.displayName ?? "Telegram",
+          input.phoneMasked ?? null,
+          input.username ?? null,
+          input.authState,
+          input.authError ?? null,
+          now,
+        ]
+      );
+      return rowToBinding(r.rows[0]);
+    } catch { /* fall through */ }
+  }
+
+  const existing = await store.getByWorkspace(input.workspaceId);
+  if (!existing) {
+    const created = await store.create({
+      workspaceId: input.workspaceId,
+      userId: input.userId,
+      tdlibAccountId: input.tdlibAccountId,
+      displayName: input.displayName ?? "Telegram",
+    });
+    await store.updateAuthState({
+      workspaceId: input.workspaceId,
+      authState: input.authState,
+      authError: input.authError ?? null,
+      phoneMasked: input.phoneMasked ?? null,
+      username: input.username ?? null,
+      displayName: input.displayName ?? null,
+    });
+    return (await store.getByWorkspace(input.workspaceId)) ?? created;
+  }
+  await store.remove(input.workspaceId);
+  const created = await store.create({
+    workspaceId: input.workspaceId,
+    userId: input.userId,
+    tdlibAccountId: input.tdlibAccountId,
+    displayName: input.displayName ?? existing.displayName,
+  });
+  await store.updateAuthState({
+    workspaceId: input.workspaceId,
+    authState: input.authState,
+    authError: input.authError ?? null,
+    phoneMasked: input.phoneMasked ?? null,
+    username: input.username ?? null,
+    displayName: input.displayName ?? null,
+  });
+  return (await store.getByWorkspace(input.workspaceId)) ?? created;
+}
+
 // Update auth state
 export async function updateAuthState(input: {
   workspaceId: string;

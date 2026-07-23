@@ -15,6 +15,13 @@ type TgMsg = {
   role?: string;
 };
 
+type AiAttachment = {
+  name: string;
+  type: string;
+  size: number;
+  dataUrl: string;
+};
+
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -29,6 +36,30 @@ function normalizeMessage(m: TgMsg) {
     content,
     isOutgoing: Boolean(m?.isOutgoing || m?.role === "user" || m?.role === "operator"),
   };
+}
+
+function normalizeAttachments(value: unknown): AiAttachment[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item: any) => ({
+      name: normalizeText(item?.name).slice(0, 160) || "clipboard-image",
+      type: normalizeText(item?.type).slice(0, 80) || "image/png",
+      size: Number.isFinite(Number(item?.size)) ? Number(item.size) : 0,
+      dataUrl: normalizeText(item?.dataUrl),
+    }))
+    .filter((item) => item.type.startsWith("image/") && item.dataUrl.startsWith("data:image/") && item.dataUrl.length <= 3_600_000)
+    .slice(0, 3);
+}
+
+function normalizeOperatorHistory(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item: any) => ({
+      content: normalizeText(item?.content || item?.text || item?.message),
+      isOutgoing: item?.role === "op" || item?.role === "assistant" || item?.isOutgoing === true,
+    }))
+    .filter((item) => item.content.length > 0)
+    .slice(-16);
 }
 
 // P3.4b: deterministic tool-intent detection. Commands matching these route to
@@ -51,7 +82,149 @@ function isToolCommand(command: string): boolean {
 // contains "последн", so we force the summarize_chat tool for analyze intent.
 function isAnalyzeIntent(command: string): boolean {
   const s = command.toLowerCase();
-  return /проанализир|анализ|analy[sz]e|разбор|осмысл|выжимк/.test(s);
+  const analysis = s.match(/проанализир|анализ|analy[sz]e|разбор|осмысл|выжимк/);
+  if (!analysis || analysis.index === undefined) return false;
+
+  const targetPattern = /чат|переписк|сообщен|диалог|контакт|канал/g;
+  let target = targetPattern.exec(s);
+  while (target) {
+    if (Math.abs(target.index - analysis.index) <= 72) return true;
+    target = targetPattern.exec(s);
+  }
+  return false;
+}
+
+function isSystemAuditIntent(command: string): boolean {
+  const s = command.toLowerCase();
+  return /аудит|проверь.*epic.?gram|read[\s-]?only.*(?:проверк|audit)|с чего (?:нач|старт)|что (?:делаем|дальше)|начн[её]м работу|первый шаг/.test(s);
+}
+
+function renderSystemAudit(data: any): string {
+  const rows = Array.isArray(data?.result?.rows) ? data.result.rows : [];
+  if (!rows.length) return normalizeText(data?.result?.text) || "READ-ONLY аудит EPICGRAM не вернул результатов.";
+  return [
+    "READ-ONLY аудит EPICGRAM",
+    "Компонент | Статус | Результат | Решение",
+    "--- | --- | --- | ---",
+    ...rows.map((row: any) => [row?.component, row?.status, row?.detail, row?.solution]
+      .map((value) => String(value ?? "-").replace(/\|/g, "/").replace(/\s+/g, " ").trim())
+      .join(" | ")),
+  ].join("\n");
+}
+
+function localOperatorReply(command: string): string | null {
+  const s = command.toLowerCase().trim();
+  if (!s) return null;
+  if (/^(привет|приветик|приветики|здаров|здоров|hello|hi)/.test(s)) {
+    return "На связи. EPIC💀CLAW снова в ручном режиме. Без рекламной каши: скажи, что проверяем, какой чат открыть или какой черновик подготовить.";
+  }
+  if (/с чего (?:нач|старт)|что (?:делаем|дальше)|начн[её]м работу|первый шаг/.test(s)) {
+    return [
+      "Начнём с безопасной проверки и одного выбранного чата:",
+      "1. «Проверь EPICGRAM» — проверю UI, API, TDLib, n8n, OpenClaw и AI.",
+      "2. Выбери нужный Telegram-чат слева.",
+      "3. «Прочитай выбранный чат» — загружу последние сообщения.",
+      "4. «Суммаризируй чат» — выделю контекст и открытые вопросы.",
+      "5. «Подготовь черновик ответа» — создам текст без отправки.",
+      "Начинай командой: «Проверь EPICGRAM».",
+    ].join("\n");
+  }
+  if (/operator tools|tools где|где tools|где панел|панел.*tools|кнопк.*tools|allowlist где/.test(s)) {
+    return "Панель Operator Tools находится в окне EPIC💀CLAW сразу под вкладками проектов. В новой версии в шапке оператора есть кнопка TOOLS — нажми её, и окно прокрутит к панели. Если кнопки нет, открой fresh URL с refresh=tools-panel-visible.";
+  }
+  if (/что произошло.*оператор|оператор.*что произошло|верни.*оператор|кто был|шо ты мел|что ты мел|несеш|несёш|бред|реклам|не в адекват|неадекват/.test(s)) {
+    return "Да, вижу. Я убрал свободную болтовню через слабую локальную модель: она и давала этот странный рекламный поток. Теперь управляющий диалог отвечаю я как EPIC💀CLAW, а LLM включаем только для конкретных черновиков, анализа и выбранных Telegram-чатов.";
+  }
+  if (/без изменений|по.?прежнему|ничего.*не (измен|помен)|все так же|всё так же/.test(s)) {
+    return "Вижу: нужное изменение в интерфейсе не отобразилось. Я не буду подменять проверку общими советами. Обнови страницу клиента один раз: после обновления EPIC💀CLAW сбросит старый диалог, а обычные сообщения будут обрабатываться отдельно от выбранного Telegram-чата. Затем повтори проблемную команду — ответ должен появиться в окне оператора, а не в composer.";
+  }
+  if (/статус|ты кто|кто ты|на связи|(^|\s)готов(?:\?|$|\s+(?:ли|к работе))/.test(s)) {
+    return "Я EPIC💀CLAW AI Operator внутри EPIC☠GRAM. Режим: manual approval only, Telegram подключён через owner-bound TDLib, отправка только после твоего действия.";
+  }
+  return null;
+}
+
+function isLowQualityOperatorReply(text: string): boolean {
+  const s = text.toLowerCase();
+  return /проверьте подключение к интернету|перезагрузите устройство|обратитесь в службу поддержки|hootsuite|buffer|social media management tools|рекламн(ый|ая|ые) инвестиц/.test(s);
+}
+
+function localOperatorFallback(command: string): string {
+  const trimmed = command.trim();
+  if (!trimmed) {
+    return "Я на связи. Выбери Telegram-чат или напиши конкретную задачу: проверить статус, разобрать скрин, подготовить ответ, посмотреть n8n/OpenClaw/Ollama.";
+  }
+  if (/анализ|разбор|проверь|посмотри|разбер/.test(trimmed.toLowerCase())) {
+    return "Сделаю. Уточни объект анализа: текущий Telegram-чат, скрин, n8n workflow, OpenClaw, Ollama или весь клиент. Если это чат — выбери его слева, если скрин — вставь его в окно оператора.";
+  }
+  return "Принял. Я сейчас в стабильном операторском режиме. Дай конкретную команду: открыть чат, проверить статус, подготовить ответ, разобрать скрин или посмотреть интеграции.";
+}
+
+function operatorOnlyResponse(text: string, model = "epicgram-local-operator-guard") {
+  return NextResponse.json({
+    ok: true,
+    readonly: true,
+    operatorOnly: true,
+    text,
+    draft: text,
+    model,
+    approval_required: false,
+    mode: "MANUAL_APPROVAL_ONLY",
+    runtime_mode: "READ_ONLY",
+    actions: [],
+    can_send: false,
+    auto_send: false,
+    bulk_actions: false,
+  });
+}
+
+async function operatorConversationResponse(input: {
+  workspaceId: string;
+  command: string;
+  history: Array<{ content: string; isOutgoing: boolean }>;
+  attachments: AiAttachment[];
+}) {
+  const started = Date.now();
+  try {
+    const upstream = await fetch(`${API_BASE_URL}/ai/suggest`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        mode: "operator_chat",
+        conversationId: `operator:${input.workspaceId}`,
+        chatTitle: "EPIC💀CLAW Operator Workspace",
+        command: input.command,
+        history: input.history,
+        attachments: input.attachments,
+      }),
+      cache: "no-store",
+    });
+    const data = await upstream.json().catch(() => null);
+    const text = normalizeText(data?.draft) || normalizeText(data?.text) || normalizeText(data?.message);
+
+    if (upstream.ok && data?.ok && text && !isLowQualityOperatorReply(text)) {
+      return NextResponse.json({
+        ok: true,
+        readonly: true,
+        operatorOnly: true,
+        text,
+        draft: text,
+        model: data?.model ?? null,
+        latency_ms: Date.now() - started,
+        approval_required: false,
+        mode: "MANUAL_APPROVAL_ONLY",
+        runtime_mode: "OPERATOR_CHAT",
+        actions: [],
+        can_send: false,
+        auto_send: false,
+        bulk_actions: false,
+      }, { headers: { "cache-control": "private, no-store, max-age=0" } });
+    }
+
+    return operatorOnlyResponse(localOperatorFallback(input.command));
+  } catch {
+    return operatorOnlyResponse("Не смог получить ответ локального мозга. Инструменты клиента остаются доступны: проверь состояние, прочитай чат, покажи n8n или OpenClaw.");
+  }
 }
 
 // Render a read-only tool result (no proposedAction) as a plain, readable text.
@@ -82,18 +255,6 @@ export async function POST(req: Request) {
     );
   }
 
-  // The account is resolved SERVER-SIDE from the caller's owner-matched binding.
-  // The client-supplied accountId is ignored entirely. No ready binding -> 403
-  // (this endpoint acts on a real slot, so it denies hard rather than soft-empty).
-  const bound = await resolveBoundAccount(principal);
-  if (bound.kind !== "ok") {
-    return NextResponse.json(
-      { ok: false, ownerMatched: bound.kind !== "mismatch", error: "no_binding", message: "К вашему профилю не привязан owner-matched Telegram-аккаунт." },
-      { status: 403, headers: { "cache-control": "no-store" } },
-    );
-  }
-  const accountId = bound.accountId;
-
   let body: any = {};
 
   try {
@@ -108,6 +269,138 @@ export async function POST(req: Request) {
     normalizeText(body?.message);
 
   const tg = body?.tgContext ?? {};
+  const attachments = normalizeAttachments(body?.attachments?.length ? body.attachments : tg?.attachments);
+  const hasVisualAttachments = attachments.length > 0;
+  if (!hasVisualAttachments && isSystemAuditIntent(command)) {
+    try {
+      const auditResponse = await fetch(new URL("/api/operator-tools", req.url), {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: req.headers.get("cookie") ?? "",
+        },
+        body: JSON.stringify({
+          tool: "system_audit",
+          instruction: command,
+          chatId: normalizeText(tg?.chatId) || normalizeText(body?.chatId) || normalizeText(body?.conversationId),
+          chatTitle: normalizeText(tg?.chatTitle) || normalizeText(body?.chatTitle),
+          clientState: body?.clientState ?? {
+            section: "client",
+            activeAccountId: normalizeText(tg?.accountId) || normalizeText(body?.accountId),
+            selectedTelegramChatId: normalizeText(tg?.chatId) || normalizeText(body?.chatId),
+            selectedTelegramChatTitle: normalizeText(tg?.chatTitle) || normalizeText(body?.chatTitle),
+          },
+        }),
+        cache: "no-store",
+        signal: AbortSignal.timeout(30_000),
+      });
+      const audit = await auditResponse.json().catch(() => null);
+      if (auditResponse.ok && audit?.ok) {
+        return operatorOnlyResponse(renderSystemAudit(audit), "epicgram-system-audit");
+      }
+      return operatorOnlyResponse(`READ-ONLY аудит недоступен: ${normalizeText(audit?.error) || `HTTP ${auditResponse.status}`}.`);
+    } catch (error) {
+      return operatorOnlyResponse(`READ-ONLY аудит недоступен: ${error instanceof Error ? error.message : String(error)}.`);
+    }
+  }
+  const localReply = localOperatorReply(command);
+  if (localReply && !hasVisualAttachments) {
+    return operatorOnlyResponse(localReply);
+  }
+
+  const operatorHistory = normalizeOperatorHistory(body?.operatorHistory);
+  const needsTelegramContext = !hasVisualAttachments && (isToolCommand(command) || isAnalyzeIntent(command));
+  if (!needsTelegramContext) {
+    if (!hasVisualAttachments) {
+      const agentBinding = await resolveBoundAccount(principal);
+      if (agentBinding.kind === "ok") {
+        try {
+          const agentResponse = await fetch(`${API_BASE_URL}/operator/command`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              text: command,
+              history: operatorHistory,
+              accountId: agentBinding.accountId,
+            }),
+            cache: "no-store",
+            signal: AbortSignal.timeout(60_000),
+          });
+          const agent = await agentResponse.json().catch(() => null);
+          const agentText = normalizeText(agent?.text) || normalizeText(agent?.reply);
+          const agentTool = normalizeText(agent?.tool) || "reply";
+
+          if (agentResponse.ok && agent?.ok && agent?.kind === "pending" && agent?.action) {
+            const actionChatId = normalizeText(agent.action.chatId);
+            const actionText = normalizeText(agent.action.text);
+            const owned = actionChatId ? await assertChatBelongsToBoundAccount(principal, actionChatId) : null;
+            if (!owned?.ok || !actionText) {
+              return operatorOnlyResponse("Агент подготовил некорректное действие. Отправка заблокирована.", "epicgram-operator-agent");
+            }
+            return NextResponse.json({
+              ok: true,
+              text: agentText || actionText,
+              draft: actionText,
+              tool: `operator_agent.${agentTool}`,
+              pendingAction: {
+                actionType: "telegram_send",
+                chatId: actionChatId,
+                chatTitle: normalizeText(owned.chat.title) || normalizeText(agent.action.chatTitle) || actionChatId,
+                text: actionText,
+                auditId: null,
+              },
+              model: "epicgram-operator-agent",
+              approval_required: true,
+              mode: "MANUAL_APPROVAL_ONLY",
+              runtime_mode: "TOOL_AGENT",
+              actions: [],
+              can_send: false,
+              auto_send: false,
+              bulk_actions: false,
+            });
+          }
+
+          if (agentResponse.ok && agent?.ok && agentText) {
+            return NextResponse.json({
+              ok: true,
+              readonly: true,
+              operatorOnly: true,
+              text: agentText,
+              draft: agentText,
+              tool: `operator_agent.${agentTool}`,
+              model: "epicgram-operator-agent",
+              approval_required: false,
+              mode: "MANUAL_APPROVAL_ONLY",
+              runtime_mode: "TOOL_AGENT",
+              actions: [],
+              can_send: false,
+              auto_send: false,
+              bulk_actions: false,
+            }, { headers: { "cache-control": "private, no-store, max-age=0" } });
+          }
+        } catch {
+          // Fall back to the normal operator conversation below.
+        }
+      }
+    }
+    return operatorConversationResponse({
+      workspaceId: principal.workspaceId,
+      command,
+      history: operatorHistory,
+      attachments,
+    });
+  }
+
+  // Telegram tools resolve the account SERVER-SIDE from the caller's binding.
+  // Plain operator chat above intentionally works without a Telegram account.
+  const bound = await resolveBoundAccount(principal);
+  if (bound.kind !== "ok") {
+    return NextResponse.json(
+      { ok: false, ownerMatched: bound.kind !== "mismatch", error: "no_binding", message: "К вашему профилю не привязан owner-matched Telegram-аккаунт." },
+      { status: 403, headers: { "cache-control": "no-store" } },
+    );
+  }
+  const accountId = bound.accountId;
 
   const chatId =
     typeof tg?.chatId === "string" && tg.chatId
@@ -120,6 +413,14 @@ export async function POST(req: Request) {
 
   // accountId is the server-resolved bound slot (above) — the request body's
   // tgContext.accountId / accountId are deliberately NOT read here.
+
+  if (chatId.startsWith("p_")) {
+    return operatorOnlyResponse(
+      hasVisualAttachments
+        ? "Скрин/файл получил, но проектное окно сейчас не будет гонять его через нестабильную локальную модель. Выбери реальный Telegram-чат или коротко напиши, что именно на скрине проверить."
+        : localOperatorFallback(command),
+    );
+  }
 
   if (!chatId) {
     return NextResponse.json(
@@ -188,7 +489,7 @@ export async function POST(req: Request) {
   // P3.4b: tool-intent commands go to the non-destructive Tool Router v1.
   // It NEVER sends. Draft/prepare come back as an approval-card draft; read-only
   // tools (summary / last messages / competitors / plan) render as info only.
-  if (isToolCommand(command) || isAnalyzeIntent(command)) {
+  if (!hasVisualAttachments && (isToolCommand(command) || isAnalyzeIntent(command))) {
     try {
       const routedRes = await fetch(`${API_BASE_URL}/ai/route`, {
         method: "POST",
@@ -378,6 +679,7 @@ export async function POST(req: Request) {
         chatTitle,
         command,
         messages,
+        attachments,
       }),
       cache: "no-store",
     });

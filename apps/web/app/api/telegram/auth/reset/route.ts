@@ -1,12 +1,16 @@
 import { NextRequest } from "next/server";
-import { getPrincipal, denyMutation } from "@/lib/telegramGuard";
+import { requireLegacyOwnerSurface, denyMutation, guardedJson } from "@/lib/telegramGuard";
+import { mutateStagingRuntime } from "@/lib/telegramBindingService";
 
-// INCIDENT hotfix/client-auth-guard: this mutation route had no session check.
-// Denied server-side by default; the request body is never forwarded and no
-// client-supplied approval flag is honoured.
 export const dynamic = "force-dynamic";
 
-export async function POST(_request: NextRequest) {
-  const principal = await getPrincipal();
-  return denyMutation("/api/telegram/auth/reset", "POST", principal, "auth_reset");
+export async function POST(request: NextRequest) {
+  const auth = await requireLegacyOwnerSurface("/api/telegram/auth/reset", "POST", "auth_reset");
+  if (!auth.ok) return auth.response;
+  const body = await request.json().catch(() => ({}));
+  const accountId = String(body?.accountId ?? "").trim();
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(accountId)) return guardedJson({ ok: false, code: "ACCOUNT_ID_REQUIRED" }, 400);
+  const result = await mutateStagingRuntime(auth.principal, "/telegram/auth/reset", { accountId, confirmAlias: accountId });
+  if (!result) return denyMutation("/api/telegram/auth/reset", "POST", auth.principal, "staging_only");
+  return guardedJson(result.body, result.status);
 }

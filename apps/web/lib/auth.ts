@@ -10,6 +10,13 @@ export interface ReferralCode {
   id: string; codeHash: string; label: string; status: CodeStatus;
   maxUses: number; usedCount: number; createdBy: string; createdAt: string; expiresAt: string | null;
 }
+export interface ReferralRedemption {
+  id: string;
+  referralCodeId: string;
+  userId: string;
+  workspaceId: string;
+  redeemedAt: string;
+}
 export interface User { id: string; displayName: string; role: string; createdAt: string; }
 export interface Session { id: string; userId: string; tokenHash: string; expiresAt: string; createdAt: string; }
 export interface Workspace { id: string; ownerUserId: string; title: string; createdAt: string; }

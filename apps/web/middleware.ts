@@ -47,8 +47,15 @@ function clonePublicRedirectUrl(request: NextRequest) {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSession = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
+  const protectedPage =
+    pathname === "/client" ||
+    pathname.startsWith("/client/") ||
+    pathname === "/telegram-code" ||
+    pathname === "/settings" ||
+    pathname === "/epic-crm" ||
+    pathname === "/operator-office";
 
-  if (pathname === "/client" || pathname.startsWith("/client/")) {
+  if (protectedPage) {
     if (!hasSession) {
       const url = clonePublicRedirectUrl(request);
       url.pathname = "/login";
@@ -68,6 +75,10 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     "/client/:path*",
+    "/telegram-code",
+    "/settings",
+    "/epic-crm",
+    "/operator-office",
     "/api/telegram/:path*",
     "/api/v1/telegram/:path*",
     "/api/operator-events",
@@ -76,6 +87,12 @@ export const config = {
     // dedicated route (command/confirm/schedule/qclaw) — must sit behind the
     // gate. Enforcement is still duplicated inside each handler (defence in
     // depth); this only guarantees the surface is covered at the edge too.
-    "/api/operator/:path*"
+    "/api/operator/:path*",
+    // P0: /api/ai/* proxied to the backend LLM anonymously and
+    // /api/operators/status published the operator roster. Both are gated in
+    // their handlers now; covering them here too keeps the edge and the
+    // handlers in agreement about what the protected surface is.
+    "/api/ai/:path*",
+    "/api/operators/:path*"
   ]
 };

@@ -1,0 +1,28 @@
+[Unit]
+Description=EPICGRAM owner-scoped staging gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/epicgram-staging-gateway
+EnvironmentFile=/etc/epicgram-staging-gateway.env
+ExecStart=/usr/bin/node /opt/epicgram-staging-gateway/server.mjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/epicgram-staging-gateway
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
